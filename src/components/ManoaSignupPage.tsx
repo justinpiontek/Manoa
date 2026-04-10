@@ -738,32 +738,41 @@ export default function ManoaSignupPage() {
       <section className="hero-grid" aria-label="Text Manoa">
         <div className="copy">
           <p className="eyebrow">Calendar assistant by text</p>
-          <h1>Text Manoa to schedule anything.</h1>
-          <p className="tagline">No app. No tabs. Just text your calendar.</p>
+          <h1>Stop Scheduling. Just Text Manoa.</h1>
+          <p className="tagline">Book meetings, get reminders, and manage your calendar — all by text.</p>
+          <div className="hero-example" aria-label="Example conversation">
+            <p className="hero-example-label">Example</p>
+            <div className="hero-example-bubble user">
+              <strong>You</strong>
+              <span>Need a meeting with Dr. Beth this week</span>
+            </div>
+            <div className="hero-example-bubble manoa">
+              <strong>Manoa</strong>
+              <span>Best options: Tues 10am, Wed 2pm, Thurs 11am. Reply 1, 2, or 3.</span>
+            </div>
+          </div>
           <p className="lede">
-            Manoa checks your calendars, texts back the best times, and books the
-            event when you reply with a number.
+            Built for busy people who don&apos;t have time to schedule.
           </p>
           <div className="hero-points" aria-label="Why Manoa feels simple">
             <div className="hero-point">
-              <strong>See the best openings</strong>
-              <span>Manoa checks your calendars and sends back the times that work.</span>
+              <strong>No back-and-forth</strong>
+              <span>Manoa finds the best times instantly.</span>
             </div>
             <div className="hero-point">
-              <strong>Reply once to book</strong>
-              <span>Text back 1, 2, or 3 and Manoa adds it for you.</span>
+              <strong>No apps or links</strong>
+              <span>Just send a text like you normally would.</span>
             </div>
             <div className="hero-point">
-              <strong>Keep the day on your phone</strong>
-              <span>Morning agenda and meeting reminders show up by text too.</span>
+              <strong>Never forget anything</strong>
+              <span>Daily agenda and reminders get sent to your phone.</span>
             </div>
           </div>
           <p className="quick-note">
-            Sign up once, connect your calendar, save Manoa in your contacts, and handle the rest
-            from your phone.
+            Sign up once, connect your calendar, and text what you need.
           </p>
           <p className="hero-summary">
-            Best times back by text. One reply to book. Agenda and reminders stay on your phone.
+            No links. No apps. No back-and-forth.
           </p>
         </div>
 
@@ -773,15 +782,14 @@ export default function ManoaSignupPage() {
             <strong>$19.99</strong>
             <span>/ month</span>
           </div>
-          <p className="plan-line">Scheduling by SMS, daily agenda, and meeting reminders.</p>
+          <p className="plan-line">Your calendar handled for you — by text.</p>
           <p className="trust-line">
-            Connect Google Calendar after checkout. Manoa only books when you
-            confirm by text.
+            Try it. If it doesn&apos;t save you time this week, cancel.
           </p>
           <div className="mini-points" aria-label="Plan details">
+            <span>Takes 30 seconds to set up</span>
             <span>Cancel anytime</span>
-            <span>Secure magic-link login</span>
-            <span>Everything happens by text</span>
+            <span>Connect Google Calendar after checkout</span>
           </div>
 
           <form action="/api/start-checkout" method="post">
@@ -810,7 +818,7 @@ export default function ManoaSignupPage() {
               />
             </div>
             <button className="button" type="submit">
-              Subscribe monthly
+              Start texting Manoa
             </button>
           </form>
 
@@ -904,26 +912,25 @@ export default function ManoaSignupPage() {
       </section>
 
       <section className="steps" aria-label="How Manoa works">
-        <h2>Set it up once</h2>
+        <h2>How it works</h2>
         <p className="steps-lede">
-          The browser only gets you through signup and account setup. After that, Manoa should feel
-          like a number in your contacts that already knows your schedule.
+          Sign up, connect your calendar, text what you need, and you&apos;re done.
         </p>
         <div className="step-grid">
           <article className="step">
             <span className="step-number">1</span>
-            <h3>Subscribe</h3>
-            <p>Use email and phone so Manoa knows which account and texts belong to you.</p>
+            <h3>Sign up</h3>
+            <p>Enter your email and phone.</p>
           </article>
           <article className="step">
             <span className="step-number">2</span>
-            <h3>Connect calendars</h3>
-            <p>Start with Google Calendar so Manoa can find openings and keep reminders accurate.</p>
+            <h3>Connect your calendar</h3>
+            <p>Takes 10 seconds.</p>
           </article>
           <article className="step">
             <span className="step-number">3</span>
             <h3>Text Manoa</h3>
-            <p>Schedule, reschedule, cancel, get reminders, and ask for your day by text.</p>
+            <p>&ldquo;Schedule meeting this week.&rdquo; Done.</p>
           </article>
         </div>
       </section>
