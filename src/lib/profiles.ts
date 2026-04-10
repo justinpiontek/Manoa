@@ -1,5 +1,6 @@
 import { defaultTimezone } from './env'
 import { supabaseAdmin } from './supabaseAdmin'
+import { syncStripeSubscriptionForProfile } from './subscriptions'
 
 export type Profile = {
   id: string
@@ -11,6 +12,31 @@ export type Profile = {
 export type DashboardProfile = Profile & {
   subscriptionStatus: string | null
   googleCalendarConnected: boolean
+}
+
+async function resolveDashboardSubscriptionStatus(profile: Profile) {
+  const { data: subscription, error: subscriptionError } = await supabaseAdmin
+    .from('subscriptions')
+    .select('status')
+    .eq('profile_id', profile.id)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle<{ status: string }>()
+
+  if (subscriptionError) throw subscriptionError
+
+  if (subscription?.status) {
+    return subscription.status
+  }
+
+  try {
+    return await syncStripeSubscriptionForProfile({
+      profileId: profile.id,
+      email: profile.email,
+    })
+  } catch {
+    return null
+  }
 }
 
 function duplicateAuthUserError(message: string) {
@@ -26,6 +52,20 @@ function duplicateAuthUserError(message: string) {
 export async function ensureAuthUserForEmail(email: string) {
   const normalizedEmail = email.trim().toLowerCase()
   if (!normalizedEmail) return
+
+  const { data: listedUsers, error: listError } = await supabaseAdmin.auth.admin.listUsers({
+    page: 1,
+    perPage: 1000,
+  })
+
+  if (listError) {
+    throw listError
+  }
+
+  const existingUser = listedUsers.users.find((user) => user.email?.toLowerCase() === normalizedEmail)
+  if (existingUser) {
+    return
+  }
 
   const { error } = await supabaseAdmin.auth.admin.createUser({
     email: normalizedEmail,
@@ -130,15 +170,7 @@ export async function getDashboardProfileByEmail(email: string) {
   if (error) throw error
   if (!profile) return null
 
-  const { data: subscription, error: subscriptionError } = await supabaseAdmin
-    .from('subscriptions')
-    .select('status')
-    .eq('profile_id', profile.id)
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .maybeSingle<{ status: string }>()
-
-  if (subscriptionError) throw subscriptionError
+  const subscriptionStatus = await resolveDashboardSubscriptionStatus(profile)
 
   const { data: calendarConnection, error: calendarError } = await supabaseAdmin
     .from('calendar_connections')
@@ -153,7 +185,7 @@ export async function getDashboardProfileByEmail(email: string) {
 
   return {
     ...profile,
-    subscriptionStatus: subscription?.status || null,
+    subscriptionStatus,
     googleCalendarConnected: Boolean(calendarConnection?.id),
   } satisfies DashboardProfile
 }
@@ -168,15 +200,7 @@ export async function getDashboardProfile(profileId: string) {
   if (error) throw error
   if (!profile) return null
 
-  const { data: subscription, error: subscriptionError } = await supabaseAdmin
-    .from('subscriptions')
-    .select('status')
-    .eq('profile_id', profileId)
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .maybeSingle<{ status: string }>()
-
-  if (subscriptionError) throw subscriptionError
+  const subscriptionStatus = await resolveDashboardSubscriptionStatus(profile)
 
   const { data: calendarConnection, error: calendarError } = await supabaseAdmin
     .from('calendar_connections')
@@ -191,7 +215,7 @@ export async function getDashboardProfile(profileId: string) {
 
   return {
     ...profile,
-    subscriptionStatus: subscription?.status || null,
+    subscriptionStatus,
     googleCalendarConnected: Boolean(calendarConnection?.id),
   } satisfies DashboardProfile
 }
