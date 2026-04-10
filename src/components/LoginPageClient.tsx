@@ -9,6 +9,20 @@ type LoginPageClientProps = {
   appUrl?: string | null
 }
 
+function friendlyLoginError(message: string) {
+  const lower = message.toLowerCase()
+
+  if (lower.includes('email rate limit exceeded') || lower.includes('rate limit')) {
+    return 'Too many login emails were sent in a short stretch. Wait a minute, then try again. If you already got one, use the newest email in your inbox.'
+  }
+
+  if (lower.includes('signup') && lower.includes('not allowed')) {
+    return 'That email is not ready for dashboard login yet. Try again in a minute. If it keeps happening, Manoa still needs to finish linking your account.'
+  }
+
+  return message || 'We could not send your login link yet. Try again in a minute.'
+}
+
 export default function LoginPageClient({
   loginStatus,
   isSupabaseConfigured,
@@ -92,7 +106,7 @@ export default function LoginPageClient({
       if (error) {
         setLocalMessage({
           tone: 'warning',
-          text: error.message || 'We could not send your login link yet. Try again in a minute.',
+          text: friendlyLoginError(error.message || ''),
         })
         return
       }
@@ -105,8 +119,8 @@ export default function LoginPageClient({
     } catch (error) {
       const message =
         error instanceof Error && error.message
-          ? error.message
-          : 'We could not send your login link yet.'
+          ? friendlyLoginError(error.message)
+          : 'We could not send your login link yet. Try again in a minute.'
       setLocalMessage({
         tone: 'warning',
         text: message,

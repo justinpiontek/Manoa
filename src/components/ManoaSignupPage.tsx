@@ -722,10 +722,23 @@ export default function ManoaSignupPage() {
           <h1>Text Manoa to schedule anything.</h1>
           <p className="tagline">No app. No tabs. Just text your calendar.</p>
           <p className="lede">
-            Manoa checks your calendars, sends the best times, and books the
-            event when you reply with a number. Your morning schedule and
-            meeting reminders arrive by text too.
+            Manoa checks your calendars, texts back the best times, and books the
+            event when you reply with a number.
           </p>
+          <div className="hero-points" aria-label="Why Manoa feels simple">
+            <div className="hero-point">
+              <strong>See the best openings</strong>
+              <span>Manoa checks your calendars and sends back the times that work.</span>
+            </div>
+            <div className="hero-point">
+              <strong>Reply once to book</strong>
+              <span>Text back 1, 2, or 3 and Manoa adds it for you.</span>
+            </div>
+            <div className="hero-point">
+              <strong>Keep the day on your phone</strong>
+              <span>Morning agenda and meeting reminders show up by text too.</span>
+            </div>
+          </div>
           <p className="quick-note">
             Sign up once, connect your calendar, save Manoa in your contacts, and handle the rest
             from your phone.
