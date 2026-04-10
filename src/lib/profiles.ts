@@ -92,6 +92,44 @@ export async function findProfileForAccess({
   return data
 }
 
+export async function getDashboardProfileByEmail(email: string) {
+  const { data: profile, error } = await supabaseAdmin
+    .from('profiles')
+    .select('id,email,phone_e164,timezone')
+    .eq('email', email.trim().toLowerCase())
+    .maybeSingle<Profile>()
+
+  if (error) throw error
+  if (!profile) return null
+
+  const { data: subscription, error: subscriptionError } = await supabaseAdmin
+    .from('subscriptions')
+    .select('status')
+    .eq('profile_id', profile.id)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle<{ status: string }>()
+
+  if (subscriptionError) throw subscriptionError
+
+  const { data: calendarConnection, error: calendarError } = await supabaseAdmin
+    .from('calendar_connections')
+    .select('id')
+    .eq('profile_id', profile.id)
+    .eq('provider', 'google')
+    .eq('status', 'active')
+    .limit(1)
+    .maybeSingle<{ id: string }>()
+
+  if (calendarError) throw calendarError
+
+  return {
+    ...profile,
+    subscriptionStatus: subscription?.status || null,
+    googleCalendarConnected: Boolean(calendarConnection?.id),
+  } satisfies DashboardProfile
+}
+
 export async function getDashboardProfile(profileId: string) {
   const { data: profile, error } = await supabaseAdmin
     .from('profiles')

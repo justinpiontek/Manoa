@@ -1,7 +1,8 @@
 import { stripe } from '@/src/lib/stripeClient'
 import { appUrl } from '@/src/lib/env'
 import { formatPhoneForDisplay } from '@/src/lib/phone'
-import { getDashboardProfile } from '@/src/lib/profiles'
+import { getDashboardProfile, getDashboardProfileByEmail } from '@/src/lib/profiles'
+import { createSupabaseServerClient } from '@/src/lib/supabase/server'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -30,6 +31,10 @@ function subscriptionLabel(status: string | null) {
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
   const params = await searchParams
   let profileId = params.profile_id || ''
+  const supabase = await createSupabaseServerClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
   if (!profileId && params.session_id && process.env.STRIPE_SECRET_KEY) {
     try {
@@ -40,7 +45,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     }
   }
 
-  const profile = profileId ? await getDashboardProfile(profileId) : null
+  const profile =
+    (user?.email ? await getDashboardProfileByEmail(user.email) : null) ||
+    (profileId ? await getDashboardProfile(profileId) : null)
   const manoaNumber = process.env.TWILIO_FROM_NUMBER?.trim() || ''
   const displayNumber = manoaNumber ? formatPhoneForDisplay(manoaNumber) : ''
   const displayUserPhone = profile ? formatPhoneForDisplay(profile.phone_e164) : ''
@@ -78,9 +85,16 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           <a className="legal-back" href="/">
             Back to Manoa
           </a>
-          <a className="nav-link" href={`${appUrl()}/dashboard?profile_id=${profile.id}`}>
-            Refresh
-          </a>
+          <div className="dashboard-topbar-actions">
+            <a className="nav-link" href={`${appUrl()}/dashboard${profileId ? `?profile_id=${profile.id}` : ''}`}>
+              Refresh
+            </a>
+            {user ? (
+              <a className="nav-link secondary" href="/auth/signout">
+                Sign out
+              </a>
+            ) : null}
+          </div>
         </div>
 
         <p className="legal-eyebrow">Dashboard</p>
@@ -99,6 +113,12 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         {params.login === 'success' ? (
           <div className="notice success" role="status" aria-live="polite">
             Dashboard opened. You can come back here any time from the login area on the homepage.
+          </div>
+        ) : null}
+
+        {user ? (
+          <div className="notice success" role="status" aria-live="polite">
+            Signed in as {user.email}.
           </div>
         ) : null}
 

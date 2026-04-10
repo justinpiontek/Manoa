@@ -1,5 +1,6 @@
 'use client'
 
+import { getSupabaseBrowser } from '@/src/lib/supabase/browser'
 import { useEffect, useRef, useState } from 'react'
 
 type DemoEvent = {
@@ -255,6 +256,8 @@ export default function ManoaSignupPage() {
     tone: 'success' | 'warning'
     text: string
   } | null>(null)
+  const [loginEmail, setLoginEmail] = useState('')
+  const [magicLinkPending, setMagicLinkPending] = useState(false)
   const threadRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -296,8 +299,78 @@ export default function ManoaSignupPage() {
         tone: 'warning',
         text: 'Use the same email and phone number you signed up with to open your dashboard.',
       })
+      return
+    }
+
+    if (params.get('login') === 'sent') {
+      setStatusNotice({
+        tone: 'success',
+        text: 'Check your email for your Manoa login link.',
+      })
+      return
+    }
+
+    if (params.get('login') === 'error') {
+      setStatusNotice({
+        tone: 'warning',
+        text: 'That login link did not work. Try sending a fresh one below.',
+      })
+      return
+    }
+
+    if (params.get('login') === 'signed_out') {
+      setStatusNotice({
+        tone: 'success',
+        text: 'You signed out. You can use a new magic link any time.',
+      })
     }
   }, [])
+
+  async function sendMagicLink(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    const email = loginEmail.trim().toLowerCase()
+    if (!email.includes('@')) {
+      setStatusNotice({
+        tone: 'warning',
+        text: 'Enter the email you used with Manoa and we will send your login link there.',
+      })
+      return
+    }
+
+    setMagicLinkPending(true)
+
+    try {
+      const supabase = getSupabaseBrowser()
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/confirm?next=/dashboard`,
+        },
+      })
+
+      if (error) {
+        setStatusNotice({
+          tone: 'warning',
+          text: error.message || 'We could not send your login link yet. Try again in a minute.',
+        })
+        return
+      }
+
+      setStatusNotice({
+        tone: 'success',
+        text: `Login link sent to ${email}. Open that email and tap the link to get back into Manoa.`,
+      })
+      setLoginEmail('')
+    } catch {
+      setStatusNotice({
+        tone: 'warning',
+        text: 'Login links are not configured yet. Add the public Supabase keys in Vercel first.',
+      })
+    } finally {
+      setMagicLinkPending(false)
+    }
+  }
 
   function addMessage(message: DemoMessage) {
     setMessages((current) => [...current, message])
@@ -798,36 +871,24 @@ export default function ManoaSignupPage() {
             <p className="plan-label">Already signed up?</p>
             <h3>Open your dashboard</h3>
             <p>
-              Use the same email and phone number you signed up with. This takes you back to your
-              Manoa dashboard, setup, and billing controls.
+              Use your email and we&apos;ll send a secure login link. No password to remember.
             </p>
 
-            <form action="/api/access-dashboard" method="post" className="access-form">
+            <form onSubmit={sendMagicLink} className="access-form">
               <div className="field">
-                <label htmlFor="access-email">Email</label>
+                <label htmlFor="login-email">Email</label>
                 <input
-                  id="access-email"
-                  name="email"
+                  id="login-email"
                   type="email"
                   autoComplete="email"
                   placeholder="you@example.com"
-                  required
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="access-phone">Phone</label>
-                <input
-                  id="access-phone"
-                  name="phone"
-                  type="tel"
-                  inputMode="tel"
-                  autoComplete="tel"
-                  placeholder="+1 555 555 5555"
+                  value={loginEmail}
+                  onChange={(event) => setLoginEmail(event.target.value)}
                   required
                 />
               </div>
               <button className="button" type="submit">
-                Open dashboard
+                {magicLinkPending ? 'Sending link...' : 'Email me a login link'}
               </button>
             </form>
           </div>
