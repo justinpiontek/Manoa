@@ -61,6 +61,24 @@ export default function LoginPageClient({
         return
       }
 
+      const prepareResponse = await fetch('/api/auth/prepare-login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: normalizedEmail }),
+      })
+
+      if (!prepareResponse.ok) {
+        const payload = (await prepareResponse.json().catch(() => null)) as { error?: string } | null
+        setLocalMessage({
+          tone: 'warning',
+          text:
+            payload?.error || 'We could not get your Manoa login ready yet. Try again in a minute.',
+        })
+        return
+      }
+
       const supabase = getSupabaseBrowser()
       const redirectBase = (appUrl || window.location.origin).replace(/\/$/, '')
       const { error } = await supabase.auth.signInWithOtp({

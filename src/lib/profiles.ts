@@ -13,6 +13,31 @@ export type DashboardProfile = Profile & {
   googleCalendarConnected: boolean
 }
 
+function duplicateAuthUserError(message: string) {
+  const lower = message.toLowerCase()
+  return (
+    lower.includes('already registered') ||
+    lower.includes('already exists') ||
+    lower.includes('duplicate key') ||
+    lower.includes('has already been taken')
+  )
+}
+
+export async function ensureAuthUserForEmail(email: string) {
+  const normalizedEmail = email.trim().toLowerCase()
+  if (!normalizedEmail) return
+
+  const { error } = await supabaseAdmin.auth.admin.createUser({
+    email: normalizedEmail,
+    email_confirm: true,
+    password: `Manoa-${crypto.randomUUID()}-login`,
+  })
+
+  if (error && !duplicateAuthUserError(error.message || '')) {
+    throw error
+  }
+}
+
 export async function findOrCreateProfile({
   email,
   phoneE164,
@@ -37,6 +62,7 @@ export async function findOrCreateProfile({
       .single<Profile>()
 
     if (updated.error) throw updated.error
+    await ensureAuthUserForEmail(email)
     return updated.data
   }
 
@@ -57,6 +83,7 @@ export async function findOrCreateProfile({
       .single<Profile>()
 
     if (updated.error) throw updated.error
+    await ensureAuthUserForEmail(email)
     return updated.data
   }
 
@@ -71,6 +98,7 @@ export async function findOrCreateProfile({
     .single<Profile>()
 
   if (created.error) throw created.error
+  await ensureAuthUserForEmail(email)
   return created.data
 }
 

@@ -6,9 +6,9 @@ export const metadata: Metadata = {
   description:
     'Manoa is a calendar assistant you text. Send a request, get the best times, reply with a number, and it books the event.',
   icons: {
-    icon: '/icon.svg',
-    shortcut: '/icon.svg',
-    apple: '/icon.svg',
+    icon: '/favicon.svg?v=2',
+    shortcut: '/favicon.svg?v=2',
+    apple: '/favicon.svg?v=2',
   },
 }
 
