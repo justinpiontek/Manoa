@@ -7,6 +7,18 @@ type ActiveProfile = {
   phone_e164: string
 }
 
+function sortAgendaEvents(events: Awaited<ReturnType<typeof listAgenda>>) {
+  return [...events].sort((left, right) => {
+    const leftTime = new Date(left.start).getTime()
+    const rightTime = new Date(right.start).getTime()
+
+    if (Number.isNaN(leftTime) && Number.isNaN(rightTime)) return 0
+    if (Number.isNaN(leftTime)) return 1
+    if (Number.isNaN(rightTime)) return -1
+    return leftTime - rightTime
+  })
+}
+
 function normalizeIso(value: string | null | undefined) {
   if (!value) return null
   const date = new Date(value)
@@ -16,7 +28,7 @@ function normalizeIso(value: string | null | undefined) {
 
 function agendaText(events: Awaited<ReturnType<typeof listAgenda>>) {
   if (!events.length) return "Good morning. You're clear today."
-  return `Good morning. Today:\n${events
+  return `Good morning. Today:\n${sortAgendaEvents(events)
     .map((event) => `${event.timeLabel} ${event.title} (${event.calendarName})`)
     .join('\n')}`
 }

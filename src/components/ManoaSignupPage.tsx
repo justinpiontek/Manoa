@@ -105,7 +105,7 @@ const starterMessages: DemoMessage[] = [
     role: 'manoa',
     lines: [
       'Text me like you would from your phone.',
-      'Try: 9am meeting Tuesday on work email or reschedule dentist.',
+      'Try: 9am meeting Tuesday on work calendar or reschedule dentist.',
     ],
   },
 ]
@@ -235,9 +235,26 @@ function parseDemoRequest(text: string) {
   }
 }
 
+function demoTimeSortValue(timeLabel: string) {
+  const match = timeLabel.match(/^\s*(1[0-2]|0?[1-9]):([0-5]\d)\s*(AM|PM)\s*$/i)
+  if (!match) return Number.POSITIVE_INFINITY
+
+  let hour = Number(match[1]) % 12
+  const minutes = Number(match[2])
+  const period = match[3].toUpperCase()
+  if (period === 'PM') hour += 12
+
+  return hour * 60 + minutes
+}
+
+function sortDemoEvents(events: DemoEvent[]) {
+  return [...events].sort((left, right) => demoTimeSortValue(left.time) - demoTimeSortValue(right.time))
+}
+
 function agendaLines(events: DemoEvent[]) {
-  return events.length
-    ? events.map((event) => `${event.time} ${event.title} (${event.calendar})`)
+  const orderedEvents = sortDemoEvents(events)
+  return orderedEvents.length
+    ? orderedEvents.map((event) => `${event.time} ${event.title} (${event.calendar})`)
     : ['Nothing scheduled.']
 }
 
@@ -248,8 +265,10 @@ export default function ManoaSignupPage() {
     'book' | 'reschedule' | 'selectRescheduleTarget' | 'externalCallPrep'
   >('book')
   const [rescheduleTarget, setRescheduleTarget] = useState<RescheduleTarget>(null)
-  const [agenda, setAgenda] = useState<DemoEvent[]>(initialAgenda)
-  const [tomorrowAgenda, setTomorrowAgenda] = useState<DemoEvent[]>(initialTomorrowAgenda)
+  const [agenda, setAgenda] = useState<DemoEvent[]>(sortDemoEvents(initialAgenda))
+  const [tomorrowAgenda, setTomorrowAgenda] = useState<DemoEvent[]>(
+    sortDemoEvents(initialTomorrowAgenda),
+  )
   const [demoInput, setDemoInput] = useState('')
   const [statusNotice, setStatusNotice] = useState<{
     tone: 'success' | 'warning'
@@ -517,9 +536,9 @@ export default function ManoaSignupPage() {
     }
 
     if (option.day === 'Tomorrow') {
-      setTomorrowAgenda((current) => [...current, updatedEvent])
+      setTomorrowAgenda((current) => sortDemoEvents([...current, updatedEvent]))
     } else {
-      setAgenda((current) => [...current, updatedEvent])
+      setAgenda((current) => sortDemoEvents([...current, updatedEvent]))
     }
 
     setPendingOptions([])
@@ -551,9 +570,9 @@ export default function ManoaSignupPage() {
     }
 
     if (option.day === 'Tomorrow') {
-      setTomorrowAgenda((current) => [...current, holdEvent])
+      setTomorrowAgenda((current) => sortDemoEvents([...current, holdEvent]))
     } else {
-      setAgenda((current) => [...current, holdEvent])
+      setAgenda((current) => sortDemoEvents([...current, holdEvent]))
     }
 
     const officeNumber = businessNumberForTitle(rescheduleTarget.event.title)
@@ -605,9 +624,9 @@ export default function ManoaSignupPage() {
     }
 
     if (option.day === 'Tomorrow') {
-      setTomorrowAgenda((current) => [...current, event])
+      setTomorrowAgenda((current) => sortDemoEvents([...current, event]))
     } else {
-      setAgenda((current) => [...current, event])
+      setAgenda((current) => sortDemoEvents([...current, event]))
     }
     setPendingOptions([])
     setPendingMode('book')
@@ -680,7 +699,7 @@ export default function ManoaSignupPage() {
 
     addMessage({
       role: 'manoa',
-      lines: ['Try: 9am meeting Tuesday on work email.', 'Then reply with 1, 2, or 3.'],
+      lines: ['Try: 9am meeting Tuesday on work calendar.', 'Then reply with 1, 2, or 3.'],
     })
   }
 
@@ -689,8 +708,8 @@ export default function ManoaSignupPage() {
     setPendingOptions([])
     setPendingMode('book')
     setRescheduleTarget(null)
-    setAgenda(initialAgenda)
-    setTomorrowAgenda(initialTomorrowAgenda)
+    setAgenda(sortDemoEvents(initialAgenda))
+    setTomorrowAgenda(sortDemoEvents(initialTomorrowAgenda))
     setDemoInput('')
   }
 
@@ -742,6 +761,9 @@ export default function ManoaSignupPage() {
           <p className="quick-note">
             Sign up once, connect your calendar, save Manoa in your contacts, and handle the rest
             from your phone.
+          </p>
+          <p className="hero-summary">
+            Best times back by text. One reply to book. Agenda and reminders stay on your phone.
           </p>
         </div>
 
@@ -801,25 +823,10 @@ export default function ManoaSignupPage() {
         </aside>
       </section>
 
-      <div className="proof hero-proof" aria-label="What Manoa does">
-        <div className="proof-item">
-          <strong>3 times back</strong>
-          <span>No back and forth. Just the best openings.</span>
-        </div>
-        <div className="proof-item">
-          <strong>1 reply to book</strong>
-          <span>Reply 1, 2, or 3 and Manoa adds it.</span>
-        </div>
-        <div className="proof-item">
-          <strong>Daily by text</strong>
-          <span>Your day and reminders come to your phone.</span>
-        </div>
-      </div>
-
       <section className="demo" aria-label="Manoa text demo">
         <div>
           <p className="eyebrow">Working demo</p>
-          <h2>Try it like a text.</h2>
+          <h2>Just text it. Your calendar handles the rest.</h2>
           <p>
             Type a request, then reply with 1, 2, or 3. After signup, the real
             conversation happens from your phone through Manoa&apos;s number.
@@ -828,45 +835,45 @@ export default function ManoaSignupPage() {
             This preview shows the texting loop. Your real account, billing, contact save, and
             calendar setup live in the dashboard.
           </p>
-          <div className="demo-actions" aria-label="Sample text requests">
-            <button
-              className="demo-prompt"
-              type="button"
-              onClick={() => setDemoInput('9am meeting Tuesday on work email')}
-            >
-              Fill schedule
-            </button>
-            <button
-              className="demo-prompt"
-              type="button"
-              onClick={() => setDemoInput('What is on my calendar today?')}
-            >
-              Fill agenda
-            </button>
-            <button
-              className="demo-prompt"
-              type="button"
-              onClick={() => setDemoInput("What's on my calendar tomorrow?")}
-            >
-              Fill tomorrow
-            </button>
-            <button
-              className="demo-prompt"
-              type="button"
-              onClick={() => setDemoInput('Reschedule my meeting')}
-            >
-              Fill reschedule
-            </button>
-            <button
-              className="demo-prompt"
-              type="button"
-              onClick={() => setDemoInput('Reschedule dentist')}
-            >
-              Fill dentist
-            </button>
+          <div className="demo-actions" aria-label="Demo controls">
             <button className="demo-prompt" type="button" onClick={resetDemo}>
               Reset
             </button>
+          </div>
+        </div>
+
+        <div className="demo-panel">
+          <div className="phone-preview" aria-label="SMS preview">
+            <div className="phone-header">
+              <span>Manoa</span>
+              <small>Text message</small>
+            </div>
+            <div ref={threadRef} className="demo-thread" aria-live="polite">
+              {messages.map((message, messageIndex) => (
+                <div key={`${message.role}-${messageIndex}`} className={`sms ${message.role}`}>
+                  {message.lines.map((line, lineIndex) => (
+                    <span key={`${line}-${lineIndex}`}>
+                      {line}
+                      {lineIndex < message.lines.length - 1 ? <br /> : null}
+                    </span>
+                  ))}
+                  {message.options ? (
+                    <div className="demo-choices">
+                      {message.options.map((option, optionIndex) => (
+                        <button
+                          key={`${option.day}-${option.time}-${option.calendar}-${optionIndex}`}
+                          type="button"
+                          className="demo-choice"
+                          onClick={() => handleDemoText(String(optionIndex + 1))}
+                        >
+                          {optionIndex + 1}. {option.day} {option.time} on {option.calendar}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
           </div>
           <form
             className="demo-form"
@@ -880,7 +887,7 @@ export default function ManoaSignupPage() {
               value={demoInput}
               onChange={(event) => setDemoInput(event.target.value)}
               autoComplete="off"
-              placeholder="9am meeting Tuesday on work email"
+              placeholder="9am meeting Tuesday on work calendar"
               aria-label="Text Manoa demo"
             />
             <button className="button" type="submit">
@@ -888,38 +895,11 @@ export default function ManoaSignupPage() {
             </button>
           </form>
         </div>
-
-        <div className="phone-preview" aria-label="SMS preview">
-          <div className="phone-header">
-            <span>Manoa</span>
-            <small>Text message</small>
-          </div>
-          <div ref={threadRef} className="demo-thread" aria-live="polite">
-            {messages.map((message, messageIndex) => (
-              <div key={`${message.role}-${messageIndex}`} className={`sms ${message.role}`}>
-                {message.lines.map((line, lineIndex) => (
-                  <span key={`${line}-${lineIndex}`}>
-                    {line}
-                    {lineIndex < message.lines.length - 1 ? <br /> : null}
-                  </span>
-                ))}
-                {message.options ? (
-                  <div className="demo-choices">
-                    {message.options.map((option, optionIndex) => (
-                      <button
-                        key={`${option.day}-${option.time}-${option.calendar}-${optionIndex}`}
-                        type="button"
-                        className="demo-choice"
-                        onClick={() => handleDemoText(String(optionIndex + 1))}
-                      >
-                        {optionIndex + 1}. {option.day} {option.time} on {option.calendar}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            ))}
-          </div>
+        <div className="demo-footer-copy">
+          <p className="demo-close">No links. No apps. No back-and-forth.</p>
+          <a className="button demo-cta-button" href="#signup">
+            Start texting Manoa
+          </a>
         </div>
       </section>
 

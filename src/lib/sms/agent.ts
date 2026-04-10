@@ -141,6 +141,18 @@ function bookingText(option: ScheduleOption) {
   return `Booked ${option.title} for ${option.dayLabel} at ${option.timeLabel}.`
 }
 
+function sortAgendaEvents(events: EventSummary[]) {
+  return [...events].sort((left, right) => {
+    const leftTime = new Date(left.start).getTime()
+    const rightTime = new Date(right.start).getTime()
+
+    if (Number.isNaN(leftTime) && Number.isNaN(rightTime)) return 0
+    if (Number.isNaN(leftTime)) return 1
+    if (Number.isNaN(rightTime)) return -1
+    return leftTime - rightTime
+  })
+}
+
 function agendaText(day: 'today' | 'tomorrow', events: EventSummary[]) {
   if (!events.length) {
     return day === 'tomorrow'
@@ -149,7 +161,7 @@ function agendaText(day: 'today' | 'tomorrow', events: EventSummary[]) {
   }
 
   const heading = day === 'tomorrow' ? "Tomorrow's schedule:" : 'Today:'
-  return `${heading}\n${events
+  return `${heading}\n${sortAgendaEvents(events)
     .map((event) => `${event.timeLabel} ${event.title} (${event.calendarName})`)
     .join('\n')}`
 }
