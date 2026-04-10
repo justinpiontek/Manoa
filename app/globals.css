@@ -294,14 +294,16 @@ h1 {
 
 .signup {
   max-width: 780px;
-  border-color: #cfdcf2;
-  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #1f396d;
+  background: linear-gradient(180deg, #17305d 0%, #0f2348 100%);
+  color: #ffffff;
+  box-shadow: 0 22px 48px rgba(15, 35, 72, 0.34);
   padding: 18px;
 }
 
 .plan-label {
   margin: 0;
-  color: var(--blue);
+  color: #c7d7ff;
   font-size: 0.82rem;
   font-weight: 850;
   text-transform: uppercase;
@@ -328,7 +330,7 @@ h1 {
 
 .price span,
 .fine-print {
-  color: var(--muted);
+  color: #b8c6dc;
 }
 
 .price span {
@@ -337,18 +339,18 @@ h1 {
 
 .plan-line {
   margin: 0;
-  color: var(--ink);
+  color: #ffffff;
   font-size: 1.08rem;
   font-weight: 800;
   line-height: 1.42;
 }
 
 .trust-line {
-  border: 1px solid #b9ded9;
+  border: 1px solid #35527f;
   border-radius: 8px;
   margin: 12px 0 0;
-  background: #eef8f7;
-  color: #174d48;
+  background: rgba(255, 255, 255, 0.08);
+  color: #edf4ff;
   padding: 11px 12px;
   font-size: 0.94rem;
   font-weight: 750;
@@ -363,11 +365,11 @@ h1 {
 }
 
 .mini-points span {
-  border: 1px solid var(--line);
+  border: 1px solid #34517c;
   border-radius: 8px;
-  background: #fbfcff;
+  background: rgba(255, 255, 255, 0.07);
   padding: 8px 10px;
-  color: var(--muted);
+  color: #d2deef;
   font-size: 0.86rem;
   font-weight: 750;
 }
@@ -384,11 +386,22 @@ h1 {
   margin-top: 0;
 }
 
+.signup label {
+  color: #eef4ff;
+}
+
 .signup .button {
   grid-column: 1 / -1;
   width: 100%;
   min-width: 0;
   margin-top: 0;
+  background: #ffffff;
+  color: #143364;
+  box-shadow: 0 14px 30px rgba(8, 15, 29, 0.28);
+}
+
+.signup .button:hover {
+  background: #eef4ff;
 }
 
 .field {
@@ -446,6 +459,14 @@ input:focus {
 footer a,
 .legal-back {
   color: var(--blue);
+}
+
+.signup .fine-print {
+  color: #b8c6dc;
+}
+
+.signup .fine-print a {
+  color: #ffffff;
 }
 
 .demo {
