@@ -5,9 +5,15 @@ import { useMemo, useState } from 'react'
 
 type LoginPageClientProps = {
   loginStatus?: string
+  isSupabaseConfigured: boolean
+  appUrl?: string | null
 }
 
-export default function LoginPageClient({ loginStatus }: LoginPageClientProps) {
+export default function LoginPageClient({
+  loginStatus,
+  isSupabaseConfigured,
+  appUrl,
+}: LoginPageClientProps) {
   const [email, setEmail] = useState('')
   const [pending, setPending] = useState(false)
   const [localMessage, setLocalMessage] = useState<{
@@ -47,11 +53,21 @@ export default function LoginPageClient({ loginStatus }: LoginPageClientProps) {
     setLocalMessage(null)
 
     try {
+      if (!isSupabaseConfigured) {
+        setLocalMessage({
+          tone: 'warning',
+          text: 'Login links are not configured in this deployment yet. Redeploy after adding the public Supabase keys in Vercel.',
+        })
+        return
+      }
+
       const supabase = getSupabaseBrowser()
+      const redirectBase = (appUrl || window.location.origin).replace(/\/$/, '')
       const { error } = await supabase.auth.signInWithOtp({
         email: normalizedEmail,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/confirm?next=/dashboard`,
+          shouldCreateUser: false,
+          emailRedirectTo: `${redirectBase}/auth/confirm?next=/dashboard`,
         },
       })
 
@@ -68,10 +84,14 @@ export default function LoginPageClient({ loginStatus }: LoginPageClientProps) {
         text: `Login link sent to ${normalizedEmail}. Open that email and tap the link to get back into Manoa.`,
       })
       setEmail('')
-    } catch {
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : 'We could not send your login link yet.'
       setLocalMessage({
         tone: 'warning',
-        text: 'Login links are not configured yet. Add the public Supabase keys in Vercel first.',
+        text: message,
       })
     } finally {
       setPending(false)
@@ -92,6 +112,12 @@ export default function LoginPageClient({ loginStatus }: LoginPageClientProps) {
           Enter the email you signed up with and Manoa will send you a secure login link. No
           password to remember.
         </p>
+
+        {!isSupabaseConfigured ? (
+          <div className="notice warning" role="status" aria-live="polite">
+            This deployment is still missing the public Supabase keys needed for login links.
+          </div>
+        ) : null}
 
         {message ? (
           <div className={`notice ${message.tone}`} role="status" aria-live="polite">
