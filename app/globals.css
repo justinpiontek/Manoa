@@ -50,7 +50,7 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 24px;
+  margin-bottom: 18px;
 }
 
 .top-actions {
@@ -121,8 +121,24 @@ button {
 }
 
 .copy {
-  max-width: 780px;
-  padding: 34px 0 22px;
+  max-width: none;
+  padding: 22px 0 0;
+}
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 380px);
+  gap: 30px;
+  align-items: start;
+}
+
+.hero-signup {
+  position: sticky;
+  top: 24px;
+}
+
+.hero-proof {
+  max-width: 860px;
 }
 
 .eyebrow {
@@ -183,7 +199,7 @@ h1 {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
-  margin-top: 28px;
+  margin-top: 18px;
 }
 
 .proof-item,
@@ -197,6 +213,7 @@ h1 {
 .proof-item strong {
   display: block;
   margin-bottom: 5px;
+  font-size: 1rem;
 }
 
 .proof-item span,
@@ -367,7 +384,7 @@ footer a,
   grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
   gap: 24px;
   align-items: center;
-  margin: 32px calc(50% - 50vw) 0;
+  margin: 28px calc(50% - 50vw) 0;
   padding: 36px max(16px, calc((100vw - 1060px) / 2));
   background: var(--ink);
   color: #ffffff;
@@ -1099,6 +1116,7 @@ footer {
 }
 
 @media (max-width: 860px) {
+  .hero-grid,
   .demo,
   .step-grid,
   .status-row,
@@ -1109,6 +1127,10 @@ footer {
   .signup form,
   .auth-form {
     grid-template-columns: 1fr;
+  }
+
+  .hero-signup {
+    position: static;
   }
 
   .signup .button {
@@ -1133,21 +1155,46 @@ footer {
 @media (max-width: 620px) {
   .shell {
     width: min(100% - 20px, 1060px);
-    padding-top: 14px;
+    padding-top: 10px;
   }
 
   .topbar {
-    align-items: flex-start;
-    flex-direction: column;
+    align-items: center;
+    flex-direction: row;
+    gap: 12px;
   }
 
   .top-actions {
-    width: 100%;
-    flex-direction: column;
+    width: auto;
+    flex-direction: row;
   }
 
   .top-actions .nav-link {
-    width: 100%;
+    width: auto;
+    padding: 10px 14px;
+  }
+
+  .brand {
+    gap: 10px;
+  }
+
+  .mark {
+    width: 36px;
+    height: 36px;
+  }
+
+  .brand-name {
+    font-size: 1.2rem;
+  }
+
+  .copy {
+    padding-top: 8px;
+  }
+
+  .eyebrow {
+    margin-bottom: 14px;
+    padding: 7px 10px;
+    font-size: 0.84rem;
   }
 
   .legal-card {
@@ -1183,12 +1230,111 @@ footer {
     width: min(100% - 20px, 1180px);
   }
 
-  .proof,
+  .proof {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .demo-form {
     grid-template-columns: 1fr;
   }
 
   h1 {
-    font-size: 2.55rem;
+    max-width: 11ch;
+    font-size: 2.8rem;
+    line-height: 0.98;
+  }
+
+  .tagline {
+    max-width: 18ch;
+    margin-top: 14px;
+    font-size: 1.12rem;
+    line-height: 1.32;
+  }
+
+  .lede {
+    margin-top: 12px;
+    font-size: 1.04rem;
+    line-height: 1.58;
+  }
+
+  .quick-note {
+    margin-top: 14px;
+    font-size: 1rem;
+    line-height: 1.55;
+  }
+
+  .hero-proof {
+    margin-top: 14px;
+  }
+
+  .proof-item {
+    padding: 12px;
+  }
+
+  .proof-item:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .proof-item strong {
+    font-size: 0.98rem;
+  }
+
+  .proof-item span {
+    font-size: 0.9rem;
+  }
+
+  .signup {
+    padding: 16px;
+  }
+
+  .plan-label {
+    font-size: 0.84rem;
+  }
+
+  .price {
+    margin: 8px 0 10px;
+  }
+
+  .price strong {
+    font-size: 2.35rem;
+  }
+
+  .trust-line {
+    padding: 10px 11px;
+    font-size: 0.88rem;
+  }
+
+  .mini-points span {
+    font-size: 0.84rem;
+  }
+
+  .demo {
+    gap: 18px;
+    margin-top: 24px;
+    padding: 24px 20px;
+  }
+
+  .demo h2 {
+    font-size: 1.78rem;
+  }
+
+  .demo p {
+    margin-top: 12px;
+    font-size: 1rem;
+    line-height: 1.58;
+  }
+
+  .demo-actions {
+    margin-top: 18px;
+  }
+
+  .phone-preview {
+    max-width: none;
+  }
+
+  .demo-thread {
+    min-height: 280px;
+    max-height: 360px;
+    padding: 14px;
   }
 }

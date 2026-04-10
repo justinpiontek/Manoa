@@ -716,7 +716,7 @@ export default function ManoaSignupPage() {
         </div>
       ) : null}
 
-      <section aria-label="Text Manoa">
+      <section className="hero-grid" aria-label="Text Manoa">
         <div className="copy">
           <p className="eyebrow">Calendar assistant by text</p>
           <h1>Text Manoa to schedule anything.</h1>
@@ -730,24 +730,9 @@ export default function ManoaSignupPage() {
             Sign up once, connect your calendar, save Manoa in your contacts, and handle the rest
             from your phone.
           </p>
-
-          <div className="proof" aria-label="What Manoa does">
-            <div className="proof-item">
-              <strong>3 times back</strong>
-              <span>No back and forth. Just the best openings.</span>
-            </div>
-            <div className="proof-item">
-              <strong>1 reply to book</strong>
-              <span>Reply 1, 2, or 3 and Manoa adds it.</span>
-            </div>
-            <div className="proof-item">
-              <strong>Daily by text</strong>
-              <span>Your day and reminders come to your phone.</span>
-            </div>
-          </div>
         </div>
 
-        <aside id="signup" className="panel signup" aria-label="Start Manoa">
+        <aside id="signup" className="panel signup hero-signup" aria-label="Start Manoa">
           <p className="plan-label">Personal plan</p>
           <div className="price" aria-label="$19.99 per month">
             <strong>$19.99</strong>
@@ -802,6 +787,21 @@ export default function ManoaSignupPage() {
           </p>
         </aside>
       </section>
+
+      <div className="proof hero-proof" aria-label="What Manoa does">
+        <div className="proof-item">
+          <strong>3 times back</strong>
+          <span>No back and forth. Just the best openings.</span>
+        </div>
+        <div className="proof-item">
+          <strong>1 reply to book</strong>
+          <span>Reply 1, 2, or 3 and Manoa adds it.</span>
+        </div>
+        <div className="proof-item">
+          <strong>Daily by text</strong>
+          <span>Your day and reminders come to your phone.</span>
+        </div>
+      </div>
 
       <section className="demo" aria-label="Manoa text demo">
         <div>
