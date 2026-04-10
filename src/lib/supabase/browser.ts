@@ -3,18 +3,21 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 let client: SupabaseClient | null = null
 
-function requiredPublicEnv(name: string) {
-  const value = process.env[name]
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`)
-  }
-  return value
-}
-
 export function getSupabaseBrowser() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+
+  if (!url) {
+    throw new Error('Missing required environment variable: NEXT_PUBLIC_SUPABASE_URL')
+  }
+
+  if (!publishableKey) {
+    throw new Error('Missing required environment variable: NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY')
+  }
+
   client ??= createBrowserClient(
-    requiredPublicEnv('NEXT_PUBLIC_SUPABASE_URL'),
-    requiredPublicEnv('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY'),
+    url,
+    publishableKey,
   )
 
   return client
