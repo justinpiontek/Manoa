@@ -1,6 +1,6 @@
 import { recurrenceRule, type RecurrenceSpec } from './recurrence'
 import type { Invitee } from '../sms/invitees'
-import { google } from 'googleapis'
+import { google, type calendar_v3 } from 'googleapis'
 import type { Credentials } from 'google-auth-library'
 import { appUrl, requiredEnv } from '../env'
 import { supabaseAdmin } from '../supabaseAdmin'
@@ -41,6 +41,9 @@ export type EventSummary = {
   description: string
   organizerEmail: string
   attendeeCount: number
+  recurrence?: string[] | null
+  recurringEventId?: string | null
+  originalStart?: string | null
 }
 
 export function googleOAuthClient() {
@@ -116,35 +119,99 @@ export async function hasGoogleCalendar(profileId: string) {
   return Boolean(await getGoogleConnection(profileId))
 }
 
-export async function listAgenda(profileId: string, day: 'today' | 'tomorrow') {
-  const client = await calendarForProfile(profileId)
-  if (!client) return []
-
-  const offset = day === 'tomorrow' ? 1 : 0
-  const response = await client.calendar.events.list({
-    calendarId: client.connection.calendar_id,
-    timeMin: startOfDay(offset).toISOString(),
-    timeMax: endOfDay(offset).toISOString(),
-    singleEvents: true,
-    orderBy: 'startTime',
-    maxResults: 8,
-  })
-
-  return (response.data.items || []).map((event) => ({
+function mapGoogleEvent(event: calendar_v3.Schema$Event, calendarId: string) {
+  return {
     id: event.id || '',
     title: event.summary || 'Untitled event',
     start: event.start?.dateTime || event.start?.date || '',
     end: event.end?.dateTime || event.end?.date || '',
-    calendarId: client.connection.calendar_id,
+    calendarId,
     calendarName: 'Google Calendar',
-    timeLabel: event.start?.dateTime
-      ? formatSmsTime(new Date(event.start.dateTime))
-      : 'All day',
+    timeLabel: event.start?.dateTime ? formatSmsTime(new Date(event.start.dateTime)) : 'All day',
     location: event.location || '',
     description: event.description || '',
     organizerEmail: event.organizer?.email || '',
     attendeeCount: event.attendees?.length || 0,
-  }))
+    recurrence: event.recurrence || null,
+    recurringEventId: event.recurringEventId || null,
+    originalStart: event.originalStartTime?.dateTime || event.originalStartTime?.date || null,
+  } satisfies EventSummary
+}
+
+async function listEventsBetween({
+  profileId,
+  timeMin,
+  timeMax,
+  maxResults = 20,
+}: {
+  profileId: string
+  timeMin: Date
+  timeMax: Date
+  maxResults?: number
+}) {
+  const client = await calendarForProfile(profileId)
+  if (!client) return []
+
+  const response = await client.calendar.events.list({
+    calendarId: client.connection.calendar_id,
+    timeMin: timeMin.toISOString(),
+    timeMax: timeMax.toISOString(),
+    singleEvents: true,
+    orderBy: 'startTime',
+    maxResults,
+  })
+
+  return (response.data.items || []).map((event) => mapGoogleEvent(event, client.connection.calendar_id))
+}
+
+export async function listAgenda(profileId: string, day: 'today' | 'tomorrow') {
+  const offset = day === 'tomorrow' ? 1 : 0
+  return listEventsBetween({
+    profileId,
+    timeMin: startOfDay(offset),
+    timeMax: endOfDay(offset),
+    maxResults: 8,
+  })
+}
+
+export async function listUpcomingEvents({
+  profileId,
+  windowMinutes,
+  startAt = new Date(),
+  maxResults = 20,
+}: {
+  profileId: string
+  windowMinutes: number
+  startAt?: Date
+  maxResults?: number
+}) {
+  return listEventsBetween({
+    profileId,
+    timeMin: startAt,
+    timeMax: addMinutes(startAt, windowMinutes),
+    maxResults,
+  })
+}
+
+export async function getCalendarEvent(profileId: string, eventId: string, calendarId?: string) {
+  const client = await calendarForProfile(profileId)
+  if (!client) return null
+
+  try {
+    const response = await client.calendar.events.get({
+      calendarId: calendarId || client.connection.calendar_id,
+      eventId,
+    })
+
+    return mapGoogleEvent(response.data, calendarId || client.connection.calendar_id)
+  } catch (error) {
+    const status =
+      (error as { code?: number; response?: { status?: number } }).code ||
+      (error as { response?: { status?: number } }).response?.status
+
+    if (status === 404) return null
+    throw error
+  }
 }
 
 async function busyBlocks(
@@ -261,6 +328,7 @@ export async function updateCalendarEvent(
 ) {
   const client = await calendarForProfile(profileId)
   if (!client) throw new Error('Google Calendar is not connected.')
+  const recurrence = option.recurrence ? recurrenceRule(option.recurrence, option.start) : null
 
   const response = await client.calendar.events.patch({
     calendarId: option.calendarId || client.connection.calendar_id,
@@ -274,6 +342,7 @@ export async function updateCalendarEvent(
       end: {
         dateTime: option.end,
       },
+      recurrence: recurrence ? [recurrence] : undefined,
     },
   })
 

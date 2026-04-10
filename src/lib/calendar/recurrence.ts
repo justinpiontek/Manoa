@@ -101,3 +101,49 @@ export function recurrenceRule(spec: RecurrenceSpec | null | undefined, start: D
 
   return `RRULE:FREQ=MONTHLY;INTERVAL=1;BYMONTHDAY=${date.getDate()}`
 }
+
+export function parseGoogleRecurrence(recurrence: string[] | null | undefined): RecurrenceSpec | null {
+  const rule = recurrence?.find((value) => value.startsWith('RRULE:'))
+  if (!rule) return null
+
+  const fields = Object.fromEntries(
+    rule
+      .replace(/^RRULE:/, '')
+      .split(';')
+      .map((part) => {
+        const [key, value] = part.split('=')
+        return [key, value]
+      }),
+      ) as Record<string, string | undefined>
+
+  if (fields.FREQ === 'WEEKLY') {
+    const interval = Number(fields.INTERVAL || '1')
+    if ((interval === 1 || interval === 2) && fields.BYDAY) {
+      return {
+        unit: 'week',
+        interval: interval as 1 | 2,
+      }
+    }
+  }
+
+  if (fields.FREQ === 'MONTHLY') {
+    if (fields.BYMONTHDAY) {
+      return {
+        unit: 'month',
+        interval: 1,
+        mode: 'month_day',
+      }
+    }
+
+    const bySetPos = Number(fields.BYSETPOS || '')
+    if (fields.BYDAY && Number.isInteger(bySetPos) && bySetPos >= 1 && bySetPos <= 5) {
+      return {
+        unit: 'month',
+        interval: 1,
+        mode: 'nth_weekday',
+      }
+    }
+  }
+
+  return null
+}

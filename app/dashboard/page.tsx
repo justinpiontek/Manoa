@@ -65,11 +65,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           <p className="legal-eyebrow">Dashboard</p>
           <h1 className="dashboard-title">We need your account link.</h1>
           <p className="dashboard-lede">
-            Head back to the site and use the login area with the same email and phone number you
-            used for Manoa.
+            Head back to the site and use the Log in button to email yourself a fresh Manoa login
+            link.
           </p>
           <div className="dashboard-footer">
-            <a className="button dashboard-button" href="/#access">
+            <a className="button dashboard-button" href="/login">
               Go to login
             </a>
           </div>
@@ -103,6 +103,21 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           This is your home base for Manoa. It shows the number to text, the phone on your account,
           and whether your subscription and calendar are ready.
         </p>
+
+        <div className="status-row" aria-label="Account status">
+          <div className={`status-pill ${profile.subscriptionStatus === 'active' || profile.subscriptionStatus === 'trialing' ? 'ready' : 'pending'}`}>
+            <strong>Subscription</strong>
+            <span>{subscriptionLabel(profile.subscriptionStatus)}</span>
+          </div>
+          <div className={`status-pill ${profile.googleCalendarConnected ? 'ready' : 'pending'}`}>
+            <strong>Calendar</strong>
+            <span>{profile.googleCalendarConnected ? 'Connected' : 'Needs attention'}</span>
+          </div>
+          <div className={`status-pill ${manoaNumber ? 'ready' : 'pending'}`}>
+            <strong>Text line</strong>
+            <span>{displayNumber || 'Finishing setup'}</span>
+          </div>
+        </div>
 
         {calendarConnected ? (
           <div className="notice success" role="status" aria-live="polite">
@@ -145,6 +160,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             <p>
               Save Manoa once, then you always know where to text. If you ever need to stop or cancel,
               your billing link is right here too.
+            </p>
+            <p className="dashboard-hero-subnote">
+              If carrier approval is still in progress, keep this page handy. The number and account
+              setup are already in place.
             </p>
           </div>
           <div className="dashboard-hero-actions">
@@ -194,6 +213,24 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             <p>Save Manoa in your contacts so this feels like texting a real assistant.</p>
           </article>
         </div>
+
+        <section className="dashboard-checklist">
+          <p className="dashboard-label">Next steps</p>
+          <div className="dashboard-checklist-grid">
+            <div className="check-item">
+              <strong>1. Save the number</strong>
+              <span>Keep Manoa in your contacts so you do not have to hunt for it later.</span>
+            </div>
+            <div className="check-item">
+              <strong>2. Send one real text</strong>
+              <span>Start with a simple request like “What&apos;s on my calendar tomorrow?”</span>
+            </div>
+            <div className="check-item">
+              <strong>3. Bookmark this page</strong>
+              <span>Come back here for billing, reconnection, and account fixes.</span>
+            </div>
+          </div>
+        </section>
 
         <div className="dashboard-footer">
           <a className="nav-link" href="/">

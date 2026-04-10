@@ -1,6 +1,5 @@
 'use client'
 
-import { getSupabaseBrowser } from '@/src/lib/supabase/browser'
 import { useEffect, useRef, useState } from 'react'
 
 type DemoEvent = {
@@ -256,8 +255,6 @@ export default function ManoaSignupPage() {
     tone: 'success' | 'warning'
     text: string
   } | null>(null)
-  const [loginEmail, setLoginEmail] = useState('')
-  const [magicLinkPending, setMagicLinkPending] = useState(false)
   const threadRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -301,76 +298,7 @@ export default function ManoaSignupPage() {
       })
       return
     }
-
-    if (params.get('login') === 'sent') {
-      setStatusNotice({
-        tone: 'success',
-        text: 'Check your email for your Manoa login link.',
-      })
-      return
-    }
-
-    if (params.get('login') === 'error') {
-      setStatusNotice({
-        tone: 'warning',
-        text: 'That login link did not work. Try sending a fresh one below.',
-      })
-      return
-    }
-
-    if (params.get('login') === 'signed_out') {
-      setStatusNotice({
-        tone: 'success',
-        text: 'You signed out. You can use a new magic link any time.',
-      })
-    }
   }, [])
-
-  async function sendMagicLink(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-
-    const email = loginEmail.trim().toLowerCase()
-    if (!email.includes('@')) {
-      setStatusNotice({
-        tone: 'warning',
-        text: 'Enter the email you used with Manoa and we will send your login link there.',
-      })
-      return
-    }
-
-    setMagicLinkPending(true)
-
-    try {
-      const supabase = getSupabaseBrowser()
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/confirm?next=/dashboard`,
-        },
-      })
-
-      if (error) {
-        setStatusNotice({
-          tone: 'warning',
-          text: error.message || 'We could not send your login link yet. Try again in a minute.',
-        })
-        return
-      }
-
-      setStatusNotice({
-        tone: 'success',
-        text: `Login link sent to ${email}. Open that email and tap the link to get back into Manoa.`,
-      })
-      setLoginEmail('')
-    } catch {
-      setStatusNotice({
-        tone: 'warning',
-        text: 'Login links are not configured yet. Add the public Supabase keys in Vercel first.',
-      })
-    } finally {
-      setMagicLinkPending(false)
-    }
-  }
 
   function addMessage(message: DemoMessage) {
     setMessages((current) => [...current, message])
@@ -776,11 +704,8 @@ export default function ManoaSignupPage() {
           <span className="brand-name">Manoa</span>
         </a>
         <div className="top-actions">
-          <a className="nav-link secondary" href="#access">
+          <a className="nav-link secondary" href="/login">
             Log in
-          </a>
-          <a className="nav-link" href="#signup">
-            Start for $19.99/mo
           </a>
         </div>
       </header>
@@ -800,6 +725,10 @@ export default function ManoaSignupPage() {
             Manoa checks your calendars, sends the best times, and books the
             event when you reply with a number. Your morning schedule and
             meeting reminders arrive by text too.
+          </p>
+          <p className="quick-note">
+            Sign up once, connect your calendar, save Manoa in your contacts, and handle the rest
+            from your phone.
           </p>
 
           <div className="proof" aria-label="What Manoa does">
@@ -829,6 +758,11 @@ export default function ManoaSignupPage() {
             Connect Google Calendar after checkout. Manoa only books when you
             confirm by text.
           </p>
+          <div className="mini-points" aria-label="Plan details">
+            <span>Cancel anytime</span>
+            <span>Secure magic-link login</span>
+            <span>Everything happens by text</span>
+          </div>
 
           <form action="/api/start-checkout" method="post">
             <input type="hidden" name="plan" value="personal_monthly_1999" />
@@ -866,32 +800,6 @@ export default function ManoaSignupPage() {
             <a href="/privacy">Privacy Policy</a> and{' '}
             <a href="/terms">Terms and Conditions</a>.
           </p>
-
-          <div id="access" className="access-panel">
-            <p className="plan-label">Already signed up?</p>
-            <h3>Open your dashboard</h3>
-            <p>
-              Use your email and we&apos;ll send a secure login link. No password to remember.
-            </p>
-
-            <form onSubmit={sendMagicLink} className="access-form">
-              <div className="field">
-                <label htmlFor="login-email">Email</label>
-                <input
-                  id="login-email"
-                  type="email"
-                  autoComplete="email"
-                  placeholder="you@example.com"
-                  value={loginEmail}
-                  onChange={(event) => setLoginEmail(event.target.value)}
-                  required
-                />
-              </div>
-              <button className="button" type="submit">
-                {magicLinkPending ? 'Sending link...' : 'Email me a login link'}
-              </button>
-            </form>
-          </div>
         </aside>
       </section>
 
@@ -902,6 +810,10 @@ export default function ManoaSignupPage() {
           <p>
             Type a request, then reply with 1, 2, or 3. After signup, the real
             conversation happens from your phone through Manoa&apos;s number.
+          </p>
+          <p className="demo-note">
+            This preview shows the texting loop. Your real account, billing, contact save, and
+            calendar setup live in the dashboard.
           </p>
           <div className="demo-actions" aria-label="Sample text requests">
             <button
@@ -1000,21 +912,25 @@ export default function ManoaSignupPage() {
 
       <section className="steps" aria-label="How Manoa works">
         <h2>Set it up once</h2>
+        <p className="steps-lede">
+          The browser only gets you through signup and account setup. After that, Manoa should feel
+          like a number in your contacts that already knows your schedule.
+        </p>
         <div className="step-grid">
           <article className="step">
             <span className="step-number">1</span>
             <h3>Subscribe</h3>
-            <p>Use email and phone so Manoa knows which texts belong to you.</p>
+            <p>Use email and phone so Manoa knows which account and texts belong to you.</p>
           </article>
           <article className="step">
             <span className="step-number">2</span>
             <h3>Connect calendars</h3>
-            <p>Start with Google Calendar. Outlook and Apple can come next.</p>
+            <p>Start with Google Calendar so Manoa can find openings and keep reminders accurate.</p>
           </article>
           <article className="step">
             <span className="step-number">3</span>
             <h3>Text Manoa</h3>
-            <p>Schedule, reschedule, cancel, get reminders, and get your day.</p>
+            <p>Schedule, reschedule, cancel, get reminders, and ask for your day by text.</p>
           </article>
         </div>
       </section>

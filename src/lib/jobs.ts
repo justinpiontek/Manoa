@@ -1,10 +1,17 @@
-import { listAgenda } from './calendar/google'
+import { getCalendarEvent, listAgenda, listUpcomingEvents } from './calendar/google'
 import { supabaseAdmin } from './supabaseAdmin'
 import { sendSms } from './twilioClient'
 
 type ActiveProfile = {
   id: string
   phone_e164: string
+}
+
+function normalizeIso(value: string | null | undefined) {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  return date.toISOString()
 }
 
 function agendaText(events: Awaited<ReturnType<typeof listAgenda>>) {
@@ -50,10 +57,82 @@ export async function sendMorningAgendas() {
   return results
 }
 
+async function reminderExistsForOccurrence({
+  profileId,
+  calendarEventId,
+  startsAt,
+}: {
+  profileId: string
+  calendarEventId: string
+  startsAt: string
+}) {
+  const { data, error } = await supabaseAdmin
+    .from('reminders')
+    .select('id')
+    .eq('profile_id', profileId)
+    .eq('calendar_event_id', calendarEventId)
+    .eq('event_starts_at', startsAt)
+    .neq('status', 'canceled')
+    .limit(1)
+    .maybeSingle<{ id: string }>()
+
+  if (error) throw error
+  return Boolean(data)
+}
+
+async function ensureUpcomingReminders() {
+  const profiles = await activeSubscriberProfiles()
+
+  for (const profile of profiles) {
+    const events = await listUpcomingEvents({
+      profileId: profile.id,
+      windowMinutes: 90,
+      startAt: new Date(),
+      maxResults: 20,
+    })
+
+    for (const event of events) {
+      if (!event.id || !event.start || event.timeLabel === 'All day') continue
+
+      const startsAt = normalizeIso(event.start)
+      if (!startsAt) continue
+
+      if (
+        await reminderExistsForOccurrence({
+          profileId: profile.id,
+          calendarEventId: event.id,
+          startsAt,
+        })
+      ) {
+        continue
+      }
+
+      const dueDate = new Date(new Date(startsAt).getTime() - 30 * 60_000)
+      const dueAt =
+        dueDate.getTime() <= Date.now() ? new Date().toISOString() : dueDate.toISOString()
+
+      const { error } = await supabaseAdmin.from('reminders').insert({
+        profile_id: profile.id,
+        phone_e164: profile.phone_e164,
+        calendar_event_id: event.id,
+        calendar_id: event.calendarId || null,
+        event_starts_at: startsAt,
+        due_at: dueAt,
+        body: `Reminder: ${event.title} starts at ${event.timeLabel}.`,
+        status: 'pending',
+      })
+
+      if (error) throw error
+    }
+  }
+}
+
 export async function sendDueReminders() {
+  await ensureUpcomingReminders()
+
   const { data: reminders, error } = await supabaseAdmin
     .from('reminders')
-    .select('id,profile_id,phone_e164,body,event_starts_at')
+    .select('id,profile_id,phone_e164,body,event_starts_at,calendar_event_id,calendar_id')
     .eq('status', 'pending')
     .lte('due_at', new Date().toISOString())
     .limit(50)
@@ -71,6 +150,27 @@ export async function sendDueReminders() {
         })
         .eq('id', reminder.id)
       continue
+    }
+
+    if (reminder.calendar_event_id) {
+      const liveEvent = await getCalendarEvent(
+        reminder.profile_id,
+        reminder.calendar_event_id,
+        reminder.calendar_id || undefined,
+      )
+      const liveStart = normalizeIso(liveEvent?.start)
+      const storedStart = normalizeIso(reminder.event_starts_at)
+
+      if (!liveEvent || (storedStart && liveStart && storedStart !== liveStart)) {
+        await supabaseAdmin
+          .from('reminders')
+          .update({
+            status: 'canceled',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', reminder.id)
+        continue
+      }
     }
 
     const { data: profile } = await supabaseAdmin

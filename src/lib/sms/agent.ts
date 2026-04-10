@@ -2,8 +2,10 @@ import {
   createCalendarEvent,
   deleteCalendarEvent,
   findScheduleOptions,
+  getCalendarEvent,
   hasGoogleCalendar,
   listAgenda,
+  listUpcomingEvents,
   updateCalendarEvent,
   type EventSummary,
   type ScheduleOption,
@@ -16,7 +18,7 @@ import {
   setTime,
   startOfDay,
 } from '../calendar/dates'
-import { recurrenceSummary } from '../calendar/recurrence'
+import { parseGoogleRecurrence, recurrenceSummary, type RecurrenceSpec } from '../calendar/recurrence'
 import {
   buildBusinessAliases,
   extractPhoneFromText,
@@ -68,12 +70,16 @@ type PendingPayload = {
   selectedOption?: ScheduleOption
   events?: EventSummary[]
   target?: EventSummary
+  seriesTarget?: EventSummary
   businessName?: string
   phoneE164?: string | null
   callNote?: string
   requestedBaseDate?: string
   exactTime?: { hour: number; minute: number } | null
   authority?: EventAuthority
+  recurrence?: RecurrenceSpec | null
+  stage?: 'scope' | 'options'
+  scope?: 'single' | 'series'
   followUpKind?: PendingKind | null
   holdEventId?: string | null
   holdCalendarId?: string | null
@@ -163,15 +169,22 @@ function isShortAcknowledgement(text: string) {
 function reminderForPending(pending: PendingAction) {
   switch (pending.kind) {
     case 'schedule':
-    case 'reschedule':
     case 'invited_reschedule_hold':
     case 'external_call_prep':
+      return 'Reply with the option you want, like 1, 2, or 3.'
+    case 'reschedule':
+      if (pending.payload.stage === 'scope') {
+        return 'Reply 1 for just this one, 2 for the whole series, or 3 to keep it.'
+      }
       return 'Reply with the option you want, like 1, 2, or 3.'
     case 'select_reschedule_target':
       return 'Reply with which one you mean, like 1, 2, or 3.'
     case 'invited_reschedule_action':
       return 'Reply 1 to hold a time, 2 for a draft to the organizer, or 3 to keep it.'
     case 'invited_cancel_action':
+      if (pending.payload.stage === 'scope') {
+        return 'Reply 1 for just this one, 2 for the whole series, or 3 to keep it.'
+      }
       return 'Reply 1 to remove it from your calendar, 2 for a draft message, or 3 to keep it.'
     case 'resolve_invitees':
       return 'Reply with the missing email, like "Priya priya@company.com", or say "book it without invites."'
@@ -193,6 +206,29 @@ function eventDurationMinutes(event: EventSummary) {
   const end = new Date(event.end).getTime()
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 30
   return Math.max(15, Math.round((end - start) / 60_000))
+}
+
+function isRecurringEvent(event: EventSummary) {
+  return Boolean(event.recurringEventId || event.recurrence?.length)
+}
+
+async function loadSeriesMaster(profileId: string, target: EventSummary) {
+  const seriesId = target.recurringEventId || target.id
+  const seriesTarget = await getCalendarEvent(profileId, seriesId, target.calendarId)
+  if (!seriesTarget) return null
+
+  return {
+    seriesTarget,
+    recurrence: parseGoogleRecurrence(seriesTarget.recurrence),
+  }
+}
+
+function recurringReschedulePrompt(target: EventSummary) {
+  return `${target.title} is part of a repeating series.\nDo you want me to:\n1. Move just this one\n2. Move the whole series\n3. Keep it as is`
+}
+
+function recurringCancelPrompt(target: EventSummary) {
+  return `${target.title} is part of a repeating series.\nDo you want me to:\n1. Cancel just this one\n2. Cancel the whole series\n3. Keep it`
 }
 
 function buildCallNote(target: EventSummary, options: ScheduleOption[]) {
@@ -366,6 +402,16 @@ function sortEventsByStart<T extends { start: string }>(events: T[]) {
   })
 }
 
+function uniqueEvents(events: EventSummary[]) {
+  const seen = new Set<string>()
+  return events.filter((event) => {
+    const key = `${event.id}:${event.start}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 function matchingEventsByQuery(events: EventSummary[], query: string) {
   const words = queryWords(query)
   if (!words.length) return []
@@ -437,6 +483,15 @@ function findEventByQuery(events: EventSummary[], query: string) {
 
 function agendaDayForBaseDate(baseDate: Date) {
   return baseDate.toDateString() === startOfDay(0).toDateString() ? 'today' : 'tomorrow'
+}
+
+async function searchUpcomingEvents(profileId: string) {
+  return listUpcomingEvents({
+    profileId,
+    startAt: startOfDay(0),
+    windowMinutes: 14 * 24 * 60,
+    maxResults: 30,
+  })
 }
 
 async function profileForPhone(phoneE164: string) {
@@ -647,6 +702,34 @@ async function queueReminderForEvent({
   if (error) throw error
 }
 
+async function maybeQueueReminderForOption({
+  profile,
+  option,
+  calendarEventId,
+  calendarId,
+  title,
+  leadMinutes,
+}: {
+  profile: SmsProfile
+  option: ScheduleOption
+  calendarEventId?: string | null
+  calendarId?: string | null
+  title?: string
+  leadMinutes?: number
+}) {
+  if (option.recurrence) return
+
+  await queueReminderForEvent({
+    profileId: profile.id,
+    phoneE164: profile.phone_e164,
+    calendarEventId: calendarEventId || null,
+    calendarId: calendarId || option.calendarId,
+    title: title || option.title,
+    start: option.start,
+    leadMinutes,
+  })
+}
+
 async function classifyTargetEvent(
   profile: SmsProfile,
   target: EventSummary,
@@ -783,6 +866,62 @@ async function prepareInvitedCancel({
   return `I can't cancel ${target.title} for everyone from your side.\nDo you want me to:\n1. Remove it from my calendar only\n2. Draft a decline message\n3. Keep it`
 }
 
+async function prepareRecurringRescheduleScope({
+  profileId,
+  smsFrom,
+  target,
+  authority,
+  baseDate,
+  exactTime,
+}: {
+  profileId: string
+  smsFrom: string
+  target: EventSummary
+  authority: EventAuthority
+  baseDate: Date
+  exactTime: { hour: number; minute: number } | null
+}) {
+  await storePendingAction({
+    profileId,
+    smsFrom,
+    kind: 'reschedule',
+    payload: {
+      target,
+      authority,
+      requestedBaseDate: baseDate.toISOString(),
+      exactTime,
+      stage: 'scope',
+    },
+  })
+
+  return recurringReschedulePrompt(target)
+}
+
+async function prepareRecurringCancelScope({
+  profileId,
+  smsFrom,
+  target,
+  authority,
+}: {
+  profileId: string
+  smsFrom: string
+  target: EventSummary
+  authority: EventAuthority
+}) {
+  await storePendingAction({
+    profileId,
+    smsFrom,
+    kind: 'invited_cancel_action',
+    payload: {
+      target,
+      authority,
+      stage: 'scope',
+    },
+  })
+
+  return recurringCancelPrompt(target)
+}
+
 async function handleSaveBusinessPhoneReply({
   profile,
   from,
@@ -905,13 +1044,12 @@ async function handleResolveInviteesReply({
       ...option,
       attendees: existingInvitees,
     })
-    await queueReminderForEvent({
-      profileId: profile.id,
-      phoneE164: profile.phone_e164,
+    await maybeQueueReminderForOption({
+      profile,
+      option,
       calendarEventId: created.id || null,
       calendarId: option.calendarId,
       title: option.title,
-      start: option.start,
     })
     await clearPendingAction(pending.id)
 
@@ -968,13 +1106,12 @@ async function handleResolveInviteesReply({
     ...option,
     attendees: mergedInvitees,
   })
-  await queueReminderForEvent({
-    profileId: profile.id,
-    phoneE164: profile.phone_e164,
+  await maybeQueueReminderForOption({
+    profile,
+    option,
     calendarEventId: created.id || null,
     calendarId: option.calendarId,
     title: option.title,
-    start: option.start,
   })
   await clearPendingAction(pending.id)
 
@@ -1020,13 +1157,12 @@ async function handleChoice({
       ...option,
       attendees,
     })
-    await queueReminderForEvent({
-      profileId: profile.id,
-      phoneE164: profile.phone_e164,
+    await maybeQueueReminderForOption({
+      profile,
+      option,
       calendarEventId: created.id || null,
       calendarId: option.calendarId,
       title: option.title,
-      start: option.start,
     })
     await clearPendingAction(pending.id)
 
@@ -1064,6 +1200,17 @@ async function handleChoice({
       })
     }
 
+    if (isRecurringEvent(event)) {
+      return prepareRecurringRescheduleScope({
+        profileId: profile.id,
+        smsFrom,
+        target: event,
+        authority,
+        baseDate: new Date(Date.now() + 24 * 60 * 60_000),
+        exactTime: null,
+      })
+    }
+
     const options = await findScheduleOptions({
       profileId: profile.id,
       title: event.title,
@@ -1088,19 +1235,134 @@ async function handleChoice({
   }
 
   if (pending.kind === 'reschedule') {
-    const option = choose(pending.payload.options, choice)
     const target = pending.payload.target
+    if (!target) return 'Reply with 1, 2, or 3.'
+
+    if (pending.payload.stage === 'scope') {
+      if (choice === 1) {
+        const baseDate = pending.payload.requestedBaseDate
+          ? new Date(pending.payload.requestedBaseDate)
+          : new Date(Date.now() + 24 * 60 * 60_000)
+
+        const options = await findScheduleOptions({
+          profileId: profile.id,
+          title: target.title,
+          baseDate,
+          exactTime: pending.payload.exactTime || null,
+          calendarHint: target.calendarName,
+          durationMinutes: eventDurationMinutes(target),
+        })
+
+        if (!options.length) {
+          return `I found ${target.title}, but I could not find an opening to move it. Try another day or time.`
+        }
+
+        await storePendingAction({
+          profileId: profile.id,
+          smsFrom,
+          kind: 'reschedule',
+          payload: {
+            target,
+            options,
+            authority: pending.payload.authority,
+            stage: 'options',
+            scope: 'single',
+          },
+        })
+
+        return `I can move just this ${target.title} to:\n${optionList(options)}\nReply 1, 2, or 3.`
+      }
+
+      if (choice === 2) {
+        const series = await loadSeriesMaster(profile.id, target)
+        if (!series?.seriesTarget || !series.recurrence) {
+          return `I can move just this occurrence by text, but ${target.title} uses a custom repeat pattern I can't safely change yet.\nReply 1 if you want to move just this one, or 3 to keep it as is.`
+        }
+
+        const baseDate = pending.payload.requestedBaseDate
+          ? new Date(pending.payload.requestedBaseDate)
+          : new Date(Date.now() + 24 * 60 * 60_000)
+
+        const options = await findScheduleOptions({
+          profileId: profile.id,
+          title: series.seriesTarget.title,
+          baseDate,
+          exactTime: pending.payload.exactTime || null,
+          calendarHint: series.seriesTarget.calendarName,
+          durationMinutes: eventDurationMinutes(series.seriesTarget),
+          recurrence: series.recurrence,
+        })
+
+        if (!options.length) {
+          return `I found ${target.title}, but I could not find an opening to move the whole series. Try another day or time.`
+        }
+
+        await storePendingAction({
+          profileId: profile.id,
+          smsFrom,
+          kind: 'reschedule',
+          payload: {
+            target,
+            seriesTarget: series.seriesTarget,
+            recurrence: series.recurrence,
+            options,
+            authority: pending.payload.authority,
+            stage: 'options',
+            scope: 'series',
+          },
+        })
+
+        let reply = `I can move the whole series to:\n${optionList(options)}\nReply 1, 2, or 3.`
+        const recurring = recurrenceLine(options)
+        if (recurring) {
+          reply += `\n${recurring}`
+        }
+        return reply
+      }
+
+      if (choice === 3) {
+        await clearPendingAction(pending.id)
+        return `Okay. I left ${target.title} where it is.`
+      }
+
+      return 'Reply with 1, 2, or 3.'
+    }
+
+    const option = choose(pending.payload.options, choice)
     if (!option || !target) return 'Reply with 1, 2, or 3.'
 
     const sendUpdates = pending.payload.authority === 'owned_meeting' ? 'all' : 'none'
+    if (pending.payload.scope === 'series' && pending.payload.seriesTarget && pending.payload.recurrence) {
+      await updateCalendarEvent(
+        profile.id,
+        pending.payload.seriesTarget.id,
+        {
+          ...option,
+          title: pending.payload.seriesTarget.title,
+          calendarId: pending.payload.seriesTarget.calendarId,
+          calendarName: pending.payload.seriesTarget.calendarName,
+          recurrence: pending.payload.recurrence,
+        },
+        sendUpdates,
+      )
+      await clearPendingRemindersForEvent(profile.id, target.id)
+      await clearPendingRemindersForEvent(profile.id, pending.payload.seriesTarget.id)
+      await clearPendingAction(pending.id)
+
+      if (pending.payload.authority === 'owned_meeting') {
+        return `Moved the whole ${target.title} series to ${option.dayLabel} at ${option.timeLabel} and sent the update.`
+      }
+
+      return `Moved the whole ${target.title} series to ${option.dayLabel} at ${option.timeLabel}.`
+    }
+
     await updateCalendarEvent(profile.id, target.id, option, sendUpdates)
-    await queueReminderForEvent({
-      profileId: profile.id,
-      phoneE164: profile.phone_e164,
+    await maybeQueueReminderForOption({
+      profile,
+      option,
       calendarEventId: target.id,
       calendarId: target.calendarId,
       title: option.title,
-      start: option.start,
     })
     await clearPendingAction(pending.id)
 
@@ -1185,13 +1447,12 @@ async function handleChoice({
     if (!option || !target) return 'Reply with 1, 2, or 3.'
 
     const created = await createCalendarEvent(profile.id, option)
-    await queueReminderForEvent({
-      profileId: profile.id,
-      phoneE164: profile.phone_e164,
+    await maybeQueueReminderForOption({
+      profile,
+      option,
       calendarEventId: created.id || null,
       calendarId: option.calendarId,
       title: option.title,
-      start: option.start,
       leadMinutes: 15,
     })
     await clearPendingAction(pending.id)
@@ -1202,6 +1463,42 @@ async function handleChoice({
   if (pending.kind === 'invited_cancel_action') {
     const target = pending.payload.target
     if (!target) return 'Send the cancel request again and I will pick it up.'
+
+    if (pending.payload.stage === 'scope') {
+      const sendUpdates = pending.payload.authority === 'owned_meeting' ? 'all' : 'none'
+
+      if (choice === 1) {
+        await deleteCalendarEvent(profile.id, target.id, target.calendarId, sendUpdates)
+        await clearPendingRemindersForEvent(profile.id, target.id)
+        await clearPendingAction(pending.id)
+        return pending.payload.authority === 'owned_meeting'
+          ? `Canceled this ${target.title} occurrence and sent the update.`
+          : `Canceled just this ${target.title} occurrence.`
+      }
+
+      if (choice === 2) {
+        const series = await loadSeriesMaster(profile.id, target)
+        const seriesTarget = series?.seriesTarget
+        if (!seriesTarget) {
+          return `I couldn't find the full ${target.title} series right now.\nReply 1 if you want to cancel just this occurrence, or 3 to keep it.`
+        }
+
+        await deleteCalendarEvent(profile.id, seriesTarget.id, seriesTarget.calendarId, sendUpdates)
+        await clearPendingRemindersForEvent(profile.id, target.id)
+        await clearPendingRemindersForEvent(profile.id, seriesTarget.id)
+        await clearPendingAction(pending.id)
+        return pending.payload.authority === 'owned_meeting'
+          ? `Canceled the whole ${target.title} series and sent the update.`
+          : `Canceled the whole ${target.title} series.`
+      }
+
+      if (choice === 3) {
+        await clearPendingAction(pending.id)
+        return `Okay. I left ${target.title} on your calendar.`
+      }
+
+      return 'Reply with 1, 2, or 3.'
+    }
 
     if (choice === 1) {
       await deleteCalendarEvent(profile.id, target.id, target.calendarId, 'none')
@@ -1229,13 +1526,12 @@ async function handleChoice({
     if (!option || !target) return 'Reply with 1, 2, or 3.'
 
     const created = await createCalendarEvent(profile.id, option)
-    await queueReminderForEvent({
-      profileId: profile.id,
-      phoneE164: profile.phone_e164,
+    await maybeQueueReminderForOption({
+      profile,
+      option,
       calendarEventId: created.id || null,
       calendarId: option.calendarId,
       title: option.title,
-      start: option.start,
       leadMinutes: 15,
     })
 
@@ -1574,13 +1870,17 @@ export async function handleIncomingSms({
     const fallbackDay = preferredDay === 'today' ? 'tomorrow' : 'today'
     const preferredEvents = await listAgenda(profile.id, preferredDay)
     const fallbackEvents = await listAgenda(profile.id, fallbackDay)
+    const upcomingEvents = await searchUpcomingEvents(profile.id)
     const nearbyEvents = sortEventsByStart([...preferredEvents, ...fallbackEvents])
+    const candidateEvents = sortEventsByStart(uniqueEvents([...nearbyEvents, ...upcomingEvents]))
     const target =
-      findEventByQuery(preferredEvents, intent.query) || findEventByQuery(nearbyEvents, intent.query)
+      findEventByQuery(preferredEvents, intent.query) ||
+      findEventByQuery(nearbyEvents, intent.query) ||
+      findEventByQuery(candidateEvents, intent.query)
 
     if (!target) {
-      const matchedNearbyEvents = matchingEventsByQuery(nearbyEvents, intent.query)
-      const topEvents = (matchedNearbyEvents.length ? matchedNearbyEvents : nearbyEvents).slice(0, 3)
+      const matchedUpcomingEvents = matchingEventsByQuery(candidateEvents, intent.query)
+      const topEvents = (matchedUpcomingEvents.length ? matchedUpcomingEvents : candidateEvents).slice(0, 3)
       if (!topEvents.length) {
         const reply = "I don't see anything to move there."
         await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
@@ -1628,6 +1928,19 @@ export async function handleIncomingSms({
       return reply
     }
 
+    if (isRecurringEvent(target)) {
+      const reply = await prepareRecurringRescheduleScope({
+        profileId: profile.id,
+        smsFrom: from,
+        target,
+        authority,
+        baseDate: intent.baseDate,
+        exactTime: intent.exactTime,
+      })
+      await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+      return reply
+    }
+
     const options = await findScheduleOptions({
       profileId: profile.id,
       title: target.title,
@@ -1656,7 +1969,7 @@ export async function handleIncomingSms({
   }
 
   if (intent.type === 'cancel') {
-    const events = await listAgenda(profile.id, 'today')
+    const events = await searchUpcomingEvents(profile.id)
     const target = findEventByQuery(events, intent.query)
     if (!target) {
       const reply = 'Which event should I cancel? Try: cancel dentist.'
@@ -1705,6 +2018,17 @@ export async function handleIncomingSms({
         profileId: profile.id,
         smsFrom: from,
         target,
+      })
+      await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+      return reply
+    }
+
+    if (isRecurringEvent(target)) {
+      const reply = await prepareRecurringCancelScope({
+        profileId: profile.id,
+        smsFrom: from,
+        target,
+        authority,
       })
       await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
       return reply

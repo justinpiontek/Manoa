@@ -49,6 +49,21 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
             : 'After you subscribe, connect Google Calendar so Manoa can see availability and book events for you by text.'}
         </p>
 
+        <div className="status-row" aria-label="Setup status">
+          <div className="status-pill ready">
+            <strong>Subscription</strong>
+            <span>Set up</span>
+          </div>
+          <div className={`status-pill ${calendarConnected ? 'ready' : 'pending'}`}>
+            <strong>Calendar</strong>
+            <span>{calendarConnected ? 'Connected' : 'Still needed'}</span>
+          </div>
+          <div className={`status-pill ${displayNumber ? 'ready' : 'pending'}`}>
+            <strong>Text line</strong>
+            <span>{displayNumber ? displayNumber : 'Finishing setup'}</span>
+          </div>
+        </div>
+
         {calendarConnected ? (
           <div className="notice success" role="status" aria-live="polite">
             Google Calendar connected successfully.
@@ -95,7 +110,8 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
               </p>
             )}
             <p className="setup-note">
-              If you need to come back later, this step can wait until the phone number is fully set up.
+              Save Manoa in your contacts from the dashboard so this feels like texting a real
+              assistant, not opening software.
             </p>
           </article>
         </div>
