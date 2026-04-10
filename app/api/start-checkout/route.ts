@@ -4,13 +4,20 @@ import { findOrCreateProfile } from '@/src/lib/profiles'
 import { normalizePhone } from '@/src/lib/phone'
 import { stripe } from '@/src/lib/stripeClient'
 
+function paymentLinkUrl(baseUrl: string, email: string, profileId: string) {
+  const url = new URL(baseUrl)
+  url.searchParams.set('prefilled_email', email)
+  url.searchParams.set('client_reference_id', profileId)
+  return url.toString()
+}
+
 export async function POST(request: NextRequest) {
-  const missing = missingEnv([
-    'SUPABASE_URL',
-    'SUPABASE_SERVICE_ROLE_KEY',
-    'STRIPE_SECRET_KEY',
-    'STRIPE_MONTHLY_PRICE_ID',
-  ])
+  const paymentLink = process.env.STRIPE_PAYMENT_LINK_URL?.trim()
+  const missing = missingEnv(
+    paymentLink
+      ? ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'STRIPE_PAYMENT_LINK_URL']
+      : ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'STRIPE_SECRET_KEY', 'STRIPE_MONTHLY_PRICE_ID'],
+  )
 
   if (missing.length) {
     return new Response(
@@ -39,6 +46,10 @@ export async function POST(request: NextRequest) {
 
   const profile = await findOrCreateProfile({ email, phoneE164 })
   const baseUrl = appUrl()
+
+  if (paymentLink) {
+    return Response.redirect(paymentLinkUrl(paymentLink, email, profile.id), 303)
+  }
 
   const checkoutSession = await stripe.checkout.sessions.create({
     mode: 'subscription',

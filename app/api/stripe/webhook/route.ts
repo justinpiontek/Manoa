@@ -12,7 +12,7 @@ async function handleSubscription(subscription: Stripe.Subscription) {
     (await findProfileIdForSubscription(subscription.id))
 
   if (!profileId) {
-    throw new Error(`Missing profile_id for subscription ${subscription.id}`)
+    return
   }
 
   await upsertStripeSubscription({ profileId, subscription })

@@ -45,3 +45,16 @@ export async function findProfileIdForSubscription(subscriptionId: string) {
   if (error) throw error
   return data?.profile_id || null
 }
+
+export async function findStripeCustomerIdForProfile(profileId: string) {
+  const { data, error } = await supabaseAdmin
+    .from('subscriptions')
+    .select('stripe_customer_id')
+    .eq('profile_id', profileId)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle<{ stripe_customer_id: string }>()
+
+  if (error) throw error
+  return data?.stripe_customer_id || null
+}

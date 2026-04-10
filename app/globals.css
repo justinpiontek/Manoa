@@ -53,6 +53,12 @@ button {
   margin-bottom: 24px;
 }
 
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .notice {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -108,6 +114,10 @@ button {
   color: var(--ink);
   padding: 10px 12px;
   font-weight: 700;
+}
+
+.nav-link.secondary {
+  background: #f8fafc;
 }
 
 .copy {
@@ -319,6 +329,37 @@ input:focus {
   margin: 14px 0 0;
   font-size: 0.85rem;
   line-height: 1.55;
+}
+
+.access-panel {
+  border-top: 1px solid var(--line);
+  margin-top: 18px;
+  padding-top: 18px;
+}
+
+.access-panel h3 {
+  margin: 10px 0 8px;
+  font-size: 1.05rem;
+}
+
+.access-panel p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.access-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+  margin-top: 16px;
+}
+
+.access-form .button {
+  width: auto;
+  min-width: 168px;
+  margin-top: 0;
 }
 
 .fine-print a,
@@ -642,7 +683,149 @@ footer {
 
 .setup-footer {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-start;
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.dashboard-link-button {
+  width: auto;
+  margin-top: 0;
+}
+
+.dashboard-shell {
+  width: min(980px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 24px 0 48px;
+}
+
+.dashboard-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+  padding: 24px;
+}
+
+.dashboard-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dashboard-title {
+  max-width: 760px;
+  margin: 10px 0 0;
+  font-size: 3rem;
+  line-height: 1.02;
+}
+
+.dashboard-lede {
+  max-width: 760px;
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1.7;
+}
+
+.dashboard-hero-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border: 1px solid #c9d6f0;
+  border-radius: 8px;
+  margin-top: 24px;
+  background: #f7f9ff;
+  padding: 18px;
+}
+
+.dashboard-kicker {
+  margin: 0 0 8px;
+  color: var(--blue);
+  font-size: 0.9rem;
+  font-weight: 850;
+}
+
+.dashboard-hero-panel h2 {
+  margin: 0;
+  font-size: 2rem;
+  line-height: 1.04;
+}
+
+.dashboard-hero-panel p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.dashboard-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.dashboard-section {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcff;
+  padding: 16px;
+}
+
+.dashboard-label {
+  margin: 0;
+  color: var(--blue);
+  font-size: 0.9rem;
+  font-weight: 850;
+}
+
+.dashboard-section h3 {
+  margin: 10px 0 10px;
+  font-size: 1.08rem;
+}
+
+.dashboard-section p {
+  margin: 0 0 10px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.dashboard-button {
+  width: auto;
+  margin-top: 8px;
+}
+
+.secondary-button {
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  box-shadow: none;
+}
+
+.secondary-button:hover {
+  background: #f7f9ff;
+}
+
+.dashboard-note {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.dashboard-footer {
+  display: flex;
+  justify-content: flex-start;
+  gap: 12px;
   margin-top: 22px;
 }
 
@@ -779,12 +962,28 @@ footer {
   .demo,
   .step-grid,
   .setup-grid,
+  .dashboard-grid,
   .lab-grid,
-  .signup form {
+  .signup form,
+  .access-form {
     grid-template-columns: 1fr;
   }
 
   .signup .button {
+    width: 100%;
+  }
+
+  .access-form .button,
+  .dashboard-button {
+    width: 100%;
+  }
+
+  .dashboard-hero-panel {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .dashboard-hero-actions {
     width: 100%;
   }
 }
@@ -800,6 +999,15 @@ footer {
     flex-direction: column;
   }
 
+  .top-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .top-actions .nav-link {
+    width: 100%;
+  }
+
   .legal-card {
     padding: 18px;
   }
@@ -813,6 +1021,19 @@ footer {
   }
 
   .setup-title {
+    font-size: 2.2rem;
+  }
+
+  .dashboard-card {
+    padding: 18px;
+  }
+
+  .dashboard-topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .dashboard-title {
     font-size: 2.2rem;
   }
 

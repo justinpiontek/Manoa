@@ -14,5 +14,5 @@ export async function GET(request: NextRequest) {
   const tokenResponse = await client.getToken(code)
   await storeGoogleConnection(profileId, tokenResponse.tokens)
 
-  return Response.redirect(`${appUrl()}/setup?profile_id=${profileId}&calendar=connected`, 303)
+  return Response.redirect(`${appUrl()}/dashboard?profile_id=${profileId}&calendar=connected`, 303)
 }

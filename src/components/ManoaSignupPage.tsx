@@ -280,6 +280,22 @@ export default function ManoaSignupPage() {
         tone: 'warning',
         text: 'Checkout was cancelled. You can come back here any time and start again.',
       })
+      return
+    }
+
+    if (params.get('access') === 'not_found') {
+      setStatusNotice({
+        tone: 'warning',
+        text: 'We could not find an account with that email and phone number together. Try the exact signup details you used.',
+      })
+      return
+    }
+
+    if (params.get('access') === 'invalid') {
+      setStatusNotice({
+        tone: 'warning',
+        text: 'Use the same email and phone number you signed up with to open your dashboard.',
+      })
     }
   }, [])
 
@@ -686,9 +702,14 @@ export default function ManoaSignupPage() {
           </span>
           <span className="brand-name">Manoa</span>
         </a>
-        <a className="nav-link" href="#signup">
-          Start for $19.99/mo
-        </a>
+        <div className="top-actions">
+          <a className="nav-link secondary" href="#access">
+            Log in
+          </a>
+          <a className="nav-link" href="#signup">
+            Start for $19.99/mo
+          </a>
+        </div>
       </header>
 
       {statusNotice ? (
@@ -772,6 +793,44 @@ export default function ManoaSignupPage() {
             <a href="/privacy">Privacy Policy</a> and{' '}
             <a href="/terms">Terms and Conditions</a>.
           </p>
+
+          <div id="access" className="access-panel">
+            <p className="plan-label">Already signed up?</p>
+            <h3>Open your dashboard</h3>
+            <p>
+              Use the same email and phone number you signed up with. This takes you back to your
+              Manoa dashboard, setup, and billing controls.
+            </p>
+
+            <form action="/api/access-dashboard" method="post" className="access-form">
+              <div className="field">
+                <label htmlFor="access-email">Email</label>
+                <input
+                  id="access-email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  required
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="access-phone">Phone</label>
+                <input
+                  id="access-phone"
+                  name="phone"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  placeholder="+1 555 555 5555"
+                  required
+                />
+              </div>
+              <button className="button" type="submit">
+                Open dashboard
+              </button>
+            </form>
+          </div>
         </aside>
       </section>
 

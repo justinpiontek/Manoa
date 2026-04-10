@@ -1,3 +1,5 @@
+import { stripe } from '@/src/lib/stripeClient'
+import { formatPhoneForDisplay } from '@/src/lib/phone'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -8,14 +10,28 @@ export const metadata: Metadata = {
 type SetupPageProps = {
   searchParams: Promise<{
     profile_id?: string
+    session_id?: string
     calendar?: string
   }>
 }
 
 export default async function SetupPage({ searchParams }: SetupPageProps) {
   const params = await searchParams
-  const profileId = params.profile_id || ''
+  let profileId = params.profile_id || ''
   const calendarConnected = params.calendar === 'connected'
+
+  if (!profileId && params.session_id && process.env.STRIPE_SECRET_KEY) {
+    try {
+      const session = await stripe.checkout.sessions.retrieve(params.session_id)
+      profileId =
+        session.client_reference_id || session.metadata?.profile_id || ''
+    } catch {
+      profileId = ''
+    }
+  }
+
+  const manoaNumber = process.env.TWILIO_FROM_NUMBER?.trim() || ''
+  const displayNumber = manoaNumber ? formatPhoneForDisplay(manoaNumber) : ''
 
   return (
     <main className="setup-shell">
@@ -67,10 +83,17 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
           <article className="setup-step">
             <span className="step-number">3</span>
             <h2>Text Manoa</h2>
-            <p>
-              Once Manoa&apos;s number is live, you&apos;ll text it things like “9am meeting Tuesday on work
-              calendar” or “what&apos;s on my calendar tomorrow?”
-            </p>
+            {displayNumber ? (
+              <p>
+                Text <strong>{displayNumber}</strong> from the phone you signed up with. Try things like
+                “9am meeting Tuesday on work calendar” or “what&apos;s on my calendar tomorrow?”
+              </p>
+            ) : (
+              <p>
+                Once Manoa&apos;s number is live, you&apos;ll text it things like “9am meeting Tuesday on work
+                calendar” or “what&apos;s on my calendar tomorrow?”
+              </p>
+            )}
             <p className="setup-note">
               If you need to come back later, this step can wait until the phone number is fully set up.
             </p>
@@ -78,6 +101,16 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
         </div>
 
         <div className="setup-footer">
+          {manoaNumber ? (
+            <a className="button dashboard-link-button" href="/api/contact-card">
+              Save Manoa contact
+            </a>
+          ) : null}
+          {profileId ? (
+            <a className="button dashboard-link-button" href={`/dashboard?profile_id=${profileId}`}>
+              Open dashboard
+            </a>
+          ) : null}
           <a className="nav-link" href="/">
             Back to the site
           </a>

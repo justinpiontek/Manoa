@@ -5,7 +5,7 @@ Manoa is a paid calendar assistant people use by text message.
 This repo is now a real MVP scaffold:
 
 - Next.js landing page with working SMS demo
-- Stripe Checkout subscription route
+- Stripe checkout / payment-link signup route
 - Stripe webhook route for subscription status
 - Supabase-backed profiles, subscriptions, calendar connections, business contacts, SMS logs, pending actions, and reminders
 - Twilio inbound SMS webhook
@@ -63,7 +63,7 @@ psql "$SUPABASE_DB_URL" -f supabase/migrations/20260409_people_contacts_and_invi
 
 ## Core Routes
 
-- `POST /api/start-checkout`: creates or updates a Supabase profile and redirects to Stripe Checkout
+- `POST /api/start-checkout`: creates or updates a Supabase profile and redirects to Stripe Checkout or a Stripe Payment Link
 - `POST /api/stripe/webhook`: verifies Stripe webhooks and updates subscription state
 - `POST /api/twilio/inbound`: verifies Twilio, checks subscription/calendar state, and routes SMS commands
 - `GET /api/calendar/google/start?profile_id=...`: starts Google Calendar OAuth
@@ -86,6 +86,21 @@ NEXT_PUBLIC_APP_URL=https://your-domain.com
 GOOGLE_REDIRECT_URI=https://your-domain.com/api/calendar/google/callback
 ```
 
+If you are using a Stripe Payment Link instead of creating Checkout Sessions in code, set:
+
+```sh
+STRIPE_PAYMENT_LINK_URL=https://buy.stripe.com/...
+```
+
+Then in Stripe, set the payment link's post-payment redirect to:
+
+```txt
+https://your-domain.com/setup?session_id={CHECKOUT_SESSION_ID}
+```
+
+The signup form will still create the Manoa profile first, then send the user
+to the payment link with their email and profile id attached.
+
 After deployment, point the external services at the production routes:
 
 - Stripe webhook: `https://your-domain.com/api/stripe/webhook`
@@ -104,7 +119,7 @@ Vercel Hobby allows daily cron jobs, but more frequent cron schedules can fail d
 ## SMS Flow
 
 1. Customer signs up with email and phone.
-2. Stripe Checkout creates the subscription.
+2. Stripe Checkout or a Stripe Payment Link creates the subscription.
 3. Stripe webhook stores `active` or `trialing` subscription status.
 4. Customer connects Google Calendar.
 5. Twilio sends inbound texts to `/api/twilio/inbound`.
