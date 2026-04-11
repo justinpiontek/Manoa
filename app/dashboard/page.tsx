@@ -83,7 +83,19 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     )
   }
 
-  const calendarAccounts = await listConfiguredCalendarAccounts(profile.id)
+  let calendarAccounts: Awaited<ReturnType<typeof listConfiguredCalendarAccounts>> = []
+  let calendarSettingsWarning = ''
+
+  try {
+    calendarAccounts = await listConfiguredCalendarAccounts(profile.id)
+  } catch (error) {
+    calendarAccounts = []
+    calendarSettingsWarning =
+      error instanceof Error && error.message
+        ? 'Your dashboard loaded, but the calendar settings section needs one more setup step. If you recently updated Manoa, a database migration may still be missing.'
+        : 'Your dashboard loaded, but the calendar settings section could not be loaded yet.'
+  }
+
   const googleAccounts = calendarAccounts.filter((account) => account.provider === 'google')
   const outlookAccounts = calendarAccounts.filter((account) => account.provider === 'outlook')
   const canAddGoogleAccount = googleAccounts.length < 2
@@ -159,6 +171,12 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           <div className="notice warning" role="status" aria-live="polite">
             We could not find your billing record yet. Try again in a minute. If it still looks off,
             use the same email and phone on the homepage to reopen your dashboard.
+          </div>
+        ) : null}
+
+        {calendarSettingsWarning ? (
+          <div className="notice warning" role="status" aria-live="polite">
+            {calendarSettingsWarning}
           </div>
         ) : null}
 

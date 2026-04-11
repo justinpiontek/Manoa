@@ -4,6 +4,7 @@ import { google, type calendar_v3 } from 'googleapis'
 import type { Credentials } from 'google-auth-library'
 import { appUrl, requiredEnv } from '../env'
 import { supabaseAdmin } from '../supabaseAdmin'
+import { decryptCalendarToken, encryptCalendarToken } from './tokenEncryption'
 import {
   addMinutes,
   endOfDay,
@@ -569,8 +570,8 @@ async function refreshOutlookTokensForAccount(connection: CalendarConnection) {
   const { error } = await supabaseAdmin
     .from('calendar_connections')
     .update({
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token || connection.refresh_token,
+      access_token: encryptCalendarToken(tokens.access_token) || '',
+      refresh_token: encryptCalendarToken(tokens.refresh_token || connection.refresh_token),
       expires_at: tokens.expires_at,
       updated_at: new Date().toISOString(),
     })
@@ -646,6 +647,54 @@ export async function getGoogleConnection(profileId: string) {
   return connection || null
 }
 
+function isLegacyCalendarConnectionsSchemaError(message: string) {
+  const lower = message.toLowerCase()
+
+  return [
+    'provider',
+    'account_id',
+    'account_email',
+    'calendar_name',
+    'calendar_label',
+    'access_role',
+    'is_primary',
+    'include_in_conflicts',
+    'allow_new_events',
+  ].some((column) => lower.includes(column) && lower.includes('does not exist'))
+}
+
+async function getLegacyCalendarConnections(profileId: string) {
+  const { data, error } = await supabaseAdmin
+    .from('calendar_connections')
+    .select('id,profile_id,calendar_id,access_token,refresh_token,expires_at,status')
+    .eq('profile_id', profileId)
+    .eq('status', 'active')
+    .order('calendar_id', { ascending: true })
+
+  if (error) throw error
+
+  return ((data || []) as Array<{
+    id: string
+    profile_id: string
+    calendar_id: string
+    access_token: string
+    refresh_token: string | null
+    expires_at: string | null
+    status: string
+  }>).map((connection) => ({
+    ...connection,
+    provider: 'google' as const,
+    account_id: connection.calendar_id || 'primary',
+    account_email: null,
+    calendar_name: 'Google Calendar',
+    calendar_label: connection.calendar_id === 'primary' ? 'Personal' : 'Google Calendar',
+    access_role: 'owner',
+    is_primary: connection.calendar_id === 'primary',
+    include_in_conflicts: true,
+    allow_new_events: true,
+  }))
+}
+
 async function getCalendarConnections(profileId: string, provider?: CalendarProvider) {
   let query = supabaseAdmin
     .from('calendar_connections')
@@ -664,8 +713,30 @@ async function getCalendarConnections(profileId: string, provider?: CalendarProv
 
   const { data, error } = await query
 
-  if (error) throw error
-  return (data || []) as CalendarConnection[]
+  if (error) {
+    if (provider === 'outlook') {
+      if (isLegacyCalendarConnectionsSchemaError(error.message || '')) {
+        return []
+      }
+      throw error
+    }
+
+    if (!provider && isLegacyCalendarConnectionsSchemaError(error.message || '')) {
+      return getLegacyCalendarConnections(profileId)
+    }
+
+    if (provider === 'google' && isLegacyCalendarConnectionsSchemaError(error.message || '')) {
+      return getLegacyCalendarConnections(profileId)
+    }
+
+    throw error
+  }
+
+  return ((data || []) as CalendarConnection[]).map((connection) => ({
+    ...connection,
+    access_token: decryptCalendarToken(connection.access_token) || '',
+    refresh_token: decryptCalendarToken(connection.refresh_token),
+  }))
 }
 
 async function getGoogleConnections(profileId: string) {
@@ -780,8 +851,8 @@ export async function storeGoogleConnection(
         existingLabel: existing?.calendar_label,
         existingAccountIds,
       }),
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token || existing?.refresh_token || null,
+      access_token: encryptCalendarToken(tokens.access_token) || '',
+      refresh_token: encryptCalendarToken(tokens.refresh_token || existing?.refresh_token || null),
       expires_at: tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : existing?.expires_at || null,
       access_role: descriptor.accessRole,
       is_primary: descriptor.primary,
@@ -850,8 +921,8 @@ export async function storeOutlookConnection(
       calendar_label:
         existing?.calendar_label?.trim() ||
         (descriptor.isDefaultCalendar && !existingAccountIds.length ? 'Personal' : descriptor.name),
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
+      access_token: encryptCalendarToken(tokens.access_token) || '',
+      refresh_token: encryptCalendarToken(tokens.refresh_token),
       expires_at: tokens.expires_at,
       access_role: existing?.access_role || mapOutlookAccessRole(descriptor),
       is_primary: descriptor.isDefaultCalendar,

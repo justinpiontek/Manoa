@@ -47,6 +47,16 @@ Copy `.env.example` to `.env.local` and fill in the values.
 cp .env.example .env.local
 ```
 
+For safer provider-token storage, set a long random value for:
+
+```sh
+CALENDAR_TOKEN_ENCRYPTION_KEY=...
+```
+
+Manoa will keep reading older plaintext calendar tokens if they already exist,
+but once this key is set it will store newly saved Google/Outlook tokens in
+encrypted form.
+
 Apply the Supabase schema:
 
 ```sh
@@ -88,6 +98,7 @@ Add every value from `.env.example` to the Vercel project environment variables.
 NEXT_PUBLIC_APP_URL=https://your-domain.com
 GOOGLE_REDIRECT_URI=https://your-domain.com/api/calendar/google/callback
 MICROSOFT_REDIRECT_URI=https://your-domain.com/api/calendar/outlook/callback
+CALENDAR_TOKEN_ENCRYPTION_KEY=your-long-random-string
 ```
 
 If you are using a Stripe Payment Link instead of creating Checkout Sessions in code, set:
