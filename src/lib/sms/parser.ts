@@ -217,7 +217,7 @@ function parseCalendarHint(text: string) {
   if (lower.includes('work')) return 'Work'
   if (lower.includes('family')) return 'Family'
   if (lower.includes('personal') || lower.includes('home')) return 'Personal'
-  return 'Google Calendar'
+  return 'Calendar'
 }
 
 function stripSchedulingNoise(text: string) {

@@ -1,4 +1,4 @@
-import { recurrenceRule, type RecurrenceSpec } from './recurrence'
+import { parseGoogleRecurrence, recurrenceRule, recurrenceSummary, type RecurrenceSpec } from './recurrence'
 import type { Invitee } from '../sms/invitees'
 import { google, type calendar_v3 } from 'googleapis'
 import type { Credentials } from 'google-auth-library'
@@ -14,10 +14,12 @@ import {
   startOfDay,
 } from './dates'
 
+export type CalendarProvider = 'google' | 'outlook'
+
 export type CalendarConnection = {
   id: string
   profile_id: string
-  provider: 'google'
+  provider: CalendarProvider
   account_id: string
   account_email: string | null
   calendar_id: string
@@ -38,7 +40,7 @@ export type ConfiguredCalendar = {
   accountId: string
   accountEmail: string | null
   calendarId: string
-  provider: 'google'
+  provider: CalendarProvider
   sourceName: string
   label: string
   includeInConflicts: boolean
@@ -47,7 +49,8 @@ export type ConfiguredCalendar = {
   isPrimary: boolean
 }
 
-export type ConfiguredGoogleAccount = {
+export type ConfiguredCalendarAccount = {
+  provider: CalendarProvider
   accountId: string
   accountEmail: string | null
   calendars: ConfiguredCalendar[]
@@ -60,7 +63,7 @@ export type CalendarPlacementOption = {
   calendarId: string
   calendarName: string
   calendarLabel: string
-  provider: 'google'
+  provider: CalendarProvider
 }
 
 export type CalendarPlacementResolution = {
@@ -73,6 +76,7 @@ export type ScheduleOption = {
   title: string
   start: string
   end: string
+  provider: CalendarProvider
   calendarId: string
   calendarName: string
   dayLabel: string
@@ -86,6 +90,7 @@ export type EventSummary = {
   title: string
   start: string
   end: string
+  provider: CalendarProvider
   calendarId: string
   calendarName: string
   timeLabel: string
@@ -107,6 +112,25 @@ type GoogleCalendarDescriptor = {
   accessRole: string
 }
 
+type OutlookTokens = {
+  access_token: string
+  refresh_token: string | null
+  expires_at: string | null
+}
+
+type OutlookCalendarDescriptor = {
+  id: string
+  name: string
+  canEdit: boolean
+  isDefaultCalendar: boolean
+  ownerEmail: string | null
+}
+
+type OutlookDateTime = {
+  dateTime?: string | null
+  timeZone?: string | null
+}
+
 export function googleOAuthClient() {
   return new google.auth.OAuth2(
     requiredEnv('GOOGLE_CLIENT_ID'),
@@ -125,6 +149,72 @@ export function googleAuthUrl(state: string) {
       'https://www.googleapis.com/auth/calendar.freebusy',
     ],
   })
+}
+
+const microsoftAuthority = 'https://login.microsoftonline.com/common/oauth2/v2.0'
+const microsoftGraphBase = 'https://graph.microsoft.com/v1.0'
+const microsoftScopes = [
+  'openid',
+  'profile',
+  'email',
+  'offline_access',
+  'User.Read',
+  'Calendars.ReadWrite',
+]
+
+function microsoftRedirectUri() {
+  return process.env.MICROSOFT_REDIRECT_URI || `${appUrl()}/api/calendar/outlook/callback`
+}
+
+export function microsoftAuthUrl(state: string) {
+  const url = new URL(`${microsoftAuthority}/authorize`)
+  url.searchParams.set('client_id', requiredEnv('MICROSOFT_CLIENT_ID'))
+  url.searchParams.set('response_type', 'code')
+  url.searchParams.set('redirect_uri', microsoftRedirectUri())
+  url.searchParams.set('response_mode', 'query')
+  url.searchParams.set('scope', microsoftScopes.join(' '))
+  url.searchParams.set('state', state)
+  url.searchParams.set('prompt', 'select_account')
+  return url.toString()
+}
+
+async function microsoftTokenRequest(params: URLSearchParams) {
+  params.set('client_id', requiredEnv('MICROSOFT_CLIENT_ID'))
+  params.set('client_secret', requiredEnv('MICROSOFT_CLIENT_SECRET'))
+  params.set('redirect_uri', microsoftRedirectUri())
+
+  const response = await fetch(`${microsoftAuthority}/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params.toString(),
+  })
+
+  if (!response.ok) {
+    const body = await response.text()
+    throw new Error(`Microsoft token request failed: ${response.status} ${body}`)
+  }
+
+  const data = (await response.json()) as {
+    access_token: string
+    refresh_token?: string
+    expires_in?: number
+  }
+
+  return {
+    access_token: data.access_token,
+    refresh_token: data.refresh_token || null,
+    expires_at: data.expires_in
+      ? new Date(Date.now() + data.expires_in * 1000).toISOString()
+      : null,
+  } satisfies OutlookTokens
+}
+
+async function exchangeMicrosoftCode(code: string) {
+  const params = new URLSearchParams()
+  params.set('grant_type', 'authorization_code')
+  params.set('code', code)
+  params.set('scope', microsoftScopes.join(' '))
+  return microsoftTokenRequest(params)
 }
 
 function accountEmailFromId(accountId: string) {
@@ -164,6 +254,7 @@ function mapGoogleEvent(
     title: event.summary || 'Untitled event',
     start: event.start?.dateTime || event.start?.date || '',
     end: event.end?.dateTime || event.end?.date || '',
+    provider: 'google',
     calendarId: connection.calendar_id,
     calendarName: connection.calendar_label?.trim() || connection.calendar_name || 'Google Calendar',
     timeLabel: event.start?.dateTime ? formatSmsTime(new Date(event.start.dateTime)) : 'All day',
@@ -177,6 +268,68 @@ function mapGoogleEvent(
   } satisfies EventSummary
 }
 
+function outlookDateTimeToIso(value: OutlookDateTime | null | undefined) {
+  if (!value?.dateTime) return ''
+  const raw = value.dateTime
+  const timeZone = value.timeZone || 'UTC'
+
+  if (/z$/i.test(raw) || /[+-]\d\d:\d\d$/.test(raw)) {
+    return new Date(raw).toISOString()
+  }
+
+  if (timeZone.toUpperCase() === 'UTC') {
+    return new Date(`${raw}Z`).toISOString()
+  }
+
+  return new Date(raw).toISOString()
+}
+
+function mapOutlookAccessRole(descriptor: OutlookCalendarDescriptor) {
+  if (descriptor.canEdit) {
+    return descriptor.isDefaultCalendar ? 'owner' : 'writer'
+  }
+  return 'reader'
+}
+
+function mapOutlookEvent(
+  event: {
+    id?: string | null
+    subject?: string | null
+    start?: OutlookDateTime | null
+    end?: OutlookDateTime | null
+    location?: { displayName?: string | null } | null
+    bodyPreview?: string | null
+    organizer?: { emailAddress?: { address?: string | null } | null } | null
+    attendees?: Array<unknown> | null
+    recurrence?: unknown
+    seriesMasterId?: string | null
+    type?: string | null
+    originalStart?: string | null
+  },
+  connection: Pick<CalendarConnection, 'calendar_id' | 'calendar_name' | 'calendar_label'>,
+) {
+  const start = outlookDateTimeToIso(event.start)
+  const recurrence = parseOutlookRecurrence(event.recurrence, start)
+
+  return {
+    id: event.id || '',
+    title: event.subject || 'Untitled event',
+    start,
+    end: outlookDateTimeToIso(event.end),
+    provider: 'outlook',
+    calendarId: connection.calendar_id,
+    calendarName: connection.calendar_label?.trim() || connection.calendar_name || 'Outlook Calendar',
+    timeLabel: start ? formatSmsTime(new Date(start)) : 'All day',
+    location: event.location?.displayName || '',
+    description: event.bodyPreview || '',
+    organizerEmail: event.organizer?.emailAddress?.address || '',
+    attendeeCount: event.attendees?.length || 0,
+    recurrence: recurrence ? [recurrenceSummary(recurrence, start) || 'Recurring event'] : null,
+    recurringEventId: event.seriesMasterId || null,
+    originalStart: event.originalStart || null,
+  } satisfies EventSummary
+}
+
 function googleClientFromTokens(tokens: Credentials) {
   const auth = googleOAuthClient()
   auth.setCredentials({
@@ -186,6 +339,152 @@ function googleClientFromTokens(tokens: Credentials) {
   })
 
   return google.calendar({ version: 'v3', auth })
+}
+
+function providerLabel(provider: CalendarProvider) {
+  return provider === 'outlook' ? 'Outlook' : 'Google'
+}
+
+function normalizeOutlookGraphDateTime(value: Date | string) {
+  return new Date(value).toISOString().replace(/Z$/, '')
+}
+
+function graphHeaders(accessToken: string, extra?: Record<string, string>) {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    'Content-Type': 'application/json',
+    Prefer: 'outlook.timezone="UTC"',
+    ...extra,
+  }
+}
+
+async function graphJson<T>(
+  path: string,
+  {
+    accessToken,
+    method = 'GET',
+    body,
+  }: {
+    accessToken: string
+    method?: string
+    body?: unknown
+  },
+) {
+  const response = await fetch(`${microsoftGraphBase}${path}`, {
+    method,
+    headers: graphHeaders(accessToken),
+    body: body ? JSON.stringify(body) : undefined,
+  })
+
+  if (!response.ok) {
+    const errorBody = await response.text()
+    throw new Error(`Microsoft Graph request failed: ${response.status} ${errorBody}`)
+  }
+
+  if (response.status === 204) {
+    return null as T
+  }
+
+  return (await response.json()) as T
+}
+
+function parseOutlookRecurrence(
+  recurrence: unknown,
+  start: string,
+): RecurrenceSpec | null {
+  if (!recurrence || typeof recurrence !== 'object') return null
+
+  const pattern = (recurrence as { pattern?: Record<string, unknown> }).pattern
+  if (!pattern || typeof pattern !== 'object') return null
+
+  const type = String(pattern.type || '')
+  const interval = Number(pattern.interval || 1)
+
+  if (type === 'weekly' && (interval === 1 || interval === 2)) {
+    return {
+      unit: 'week',
+      interval: interval as 1 | 2,
+    }
+  }
+
+  if (type === 'absoluteMonthly') {
+    return {
+      unit: 'month',
+      interval: 1,
+      mode: 'month_day',
+    }
+  }
+
+  if (type === 'relativeMonthly') {
+    return {
+      unit: 'month',
+      interval: 1,
+      mode: 'nth_weekday',
+    }
+  }
+
+  return null
+}
+
+function outlookRecurrenceBody(spec: RecurrenceSpec | null | undefined, start: string) {
+  if (!spec) return undefined
+
+  const date = new Date(start)
+  if (Number.isNaN(date.getTime())) return undefined
+
+  const weekdayNames = [
+    'sunday',
+    'monday',
+    'tuesday',
+    'wednesday',
+    'thursday',
+    'friday',
+    'saturday',
+  ]
+  const nth = Math.floor((date.getUTCDate() - 1) / 7) + 1
+  const index = nth >= 5 ? 'last' : (['first', 'second', 'third', 'fourth'][nth - 1] || 'last')
+
+  if (spec.unit === 'week') {
+    return {
+      pattern: {
+        type: 'weekly',
+        interval: spec.interval,
+        daysOfWeek: [weekdayNames[date.getUTCDay()]],
+        firstDayOfWeek: 'sunday',
+      },
+      range: {
+        type: 'noEnd',
+        startDate: date.toISOString().slice(0, 10),
+      },
+    }
+  }
+
+  if (spec.mode === 'nth_weekday') {
+    return {
+      pattern: {
+        type: 'relativeMonthly',
+        interval: 1,
+        daysOfWeek: [weekdayNames[date.getUTCDay()]],
+        index,
+      },
+      range: {
+        type: 'noEnd',
+        startDate: date.toISOString().slice(0, 10),
+      },
+    }
+  }
+
+  return {
+    pattern: {
+      type: 'absoluteMonthly',
+      interval: 1,
+      dayOfMonth: date.getUTCDate(),
+    },
+    range: {
+      type: 'noEnd',
+      startDate: date.toISOString().slice(0, 10),
+    },
+  }
 }
 
 async function loadGoogleCalendarDescriptors(calendar: calendar_v3.Calendar) {
@@ -219,27 +518,111 @@ async function loadGoogleCalendarDescriptors(calendar: calendar_v3.Calendar) {
   return calendars
 }
 
+async function loadOutlookProfileAndCalendars(accessToken: string) {
+  const profile = await graphJson<{
+    id: string
+    mail?: string | null
+    userPrincipalName?: string | null
+  }>('/me?$select=id,mail,userPrincipalName', {
+    accessToken,
+  })
+
+  const calendarsResponse = await graphJson<{
+    value: Array<{
+      id: string
+      name?: string | null
+      canEdit?: boolean | null
+      isDefaultCalendar?: boolean | null
+      owner?: { address?: string | null } | null
+    }>
+  }>('/me/calendars?$select=id,name,canEdit,isDefaultCalendar,owner', {
+    accessToken,
+  })
+
+  const calendars = (calendarsResponse.value || []).map<OutlookCalendarDescriptor>((item) => ({
+    id: item.id,
+    name: item.name || item.id,
+    canEdit: item.canEdit !== false,
+    isDefaultCalendar: Boolean(item.isDefaultCalendar),
+    ownerEmail: item.owner?.address || null,
+  }))
+
+  return {
+    accountId: profile.id,
+    accountEmail: profile.mail || profile.userPrincipalName || null,
+    calendars,
+  }
+}
+
+async function refreshOutlookTokensForAccount(connection: CalendarConnection) {
+  if (connection.provider !== 'outlook' || !connection.refresh_token) {
+    throw new Error('Outlook refresh token is missing.')
+  }
+
+  const params = new URLSearchParams()
+  params.set('grant_type', 'refresh_token')
+  params.set('refresh_token', connection.refresh_token)
+  params.set('scope', microsoftScopes.join(' '))
+
+  const tokens = await microsoftTokenRequest(params)
+
+  const { error } = await supabaseAdmin
+    .from('calendar_connections')
+    .update({
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token || connection.refresh_token,
+      expires_at: tokens.expires_at,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('profile_id', connection.profile_id)
+    .eq('provider', 'outlook')
+    .eq('account_id', connection.account_id)
+
+  if (error) throw error
+
+  return {
+    accessToken: tokens.access_token,
+    refreshToken: tokens.refresh_token || connection.refresh_token,
+    expiresAt: tokens.expires_at,
+  }
+}
+
+async function ensureOutlookAccessToken(connection: CalendarConnection) {
+  const expiresAt = connection.expires_at ? new Date(connection.expires_at).getTime() : null
+  if (connection.access_token && (!expiresAt || expiresAt - Date.now() > 60_000)) {
+    return connection.access_token
+  }
+
+  const refreshed = await refreshOutlookTokensForAccount(connection)
+  return refreshed.accessToken
+}
+
 function uniqueAccountIds(connections: CalendarConnection[]) {
   return [...new Set(connections.map((connection) => connection.account_id).filter(Boolean))]
 }
 
 function groupConnectionsByAccount(connections: CalendarConnection[]) {
   return connections.reduce<Record<string, CalendarConnection[]>>((groups, connection) => {
-    groups[connection.account_id] ||= []
-    groups[connection.account_id].push(connection)
+    const key = `${connection.provider}:${connection.account_id}`
+    groups[key] ||= []
+    groups[key].push(connection)
     return groups
   }, {})
 }
 
 function visibleConfiguredCalendars(connections: CalendarConnection[]) {
-  const visible = connections.filter((connection) => !isSystemCalendar({
-    id: connection.calendar_id,
-    name: connection.calendar_name,
-    primary: connection.is_primary,
-    selected: true,
-    hidden: false,
-    accessRole: connection.access_role,
-  }))
+  const visible = connections.filter((connection) => {
+    if (connection.provider !== 'google') return true
+
+    return !isSystemCalendar({
+      id: connection.calendar_id,
+      name: connection.calendar_name,
+      primary: connection.is_primary,
+      selected: true,
+      hidden: false,
+      accessRole: connection.access_role,
+    })
+  })
 
   return visible.length ? visible : connections
 }
@@ -259,46 +642,68 @@ function deriveDefaultCalendarLabel({
 }
 
 export async function getGoogleConnection(profileId: string) {
-  const [connection] = await getGoogleConnections(profileId)
+  const [connection] = await getCalendarConnections(profileId, 'google')
   return connection || null
 }
 
-async function getGoogleConnections(profileId: string) {
-  const { data, error } = await supabaseAdmin
+async function getCalendarConnections(profileId: string, provider?: CalendarProvider) {
+  let query = supabaseAdmin
     .from('calendar_connections')
     .select(
       'id,profile_id,provider,account_id,account_email,calendar_id,calendar_name,calendar_label,access_token,refresh_token,expires_at,access_role,is_primary,include_in_conflicts,allow_new_events,status',
     )
     .eq('profile_id', profileId)
-    .eq('provider', 'google')
     .eq('status', 'active')
     .order('account_email', { ascending: true, nullsFirst: false })
     .order('is_primary', { ascending: false })
     .order('calendar_name', { ascending: true })
 
+  if (provider) {
+    query = query.eq('provider', provider)
+  }
+
+  const { data, error } = await query
+
   if (error) throw error
   return (data || []) as CalendarConnection[]
 }
 
+async function getGoogleConnections(profileId: string) {
+  return getCalendarConnections(profileId, 'google')
+}
+
+async function getOutlookConnections(profileId: string) {
+  return getCalendarConnections(profileId, 'outlook')
+}
+
 async function calendarForConnection(connection: CalendarConnection) {
-  const auth = googleOAuthClient()
-  auth.setCredentials({
-    access_token: connection.access_token,
-    refresh_token: connection.refresh_token || undefined,
-    expiry_date: connection.expires_at ? new Date(connection.expires_at).getTime() : undefined,
-  })
+  if (connection.provider === 'google') {
+    const auth = googleOAuthClient()
+    auth.setCredentials({
+      access_token: connection.access_token,
+      refresh_token: connection.refresh_token || undefined,
+      expiry_date: connection.expires_at ? new Date(connection.expires_at).getTime() : undefined,
+    })
+
+    return {
+      provider: 'google' as const,
+      calendar: google.calendar({ version: 'v3', auth }),
+      connection,
+    }
+  }
 
   return {
-    calendar: google.calendar({ version: 'v3', auth }),
+    provider: 'outlook' as const,
+    accessToken: await ensureOutlookAccessToken(connection),
     connection,
   }
 }
 
 async function calendarForProfile(
   profileId: string,
-  options?: { calendarId?: string; accountId?: string },
+  options?: { calendarId?: string; accountId?: string; provider?: CalendarProvider },
 ) {
-  const connections = await getGoogleConnections(profileId)
+  const connections = await getCalendarConnections(profileId, options?.provider)
   const connection =
     (options?.calendarId
       ? connections.find((item) => item.calendar_id === options.calendarId)
@@ -312,8 +717,12 @@ async function calendarForProfile(
   return calendarForConnection(connection)
 }
 
+export async function hasConnectedCalendar(profileId: string) {
+  return Boolean((await getCalendarConnections(profileId))[0])
+}
+
 export async function hasGoogleCalendar(profileId: string) {
-  return Boolean(await getGoogleConnection(profileId))
+  return hasConnectedCalendar(profileId)
 }
 
 export async function storeGoogleConnection(
@@ -396,8 +805,77 @@ export async function storeGoogleConnection(
   }
 }
 
-export async function listConfiguredGoogleCalendars(profileId: string) {
-  const connections = visibleConfiguredCalendars(await getGoogleConnections(profileId))
+export async function storeOutlookConnection(
+  profileId: string,
+  code: string,
+  options?: { reconnectAccountId?: string | null },
+) {
+  const tokens = await exchangeMicrosoftCode(code)
+  const accountData = await loadOutlookProfileAndCalendars(tokens.access_token)
+  const existingConnections = await getOutlookConnections(profileId)
+  const existingAccountIds = uniqueAccountIds(existingConnections)
+  const accountId = accountData.accountId
+
+  if (!existingAccountIds.includes(accountId) && existingAccountIds.length >= 2) {
+    throw new Error('Manoa supports up to 2 Outlook accounts right now.')
+  }
+
+  const existingByCalendarId = new Map(
+    existingConnections
+      .filter((connection) => connection.account_id === accountId)
+      .map((connection) => [connection.calendar_id, connection]),
+  )
+
+  await supabaseAdmin
+    .from('calendar_connections')
+    .update({
+      status: 'inactive',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('profile_id', profileId)
+    .eq('provider', 'outlook')
+    .eq('account_id', options?.reconnectAccountId || accountId)
+
+  const rows = accountData.calendars.map((descriptor) => {
+    const existing = existingByCalendarId.get(descriptor.id)
+    const writable = descriptor.canEdit
+
+    return {
+      profile_id: profileId,
+      provider: 'outlook' as const,
+      account_id: accountId,
+      account_email: accountData.accountEmail,
+      calendar_id: descriptor.id,
+      calendar_name: descriptor.name,
+      calendar_label:
+        existing?.calendar_label?.trim() ||
+        (descriptor.isDefaultCalendar && !existingAccountIds.length ? 'Personal' : descriptor.name),
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      expires_at: tokens.expires_at,
+      access_role: existing?.access_role || mapOutlookAccessRole(descriptor),
+      is_primary: descriptor.isDefaultCalendar,
+      include_in_conflicts: existing?.include_in_conflicts ?? true,
+      allow_new_events: existing?.allow_new_events ?? writable,
+      status: 'active',
+      updated_at: new Date().toISOString(),
+    }
+  })
+
+  const { error } = await supabaseAdmin.from('calendar_connections').upsert(rows, {
+    onConflict: 'profile_id,provider,calendar_id',
+  })
+
+  if (error) throw error
+
+  return {
+    accountId,
+    accountEmail: accountData.accountEmail,
+    calendarCount: rows.length,
+  }
+}
+
+function configuredAccountsFromConnections(connections: CalendarConnection[]) {
   const accounts = groupConnectionsByAccount(connections)
 
   return Object.values(accounts)
@@ -419,7 +897,7 @@ export async function listConfiguredGoogleCalendars(profileId: string) {
           accountId: connection.account_id,
           accountEmail: connection.account_email,
           calendarId: connection.calendar_id,
-          provider: 'google',
+          provider: connection.provider,
           sourceName: connection.calendar_name,
           label: displayCalendarName(connection),
           includeInConflicts: connection.include_in_conflicts,
@@ -429,12 +907,34 @@ export async function listConfiguredGoogleCalendars(profileId: string) {
         }))
 
       return {
+        provider: group[0].provider,
         accountId: group[0].account_id,
         accountEmail: group[0].account_email,
         calendars: sortedCalendars,
-      } satisfies ConfiguredGoogleAccount
+      } satisfies ConfiguredCalendarAccount
     })
-    .sort((left, right) => (left.accountEmail || left.accountId).localeCompare(right.accountEmail || right.accountId))
+    .sort((left, right) => {
+      if (left.provider !== right.provider) {
+        return left.provider.localeCompare(right.provider)
+      }
+
+      return (left.accountEmail || left.accountId).localeCompare(right.accountEmail || right.accountId)
+    })
+}
+
+export async function listConfiguredCalendarAccounts(profileId: string) {
+  const connections = visibleConfiguredCalendars(await getCalendarConnections(profileId))
+  return configuredAccountsFromConnections(connections)
+}
+
+export async function listConfiguredGoogleCalendars(profileId: string) {
+  const connections = visibleConfiguredCalendars(await getGoogleConnections(profileId))
+  return configuredAccountsFromConnections(connections)
+}
+
+export async function listConfiguredOutlookCalendars(profileId: string) {
+  const connections = visibleConfiguredCalendars(await getOutlookConnections(profileId))
+  return configuredAccountsFromConnections(connections)
 }
 
 export async function updateConfiguredGoogleCalendar({
@@ -455,7 +955,6 @@ export async function updateConfiguredGoogleCalendar({
     .select('id,profile_id,calendar_name,access_role')
     .eq('id', connectionId)
     .eq('profile_id', profileId)
-    .eq('provider', 'google')
     .eq('status', 'active')
     .maybeSingle<{
       id: string
@@ -492,7 +991,7 @@ function toPlacementOption(connection: CalendarConnection): CalendarPlacementOpt
     calendarId: connection.calendar_id,
     calendarName: connection.calendar_name,
     calendarLabel: displayCalendarName(connection),
-    provider: 'google',
+    provider: connection.provider,
   }
 }
 
@@ -508,7 +1007,10 @@ export async function resolveCalendarPlacement(
 
   const bookingCalendars = bookingConnections.map(toPlacementOption)
   const normalizedHint = normalizeCalendarText(calendarHint || '')
-  const genericHint = !normalizedHint || normalizedHint === normalizeCalendarText('Google Calendar')
+  const genericHint =
+    !normalizedHint ||
+    normalizedHint === normalizeCalendarText('Google Calendar') ||
+    normalizedHint === normalizeCalendarText('Calendar')
 
   if (genericHint) {
     return {
@@ -543,7 +1045,59 @@ export async function resolveCalendarPlacement(
 
 function groupedAvailabilityConnections(connections: CalendarConnection[]) {
   const included = connections.filter((connection) => connection.include_in_conflicts)
-  return groupConnectionsByAccount(included.length ? included : connections)
+  return (included.length ? included : connections).reduce<Record<string, CalendarConnection[]>>(
+    (groups, connection) => {
+      const key = `${connection.provider}:${connection.account_id}`
+      groups[key] ||= []
+      groups[key].push(connection)
+      return groups
+    },
+    {},
+  )
+}
+
+async function listOutlookEventsForConnection({
+  connection,
+  timeMin,
+  timeMax,
+  maxResults,
+}: {
+  connection: CalendarConnection
+  timeMin: Date
+  timeMax: Date
+  maxResults: number
+}) {
+  const accessToken = await ensureOutlookAccessToken(connection)
+  const params = new URLSearchParams()
+  params.set('startDateTime', timeMin.toISOString())
+  params.set('endDateTime', timeMax.toISOString())
+  params.set(
+    '$select',
+    'id,subject,start,end,location,bodyPreview,organizer,attendees,recurrence,seriesMasterId,type,originalStart',
+  )
+  params.set('$orderby', 'start/dateTime')
+  params.set('$top', String(maxResults))
+
+  const response = await graphJson<{
+    value: Array<{
+      id?: string | null
+      subject?: string | null
+      start?: OutlookDateTime | null
+      end?: OutlookDateTime | null
+      location?: { displayName?: string | null } | null
+      bodyPreview?: string | null
+      organizer?: { emailAddress?: { address?: string | null } | null } | null
+      attendees?: Array<unknown> | null
+      recurrence?: unknown
+      seriesMasterId?: string | null
+      type?: string | null
+      originalStart?: string | null
+    }>
+  }>(`/me/calendars/${encodeURIComponent(connection.calendar_id)}/calendarView?${params.toString()}`, {
+    accessToken,
+  })
+
+  return (response.value || []).map((event) => mapOutlookEvent(event, connection))
 }
 
 async function listEventsBetween({
@@ -557,13 +1111,29 @@ async function listEventsBetween({
   timeMax: Date
   maxResults?: number
 }) {
-  const connections = visibleConfiguredCalendars(await getGoogleConnections(profileId))
+  const connections = visibleConfiguredCalendars(await getCalendarConnections(profileId))
   if (!connections.length) return []
 
   const grouped = groupedAvailabilityConnections(connections)
   const eventLists = await Promise.all(
     Object.values(grouped).map(async (accountConnections) => {
+      if (accountConnections[0].provider === 'outlook') {
+        const accountEventLists = await Promise.all(
+          accountConnections.map((connection) =>
+            listOutlookEventsForConnection({
+              connection,
+              timeMin,
+              timeMax,
+              maxResults,
+            }),
+          ),
+        )
+
+        return accountEventLists.flat()
+      }
+
       const client = await calendarForConnection(accountConnections[0])
+      if (client.provider !== 'google') return []
 
       const accountEventLists = await Promise.all(
         accountConnections.map(async (connection) => {
@@ -620,7 +1190,7 @@ export async function listUpcomingEvents({
 }
 
 export async function getCalendarEvent(profileId: string, eventId: string, calendarId?: string) {
-  const connections = await getGoogleConnections(profileId)
+  const connections = await getCalendarConnections(profileId)
   if (!connections.length) return null
 
   const targetConnections = calendarId
@@ -628,7 +1198,35 @@ export async function getCalendarEvent(profileId: string, eventId: string, calen
     : connections
 
   for (const connection of targetConnections) {
+    if (connection.provider === 'outlook') {
+      try {
+        const accessToken = await ensureOutlookAccessToken(connection)
+        const response = await graphJson<{
+          id?: string | null
+          subject?: string | null
+          start?: OutlookDateTime | null
+          end?: OutlookDateTime | null
+          location?: { displayName?: string | null } | null
+          bodyPreview?: string | null
+          organizer?: { emailAddress?: { address?: string | null } | null } | null
+          attendees?: Array<unknown> | null
+          recurrence?: unknown
+          seriesMasterId?: string | null
+          type?: string | null
+          originalStart?: string | null
+        }>(`/me/calendars/${encodeURIComponent(connection.calendar_id)}/events/${encodeURIComponent(eventId)}`, {
+          accessToken,
+        })
+
+        return mapOutlookEvent(response, connection)
+      } catch (error) {
+        if (String(error).includes('404')) continue
+        throw error
+      }
+    }
+
     const client = await calendarForConnection(connection)
+    if (client.provider !== 'google') continue
 
     try {
       const response = await client.calendar.events.get({
@@ -660,7 +1258,26 @@ async function busyBlocks(
   const grouped = groupedAvailabilityConnections(connections)
   const busyLists = await Promise.all(
     Object.values(grouped).map(async (accountConnections) => {
+      if (accountConnections[0].provider === 'outlook') {
+        const eventLists = await Promise.all(
+          accountConnections.map((connection) =>
+            listOutlookEventsForConnection({
+              connection,
+              timeMin,
+              timeMax,
+              maxResults: 100,
+            }),
+          ),
+        )
+
+        return eventLists.flat().flatMap((event) => {
+          if (!event.start || !event.end) return []
+          return [{ start: new Date(event.start), end: new Date(event.end) }]
+        })
+      }
+
       const client = await calendarForConnection(accountConnections[0])
+      if (client.provider !== 'google') return []
       const response = await client.calendar.freebusy.query({
         requestBody: {
           timeMin: timeMin.toISOString(),
@@ -697,7 +1314,11 @@ function chooseTargetConnection({
   }
 
   const normalizedHint = normalizeCalendarText(calendarHint || '')
-  if (normalizedHint && normalizedHint !== normalizeCalendarText('Google Calendar')) {
+  if (
+    normalizedHint &&
+    normalizedHint !== normalizeCalendarText('Google Calendar') &&
+    normalizedHint !== normalizeCalendarText('Calendar')
+  ) {
     const hintWords = normalizedHint.split(' ').filter(Boolean)
     const matched =
       connections.find((connection) => normalizeCalendarText(displayCalendarName(connection)) === normalizedHint) ||
@@ -733,7 +1354,7 @@ export async function findScheduleOptions({
   durationMinutes?: number
   recurrence?: RecurrenceSpec | null
 }) {
-  const connections = visibleConfiguredCalendars(await getGoogleConnections(profileId))
+  const connections = visibleConfiguredCalendars(await getCalendarConnections(profileId))
   if (!connections.length) return []
 
   const writableConnections = connections.filter((connection) => connection.allow_new_events)
@@ -775,6 +1396,7 @@ export async function findScheduleOptions({
       title,
       start: candidate.start.toISOString(),
       end: candidate.end.toISOString(),
+      provider: targetConnection.provider,
       calendarId: targetConnection.calendar_id,
       calendarName: displayCalendarName(targetConnection),
       dayLabel: formatSmsDate(candidate.start),
@@ -783,9 +1405,42 @@ export async function findScheduleOptions({
     }))
 }
 
-export async function createCalendarEvent(profileId: string, option: ScheduleOption) {
-  const client = await calendarForProfile(profileId, { calendarId: option.calendarId })
-  if (!client) throw new Error('Google Calendar is not connected.')
+export async function createCalendarEvent(
+  profileId: string,
+  option: ScheduleOption,
+): Promise<{ id?: string | null }> {
+  const client = await calendarForProfile(profileId, {
+    calendarId: option.calendarId,
+    provider: option.provider,
+  })
+  if (!client) throw new Error('Calendar is not connected.')
+  if (client.provider === 'outlook') {
+    const recurrence = outlookRecurrenceBody(option.recurrence, option.start)
+    return graphJson(`/me/calendars/${encodeURIComponent(option.calendarId || client.connection.calendar_id)}/events`, {
+      accessToken: client.accessToken,
+      method: 'POST',
+      body: {
+        subject: option.title,
+        start: {
+          dateTime: normalizeOutlookGraphDateTime(option.start),
+          timeZone: 'UTC',
+        },
+        end: {
+          dateTime: normalizeOutlookGraphDateTime(option.end),
+          timeZone: 'UTC',
+        },
+        attendees: option.attendees?.map((invitee) => ({
+          emailAddress: {
+            address: invitee.email,
+            name: invitee.displayName || invitee.email,
+          },
+          type: 'required',
+        })),
+        recurrence,
+      },
+    })
+  }
+
   const recurrence = option.recurrence ? recurrenceRule(option.recurrence, option.start) : null
 
   const response = await client.calendar.events.insert({
@@ -815,9 +1470,32 @@ export async function updateCalendarEvent(
   eventId: string,
   option: ScheduleOption,
   sendUpdates: 'all' | 'none' = 'none',
-) {
-  const client = await calendarForProfile(profileId, { calendarId: option.calendarId })
-  if (!client) throw new Error('Google Calendar is not connected.')
+): Promise<unknown> {
+  const client = await calendarForProfile(profileId, {
+    calendarId: option.calendarId,
+    provider: option.provider,
+  })
+  if (!client) throw new Error('Calendar is not connected.')
+  if (client.provider === 'outlook') {
+    const recurrence = outlookRecurrenceBody(option.recurrence, option.start)
+    return graphJson(`/me/calendars/${encodeURIComponent(option.calendarId || client.connection.calendar_id)}/events/${encodeURIComponent(eventId)}`, {
+      accessToken: client.accessToken,
+      method: 'PATCH',
+      body: {
+        subject: option.title,
+        start: {
+          dateTime: normalizeOutlookGraphDateTime(option.start),
+          timeZone: 'UTC',
+        },
+        end: {
+          dateTime: normalizeOutlookGraphDateTime(option.end),
+          timeZone: 'UTC',
+        },
+        recurrence,
+      },
+    })
+  }
+
   const recurrence = option.recurrence ? recurrenceRule(option.recurrence, option.start) : null
 
   const response = await client.calendar.events.patch({
@@ -844,9 +1522,16 @@ export async function deleteCalendarEvent(
   eventId: string,
   calendarId?: string,
   sendUpdates: 'all' | 'none' = 'none',
-) {
+): Promise<void> {
   const client = await calendarForProfile(profileId, { calendarId })
-  if (!client) throw new Error('Google Calendar is not connected.')
+  if (!client) throw new Error('Calendar is not connected.')
+  if (client.provider === 'outlook') {
+    await graphJson(`/me/calendars/${encodeURIComponent(calendarId || client.connection.calendar_id)}/events/${encodeURIComponent(eventId)}`, {
+      accessToken: client.accessToken,
+      method: 'DELETE',
+    })
+    return
+  }
 
   await client.calendar.events.delete({
     calendarId: calendarId || client.connection.calendar_id,

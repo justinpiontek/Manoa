@@ -3,7 +3,7 @@ import {
   deleteCalendarEvent,
   findScheduleOptions,
   getCalendarEvent,
-  hasGoogleCalendar,
+  hasConnectedCalendar,
   listAgenda,
   resolveCalendarPlacement,
   listUpcomingEvents,
@@ -413,6 +413,7 @@ function optionFromExactExternalTime(target: EventSummary, baseDate: Date, exact
     title: target.title,
     start: start.toISOString(),
     end: end.toISOString(),
+    provider: target.provider,
     calendarId: target.calendarId,
     calendarName: target.calendarName,
     dayLabel: formatSmsDate(start),
@@ -1798,8 +1799,8 @@ export async function handleIncomingSms({
     return reply
   }
 
-  if (!(await hasGoogleCalendar(profile.id))) {
-    const reply = 'Your subscription is active. Connect Google Calendar from your signup success page, then text me again.'
+  if (!(await hasConnectedCalendar(profile.id))) {
+    const reply = 'Your subscription is active. Connect Google or Outlook from your setup page, then text me again.'
     await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
     return reply
   }

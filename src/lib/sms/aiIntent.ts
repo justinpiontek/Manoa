@@ -116,7 +116,7 @@ function toParsedSmsIntent(payload: AiIntentPayload): ParsedSmsIntent {
         title: payload.title?.trim() || 'meeting',
         baseDate: parseBaseDate(payload.day, payload.weekday),
         exactTime: parseExactTime(payload.exact_time_24h),
-        calendarHint: payload.calendar_hint || 'Google Calendar',
+        calendarHint: payload.calendar_hint || 'Calendar',
         durationMinutes: payload.duration_minutes || 30,
         recurrence: parseRecurrence(payload),
       }
@@ -127,7 +127,7 @@ function toParsedSmsIntent(payload: AiIntentPayload): ParsedSmsIntent {
         query: payload.query?.trim() || payload.title?.trim() || 'meeting',
         baseDate: parseBaseDate(payload.day, payload.weekday),
         exactTime: parseExactTime(payload.exact_time_24h),
-        calendarHint: payload.calendar_hint || 'Google Calendar',
+        calendarHint: payload.calendar_hint || 'Calendar',
       }
 
     case 'cancel':
@@ -187,7 +187,7 @@ export async function parseSmsIntentWithAIResult(body: string): Promise<AiParseR
               `- Detect recurring scheduling like every Tuesday, weekly, every other Friday, biweekly, and monthly.\n` +
               `- Use recurrence_unit week for weekly or every-other-week repeats, and month for monthly repeats.\n` +
               `- For monthly phrases tied to a weekday like "monthly Tuesday", use recurrence_mode nth_weekday. Otherwise use month_day.\n` +
-              `- Preserve the user's calendar label when they name one, like "Personal", "Metonga Media", or "Part-time job". Use "Google Calendar" only if they did not name one.\n` +
+              `- Preserve the user's calendar label when they name one, like "Personal", "Metonga Media", or "Part-time job". Use "Calendar" only if they did not name one.\n` +
               `- Strip invitee names/emails from the title/query if possible.`,
           },
           {

@@ -45,8 +45,8 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
         </h1>
         <p className="setup-lede">
           {calendarConnected
-            ? 'Your Google Calendar is connected. Manoa can now check your availability, offer open times, and book events after you confirm by text.'
-            : 'After you subscribe, connect Google Calendar so Manoa can see availability and book events for you by text.'}
+            ? 'Your calendar is connected. Manoa can now check your availability, offer open times, and book events after you confirm by text.'
+            : 'After you subscribe, connect Google or Outlook so Manoa can see availability and book events for you by text.'}
         </p>
 
         <div className="status-row" aria-label="Setup status">
@@ -66,7 +66,7 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
 
         {calendarConnected ? (
           <div className="notice success" role="status" aria-live="polite">
-            Google Calendar connected successfully.
+            Calendar connected successfully.
           </div>
         ) : null}
 
@@ -81,13 +81,18 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
             <span className="step-number">2</span>
             <h2>Calendar connection</h2>
             <p>
-              Connect Google Calendar so Manoa can find open times, book events, send daily agendas,
+              Connect Google or Outlook so Manoa can find open times, book events, send daily agendas,
               and keep reminders accurate.
             </p>
             {profileId ? (
-              <a className="button setup-action" href={`/api/calendar/google/start?profile_id=${profileId}`}>
-                {calendarConnected ? 'Reconnect Google Calendar' : 'Connect Google Calendar'}
-              </a>
+              <div className="dashboard-hero-actions">
+                <a className="button setup-action" href={`/api/calendar/google/start?profile_id=${profileId}`}>
+                  {calendarConnected ? 'Connect or reconnect Google' : 'Connect Google Calendar'}
+                </a>
+                <a className="button setup-action secondary-button" href={`/api/calendar/outlook/start?profile_id=${profileId}`}>
+                  {calendarConnected ? 'Connect or reconnect Outlook' : 'Connect Outlook Calendar'}
+                </a>
+              </div>
             ) : (
               <p className="setup-note">
                 Missing setup link. Head back to the signup page and restart checkout.

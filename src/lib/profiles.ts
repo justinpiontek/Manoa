@@ -11,6 +11,7 @@ export type Profile = {
 
 export type DashboardProfile = Profile & {
   subscriptionStatus: string | null
+  calendarConnected: boolean
   googleCalendarConnected: boolean
 }
 
@@ -176,7 +177,6 @@ export async function getDashboardProfileByEmail(email: string) {
     .from('calendar_connections')
     .select('id')
     .eq('profile_id', profile.id)
-    .eq('provider', 'google')
     .eq('status', 'active')
     .limit(1)
     .maybeSingle<{ id: string }>()
@@ -186,6 +186,7 @@ export async function getDashboardProfileByEmail(email: string) {
   return {
     ...profile,
     subscriptionStatus,
+    calendarConnected: Boolean(calendarConnection?.id),
     googleCalendarConnected: Boolean(calendarConnection?.id),
   } satisfies DashboardProfile
 }
@@ -206,7 +207,6 @@ export async function getDashboardProfile(profileId: string) {
     .from('calendar_connections')
     .select('id')
     .eq('profile_id', profileId)
-    .eq('provider', 'google')
     .eq('status', 'active')
     .limit(1)
     .maybeSingle<{ id: string }>()
@@ -216,6 +216,7 @@ export async function getDashboardProfile(profileId: string) {
   return {
     ...profile,
     subscriptionStatus,
+    calendarConnected: Boolean(calendarConnection?.id),
     googleCalendarConnected: Boolean(calendarConnection?.id),
   } satisfies DashboardProfile
 }

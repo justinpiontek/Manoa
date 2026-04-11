@@ -10,7 +10,8 @@ This repo is now a real MVP scaffold:
 - Supabase-backed profiles, subscriptions, calendar connections, business contacts, SMS logs, pending actions, and reminders
 - Twilio inbound SMS webhook
 - Google Calendar OAuth connection
-- Google Calendar agenda, schedule, reschedule, cancel, and reminder hooks
+- Outlook Calendar OAuth connection
+- Calendar agenda, schedule, reschedule, cancel, and reminder hooks
 
 ## Product Rules
 
@@ -68,6 +69,8 @@ psql "$SUPABASE_DB_URL" -f supabase/migrations/20260409_people_contacts_and_invi
 - `POST /api/twilio/inbound`: verifies Twilio, checks subscription/calendar state, and routes SMS commands
 - `GET /api/calendar/google/start?profile_id=...`: starts Google Calendar OAuth
 - `GET /api/calendar/google/callback`: stores Google OAuth tokens
+- `GET /api/calendar/outlook/start?profile_id=...`: starts Outlook OAuth
+- `GET /api/calendar/outlook/callback`: stores Outlook OAuth tokens
 - `GET` or `POST /api/jobs/morning-agenda`: sends morning agenda texts
 - `GET` or `POST /api/jobs/reminders`: sends queued reminder texts
 
@@ -84,6 +87,7 @@ Add every value from `.env.example` to the Vercel project environment variables.
 ```sh
 NEXT_PUBLIC_APP_URL=https://your-domain.com
 GOOGLE_REDIRECT_URI=https://your-domain.com/api/calendar/google/callback
+MICROSOFT_REDIRECT_URI=https://your-domain.com/api/calendar/outlook/callback
 ```
 
 If you are using a Stripe Payment Link instead of creating Checkout Sessions in code, set:
@@ -106,6 +110,7 @@ After deployment, point the external services at the production routes:
 - Stripe webhook: `https://your-domain.com/api/stripe/webhook`
 - Twilio inbound SMS webhook: `https://your-domain.com/api/twilio/inbound`
 - Google OAuth redirect URI: `https://your-domain.com/api/calendar/google/callback`
+- Microsoft OAuth redirect URI: `https://your-domain.com/api/calendar/outlook/callback`
 
 The job routes are ready for Vercel Cron because they support `GET`. Set `CRON_SECRET` in Vercel before turning on cron jobs so Vercel sends the `Authorization: Bearer ...` header.
 
@@ -121,7 +126,7 @@ Vercel Hobby allows daily cron jobs, but more frequent cron schedules can fail d
 1. Customer signs up with email and phone.
 2. Stripe Checkout or a Stripe Payment Link creates the subscription.
 3. Stripe webhook stores `active` or `trialing` subscription status.
-4. Customer connects Google Calendar.
+4. Customer connects Google Calendar or Outlook.
 5. Twilio sends inbound texts to `/api/twilio/inbound`.
 6. Backend normalizes `From`, finds the Supabase profile, checks subscription, checks calendar connection, then processes the text.
 7. If Manoa offers options, they are stored in `pending_actions`.
@@ -154,6 +159,5 @@ OPENAI_SMS_MODEL=gpt-5.4-mini
 
 ## Notes
 
-- Start with Google Calendar only. Add Outlook after this flow works end to end.
-- Apple/iCloud Calendar should come later because onboarding is less seamless than Google or Outlook.
+- Start with Google and Outlook. Add Apple/iCloud later because onboarding is less seamless than Google or Outlook.
 - The AI layer now optionally assists `src/lib/sms/parser.ts`, but the backend still owns subscription checks, calendar writes, pending options, and reminders.

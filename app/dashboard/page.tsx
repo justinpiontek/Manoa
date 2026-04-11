@@ -1,7 +1,7 @@
 import { stripe } from '@/src/lib/stripeClient'
 import { appUrl } from '@/src/lib/env'
 import { formatPhoneForDisplay } from '@/src/lib/phone'
-import { listConfiguredGoogleCalendars } from '@/src/lib/calendar/google'
+import { listConfiguredCalendarAccounts } from '@/src/lib/calendar/google'
 import { getDashboardProfile, getDashboardProfileByEmail } from '@/src/lib/profiles'
 import { createSupabaseServerClient } from '@/src/lib/supabase/server'
 import type { Metadata } from 'next'
@@ -27,6 +27,10 @@ function subscriptionLabel(status: string | null) {
   if (status === 'past_due') return 'Past due'
   if (status === 'canceled') return 'Canceled'
   return 'Pending'
+}
+
+function providerLabel(provider: 'google' | 'outlook') {
+  return provider === 'outlook' ? 'Outlook' : 'Google'
 }
 
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
@@ -79,8 +83,12 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     )
   }
 
-  const googleAccounts = await listConfiguredGoogleCalendars(profile.id)
+  const calendarAccounts = await listConfiguredCalendarAccounts(profile.id)
+  const googleAccounts = calendarAccounts.filter((account) => account.provider === 'google')
+  const outlookAccounts = calendarAccounts.filter((account) => account.provider === 'outlook')
   const canAddGoogleAccount = googleAccounts.length < 2
+  const canAddOutlookAccount = outlookAccounts.length < 2
+  const totalConnectedAccounts = calendarAccounts.length
 
   return (
     <main className="dashboard-shell">
@@ -113,9 +121,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             <strong>Subscription</strong>
             <span>{subscriptionLabel(profile.subscriptionStatus)}</span>
           </div>
-          <div className={`status-pill ${profile.googleCalendarConnected ? 'ready' : 'pending'}`}>
+          <div className={`status-pill ${profile.calendarConnected ? 'ready' : 'pending'}`}>
             <strong>Calendar</strong>
-            <span>{profile.googleCalendarConnected ? 'Connected' : 'Needs attention'}</span>
+            <span>{profile.calendarConnected ? 'Connected' : 'Needs attention'}</span>
           </div>
           <div className={`status-pill ${manoaNumber ? 'ready' : 'pending'}`}>
             <strong>Text line</strong>
@@ -125,7 +133,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
         {calendarConnected ? (
           <div className="notice success" role="status" aria-live="polite">
-            Google Calendar connected successfully.
+            Calendar connected successfully.
           </div>
         ) : null}
 
@@ -197,15 +205,20 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
           <article className="dashboard-section">
             <p className="dashboard-label">Calendar</p>
-            <h3>{profile.googleCalendarConnected ? 'Google Calendar connected' : 'Calendar still missing'}</h3>
+            <h3>{profile.calendarConnected ? 'Calendar connected' : 'Calendar still missing'}</h3>
             <p>
-              {profile.googleCalendarConnected
-                ? `Manoa can check availability, book events, and keep reminders accurate across ${googleAccounts.length || 1} Google account${googleAccounts.length === 1 ? '' : 's'}.`
-                : 'Connect Google Calendar so Manoa can find open times and book by text.'}
+              {profile.calendarConnected
+                ? `Manoa can check availability, book events, and keep reminders accurate across ${totalConnectedAccounts || 1} connected account${totalConnectedAccounts === 1 ? '' : 's'}.`
+                : 'Connect Google or Outlook so Manoa can find open times and book by text.'}
             </p>
-            <a className="button dashboard-button" href={`/api/calendar/google/start?profile_id=${profile.id}`}>
-              {profile.googleCalendarConnected ? 'Connect or reconnect Google Calendar' : 'Connect Google Calendar'}
-            </a>
+            <div className="dashboard-hero-actions">
+              <a className="button dashboard-button" href={`/api/calendar/google/start?profile_id=${profile.id}`}>
+                {googleAccounts.length ? 'Connect or reconnect Google' : 'Connect Google Calendar'}
+              </a>
+              <a className="button dashboard-button secondary-button" href={`/api/calendar/outlook/start?profile_id=${profile.id}`}>
+                {outlookAccounts.length ? 'Connect or reconnect Outlook' : 'Connect Outlook Calendar'}
+              </a>
+            </div>
           </article>
 
           <article className="dashboard-section">
@@ -218,7 +231,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </article>
         </div>
 
-        {googleAccounts.length ? (
+        {calendarAccounts.length ? (
           <section className="dashboard-calendar-manager">
             <div className="dashboard-calendar-manager-top">
               <div>
@@ -230,26 +243,38 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                   instead of guessing.
                 </p>
               </div>
-              {canAddGoogleAccount ? (
-                <a className="button dashboard-button" href={`/api/calendar/google/start?profile_id=${profile.id}`}>
-                  Connect another Google account
-                </a>
-              ) : null}
+              <div className="dashboard-hero-actions">
+                {canAddGoogleAccount ? (
+                  <a className="button dashboard-button" href={`/api/calendar/google/start?profile_id=${profile.id}`}>
+                    Connect another Google account
+                  </a>
+                ) : null}
+                {canAddOutlookAccount ? (
+                  <a className="button dashboard-button secondary-button" href={`/api/calendar/outlook/start?profile_id=${profile.id}`}>
+                    Connect Outlook account
+                  </a>
+                ) : null}
+              </div>
             </div>
 
             <div className="calendar-account-stack">
-              {googleAccounts.map((account) => (
+              {calendarAccounts.map((account) => (
                 <article key={account.accountId} className="calendar-account-card">
                   <div className="calendar-account-head">
                     <div>
-                      <h3>{account.accountEmail || 'Google account'}</h3>
+                      <h3>{account.accountEmail || `${providerLabel(account.provider)} account`}</h3>
                       <p>
-                        {account.calendars.length} calendar{account.calendars.length === 1 ? '' : 's'} connected
+                        {providerLabel(account.provider)} • {account.calendars.length} calendar
+                        {account.calendars.length === 1 ? '' : 's'} connected
                       </p>
                     </div>
                     <a
                       className="nav-link"
-                      href={`/api/calendar/google/start?profile_id=${profile.id}&account_id=${account.accountId}`}
+                      href={
+                        account.provider === 'outlook'
+                          ? `/api/calendar/outlook/start?profile_id=${profile.id}&account_id=${account.accountId}`
+                          : `/api/calendar/google/start?profile_id=${profile.id}&account_id=${account.accountId}`
+                      }
                     >
                       Reconnect account
                     </a>
@@ -270,7 +295,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                           <div>
                             <strong>{calendar.sourceName}</strong>
                             <span>
-                              {calendar.isPrimary ? 'Primary Google calendar' : 'Google calendar'}
+                              {calendar.isPrimary
+                                ? `Primary ${providerLabel(calendar.provider)} calendar`
+                                : `${providerLabel(calendar.provider)} calendar`}
                             </span>
                           </div>
                           {!calendar.canWrite ? (

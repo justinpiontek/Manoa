@@ -289,7 +289,7 @@ export default function ManoaSignupPage() {
     if (params.get('calendar') === 'connected') {
       setStatusNotice({
         tone: 'success',
-        text: 'Google Calendar connected. Manoa can now check availability and book events for your account.',
+        text: 'Calendar connected. Manoa can now check availability and book events for your account.',
       })
       return
     }
@@ -789,7 +789,7 @@ export default function ManoaSignupPage() {
           <div className="mini-points" aria-label="Plan details">
             <span>Takes 30 seconds to set up</span>
             <span>Cancel anytime</span>
-            <span>Connect Google Calendar after checkout</span>
+            <span>Connect Google or Outlook after checkout</span>
           </div>
 
           <form action="/api/start-checkout" method="post">
