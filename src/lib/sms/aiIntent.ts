@@ -19,7 +19,7 @@ type AiIntentPayload = {
   title: string | null
   query: string | null
   exact_time_24h: string | null
-  calendar_hint: 'Work' | 'Family' | 'Personal' | 'Google Calendar' | null
+  calendar_hint: string | null
   duration_minutes: number | null
   recurrence_unit: 'week' | 'month' | null
   recurrence_interval: 1 | 2 | null
@@ -187,7 +187,7 @@ export async function parseSmsIntentWithAIResult(body: string): Promise<AiParseR
               `- Detect recurring scheduling like every Tuesday, weekly, every other Friday, biweekly, and monthly.\n` +
               `- Use recurrence_unit week for weekly or every-other-week repeats, and month for monthly repeats.\n` +
               `- For monthly phrases tied to a weekday like "monthly Tuesday", use recurrence_mode nth_weekday. Otherwise use month_day.\n` +
-              `- For calendar_hint, use only Work, Family, Personal, or Google Calendar.\n` +
+              `- Preserve the user's calendar label when they name one, like "Personal", "Metonga Media", or "Part-time job". Use "Google Calendar" only if they did not name one.\n` +
               `- Strip invitee names/emails from the title/query if possible.`,
           },
           {
@@ -248,7 +248,7 @@ export async function parseSmsIntentWithAIResult(body: string): Promise<AiParseR
                 },
                 calendar_hint: {
                   anyOf: [
-                    { type: 'string', enum: ['Work', 'Family', 'Personal', 'Google Calendar'] },
+                    { type: 'string' },
                     { type: 'null' },
                   ],
                 },

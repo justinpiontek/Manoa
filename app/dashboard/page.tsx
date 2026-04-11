@@ -1,6 +1,7 @@
 import { stripe } from '@/src/lib/stripeClient'
 import { appUrl } from '@/src/lib/env'
 import { formatPhoneForDisplay } from '@/src/lib/phone'
+import { listConfiguredGoogleCalendars } from '@/src/lib/calendar/google'
 import { getDashboardProfile, getDashboardProfileByEmail } from '@/src/lib/profiles'
 import { createSupabaseServerClient } from '@/src/lib/supabase/server'
 import type { Metadata } from 'next'
@@ -77,6 +78,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       </main>
     )
   }
+
+  const googleAccounts = await listConfiguredGoogleCalendars(profile.id)
+  const canAddGoogleAccount = googleAccounts.length < 2
 
   return (
     <main className="dashboard-shell">
@@ -196,11 +200,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             <h3>{profile.googleCalendarConnected ? 'Google Calendar connected' : 'Calendar still missing'}</h3>
             <p>
               {profile.googleCalendarConnected
-                ? 'Manoa can check availability, book events, and keep reminders accurate.'
+                ? `Manoa can check availability, book events, and keep reminders accurate across ${googleAccounts.length || 1} Google account${googleAccounts.length === 1 ? '' : 's'}.`
                 : 'Connect Google Calendar so Manoa can find open times and book by text.'}
             </p>
             <a className="button dashboard-button" href={`/api/calendar/google/start?profile_id=${profile.id}`}>
-              {profile.googleCalendarConnected ? 'Reconnect Google Calendar' : 'Connect Google Calendar'}
+              {profile.googleCalendarConnected ? 'Connect or reconnect Google Calendar' : 'Connect Google Calendar'}
             </a>
           </article>
 
@@ -213,6 +217,106 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             <p>Save Manoa in your contacts so this feels like texting a real assistant.</p>
           </article>
         </div>
+
+        {googleAccounts.length ? (
+          <section className="dashboard-calendar-manager">
+            <div className="dashboard-calendar-manager-top">
+              <div>
+                <p className="dashboard-label">Calendar routing</p>
+                <h2>Teach Manoa what each calendar means.</h2>
+                <p>
+                  Manoa checks every calendar you mark for conflicts. For new events, it uses the
+                  calendar name you text, and if more than one destination could fit, it asks
+                  instead of guessing.
+                </p>
+              </div>
+              {canAddGoogleAccount ? (
+                <a className="button dashboard-button" href={`/api/calendar/google/start?profile_id=${profile.id}`}>
+                  Connect another Google account
+                </a>
+              ) : null}
+            </div>
+
+            <div className="calendar-account-stack">
+              {googleAccounts.map((account) => (
+                <article key={account.accountId} className="calendar-account-card">
+                  <div className="calendar-account-head">
+                    <div>
+                      <h3>{account.accountEmail || 'Google account'}</h3>
+                      <p>
+                        {account.calendars.length} calendar{account.calendars.length === 1 ? '' : 's'} connected
+                      </p>
+                    </div>
+                    <a
+                      className="nav-link"
+                      href={`/api/calendar/google/start?profile_id=${profile.id}&account_id=${account.accountId}`}
+                    >
+                      Reconnect account
+                    </a>
+                  </div>
+
+                  <div className="calendar-settings-grid">
+                    {account.calendars.map((calendar) => (
+                      <form
+                        key={calendar.connectionId}
+                        action="/api/calendar/google/update"
+                        method="post"
+                        className="calendar-setting-card"
+                      >
+                        <input type="hidden" name="profile_id" value={profile.id} />
+                        <input type="hidden" name="connection_id" value={calendar.connectionId} />
+
+                        <div className="calendar-setting-head">
+                          <div>
+                            <strong>{calendar.sourceName}</strong>
+                            <span>
+                              {calendar.isPrimary ? 'Primary Google calendar' : 'Google calendar'}
+                            </span>
+                          </div>
+                          {!calendar.canWrite ? (
+                            <span className="calendar-setting-badge">Read only</span>
+                          ) : null}
+                        </div>
+
+                        <label className="calendar-field">
+                          <span>Name in Manoa</span>
+                          <input name="calendar_label" defaultValue={calendar.label} />
+                        </label>
+
+                        <label className="calendar-toggle">
+                          <input
+                            type="checkbox"
+                            name="include_in_conflicts"
+                            defaultChecked={calendar.includeInConflicts}
+                          />
+                          <span>Use this to block conflicting times</span>
+                        </label>
+
+                        <label className="calendar-toggle">
+                          <input
+                            type="checkbox"
+                            name="allow_new_events"
+                            defaultChecked={calendar.allowNewEvents}
+                            disabled={!calendar.canWrite}
+                          />
+                          <span>
+                            {calendar.canWrite
+                              ? 'Let Manoa place new events here'
+                              : 'This calendar is read only'}
+                          </span>
+                        </label>
+
+                        <button className="nav-link calendar-save-button" type="submit">
+                          Save calendar settings
+                        </button>
+                      </form>
+                    ))}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <section className="dashboard-checklist">
           <p className="dashboard-label">Next steps</p>

@@ -5,8 +5,10 @@ import {
   getCalendarEvent,
   hasGoogleCalendar,
   listAgenda,
+  resolveCalendarPlacement,
   listUpcomingEvents,
   updateCalendarEvent,
+  type CalendarPlacementOption,
   type EventSummary,
   type ScheduleOption,
 } from '../calendar/google'
@@ -54,6 +56,7 @@ type SmsProfile = {
 
 type PendingKind =
   | 'schedule'
+  | 'choose_calendar'
   | 'resolve_invitees'
   | 'reschedule'
   | 'select_reschedule_target'
@@ -67,6 +70,7 @@ type PendingKind =
 
 type PendingPayload = {
   options?: ScheduleOption[]
+  calendarChoices?: CalendarPlacementOption[]
   selectedOption?: ScheduleOption
   events?: EventSummary[]
   target?: EventSummary
@@ -85,6 +89,13 @@ type PendingPayload = {
   holdCalendarId?: string | null
   attendees?: Invitee[]
   unresolvedInvitees?: string[]
+  scheduleRequest?: {
+    title: string
+    baseDate: string
+    exactTime: { hour: number; minute: number } | null
+    durationMinutes: number
+    recurrence: RecurrenceSpec | null
+  }
 }
 
 type PendingAction = {
@@ -123,6 +134,12 @@ function optionList(options: ScheduleOption[]) {
 function callPrepOptionList(options: ScheduleOption[]) {
   return options
     .map((option, index) => `${index + 1}. ${option.dayLabel} at ${option.timeLabel}`)
+    .join('\n')
+}
+
+function calendarChoiceList(calendars: CalendarPlacementOption[]) {
+  return calendars
+    .map((calendar, index) => `${index + 1}. ${calendar.calendarLabel}`)
     .join('\n')
 }
 
@@ -170,6 +187,37 @@ function choose<T>(items: T[] | undefined, choice: number) {
   return items?.[choice - 1] || null
 }
 
+function resolveCalendarChoiceFromText(
+  text: string,
+  calendars: CalendarPlacementOption[] | undefined,
+) {
+  if (!calendars?.length) return null
+
+  const lower = text.trim().toLowerCase()
+  const directNumber = lower.match(/^(?:option\s*)?(\d+)$/)
+  if (directNumber) {
+    const picked = calendars[Number(directNumber[1]) - 1]
+    if (picked) return picked
+  }
+
+  const normalized = tokenizeText(lower).join(' ')
+  if (!normalized) return null
+
+  const exact =
+    calendars.find((calendar) => tokenizeText(calendar.calendarLabel).join(' ') === normalized) ||
+    calendars.find((calendar) => tokenizeText(calendar.calendarName).join(' ') === normalized)
+  if (exact) return exact
+
+  const words = tokenizeText(lower)
+  return (
+    calendars.find((calendar) => {
+      const label = tokenizeText(calendar.calendarLabel)
+      const source = tokenizeText(calendar.calendarName)
+      return words.every((word) => label.includes(word) || source.includes(word))
+    }) || null
+  )
+}
+
 function isShortAcknowledgement(text: string) {
   const lower = text.trim().toLowerCase()
   return (
@@ -184,6 +232,8 @@ function reminderForPending(pending: PendingAction) {
     case 'invited_reschedule_hold':
     case 'external_call_prep':
       return 'Reply with the option you want, like 1, 2, or 3.'
+    case 'choose_calendar':
+      return 'Reply with the calendar name you want, or 1, 2, or 3.'
     case 'reschedule':
       if (pending.payload.stage === 'scope') {
         return 'Reply 1 for just this one, 2 for the whole series, or 3 to keep it.'
@@ -1130,6 +1180,59 @@ async function handleResolveInviteesReply({
   return `${bookingText(option)}\nI invited ${inviteeSummary(mergedInvitees)}.`
 }
 
+async function storeScheduleOptionsPending({
+  profileId,
+  smsFrom,
+  options,
+  attendees,
+  unresolvedInvitees,
+}: {
+  profileId: string
+  smsFrom: string
+  options: ScheduleOption[]
+  attendees: Invitee[]
+  unresolvedInvitees: string[]
+}) {
+  await storePendingAction({
+    profileId,
+    smsFrom,
+    kind: 'schedule',
+    payload: {
+      options,
+      attendees,
+      unresolvedInvitees,
+    },
+  })
+}
+
+function scheduleOptionsReply({
+  options,
+  recurrence,
+  attendees,
+  unresolvedInvitees,
+}: {
+  options: ScheduleOption[]
+  recurrence: RecurrenceSpec | null
+  attendees: Invitee[]
+  unresolvedInvitees: string[]
+}) {
+  let reply = `I found these${recurrence ? ' starting' : ''} times:\n${optionList(options)}\nReply 1, 2, or 3.`
+  const recurring = recurrenceLine(options)
+  if (recurring) {
+    reply += `\n${recurring}`
+  }
+  if (attendees.length) {
+    reply += `\nReady to invite: ${inviteeSummary(attendees)}.`
+  }
+  if (unresolvedInvitees.length) {
+    reply += `\nI still need email${unresolvedInvitees.length > 1 ? 's' : ''} for ${unresolvedInviteeSummary(
+      unresolvedInvitees,
+    )}.`
+  }
+
+  return reply
+}
+
 async function handleChoice({
   profile,
   smsFrom,
@@ -1141,6 +1244,44 @@ async function handleChoice({
   choice: number
   pending: PendingAction
 }) {
+  if (pending.kind === 'choose_calendar') {
+    const pickedCalendar = choose(pending.payload.calendarChoices, choice)
+    const scheduleRequest = pending.payload.scheduleRequest
+    if (!pickedCalendar || !scheduleRequest) return 'Reply with the calendar you want, like 1, 2, or 3.'
+
+    const attendees = pending.payload.attendees || []
+    const unresolvedInvitees = pending.payload.unresolvedInvitees || []
+
+    const options = await findScheduleOptions({
+      profileId: profile.id,
+      title: scheduleRequest.title,
+      baseDate: new Date(scheduleRequest.baseDate),
+      exactTime: scheduleRequest.exactTime,
+      calendarId: pickedCalendar.calendarId,
+      durationMinutes: scheduleRequest.durationMinutes,
+      recurrence: scheduleRequest.recurrence,
+    })
+
+    if (!options.length) {
+      return `I couldn't find an opening on ${pickedCalendar.calendarLabel}. Try another day or time.`
+    }
+
+    await storeScheduleOptionsPending({
+      profileId: profile.id,
+      smsFrom,
+      options,
+      attendees,
+      unresolvedInvitees,
+    })
+
+    return scheduleOptionsReply({
+      options,
+      recurrence: scheduleRequest.recurrence,
+      attendees,
+      unresolvedInvitees,
+    })
+  }
+
   if (pending.kind === 'schedule') {
     const option = choose(pending.payload.options, choice)
     if (!option) return 'Reply with 1, 2, or 3.'
@@ -1793,6 +1934,48 @@ export async function handleIncomingSms({
     return reply
   }
 
+  if (pending?.kind === 'choose_calendar') {
+    const pickedCalendar = resolveCalendarChoiceFromText(body, pending.payload.calendarChoices)
+    if (pickedCalendar && pending.payload.scheduleRequest) {
+      const scheduleRequest = pending.payload.scheduleRequest
+      const attendees = pending.payload.attendees || []
+      const unresolvedInvitees = pending.payload.unresolvedInvitees || []
+
+      const options = await findScheduleOptions({
+        profileId: profile.id,
+        title: scheduleRequest.title,
+        baseDate: new Date(scheduleRequest.baseDate),
+        exactTime: scheduleRequest.exactTime,
+        calendarId: pickedCalendar.calendarId,
+        durationMinutes: scheduleRequest.durationMinutes,
+        recurrence: scheduleRequest.recurrence,
+      })
+
+      if (!options.length) {
+        const reply = `I couldn't find an opening on ${pickedCalendar.calendarLabel}. Try another day or time.`
+        await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+        return reply
+      }
+
+      await storeScheduleOptionsPending({
+        profileId: profile.id,
+        smsFrom: from,
+        options,
+        attendees,
+        unresolvedInvitees,
+      })
+
+      const reply = scheduleOptionsReply({
+        options,
+        recurrence: scheduleRequest.recurrence,
+        attendees,
+        unresolvedInvitees,
+      })
+      await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+      return reply
+    }
+  }
+
   if (pending && isShortAcknowledgement(body)) {
     const reply = reminderForPending(pending)
     await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
@@ -1831,12 +2014,61 @@ export async function handleIncomingSms({
         ? cleanedIntent
         : intent
 
+    const placement = await resolveCalendarPlacement(profile.id, scheduleIntent.calendarHint)
+    if (!placement.bookingCalendars.length) {
+      const reply = 'I can see your calendars, but none are set to accept new events yet. Update your calendar settings in the dashboard first.'
+      await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+      return reply
+    }
+
+    const needsCalendarChoice =
+      placement.matches.length > 1 ||
+      (placement.genericHint && placement.bookingCalendars.length > 1) ||
+      (!placement.genericHint && placement.matches.length === 0 && placement.bookingCalendars.length > 1)
+
+    if (needsCalendarChoice) {
+      const calendarChoices =
+        placement.matches.length > 1
+          ? placement.matches
+          : placement.bookingCalendars
+
+      await storePendingAction({
+        profileId: profile.id,
+        smsFrom: from,
+        kind: 'choose_calendar',
+        payload: {
+          calendarChoices,
+          attendees: inviteeContext.invitees,
+          unresolvedInvitees: inviteeContext.unresolvedNames,
+          scheduleRequest: {
+            title: scheduleIntent.title,
+            baseDate: scheduleIntent.baseDate.toISOString(),
+            exactTime: scheduleIntent.exactTime,
+            durationMinutes: scheduleIntent.durationMinutes,
+            recurrence: scheduleIntent.recurrence,
+          },
+        },
+      })
+
+      const reply =
+        placement.matches.length === 0 && !placement.genericHint
+          ? `I couldn't tell which calendar "${scheduleIntent.calendarHint}" means.\nWhich calendar should I use?\n${calendarChoiceList(calendarChoices)}\nReply with the name or 1, 2, or 3.`
+          : `Which calendar should I put that on?\n${calendarChoiceList(calendarChoices)}\nReply with the name or 1, 2, or 3.`
+      await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+      return reply
+    }
+
+    const chosenCalendar =
+      placement.matches[0] ||
+      placement.bookingCalendars[0]
+
     const options = await findScheduleOptions({
       profileId: profile.id,
       title: scheduleIntent.title,
       baseDate: scheduleIntent.baseDate,
       exactTime: scheduleIntent.exactTime,
-      calendarHint: scheduleIntent.calendarHint,
+      calendarId: chosenCalendar?.calendarId,
+      calendarHint: chosenCalendar?.calendarLabel || scheduleIntent.calendarHint,
       durationMinutes: scheduleIntent.durationMinutes,
       recurrence: scheduleIntent.recurrence,
     })
@@ -1847,32 +2079,20 @@ export async function handleIncomingSms({
       return reply
     }
 
-    await storePendingAction({
+    await storeScheduleOptionsPending({
       profileId: profile.id,
       smsFrom: from,
-      kind: 'schedule',
-      payload: {
-        options,
-        attendees: inviteeContext.invitees,
-        unresolvedInvitees: inviteeContext.unresolvedNames,
-      },
+      options,
+      attendees: inviteeContext.invitees,
+      unresolvedInvitees: inviteeContext.unresolvedNames,
     })
 
-    let reply = `I found these${scheduleIntent.recurrence ? ' starting' : ''} times:\n${optionList(
+    const reply = scheduleOptionsReply({
       options,
-    )}\nReply 1, 2, or 3.`
-    const recurring = recurrenceLine(options)
-    if (recurring) {
-      reply += `\n${recurring}`
-    }
-    if (inviteeContext.invitees.length) {
-      reply += `\nReady to invite: ${inviteeSummary(inviteeContext.invitees)}.`
-    }
-    if (inviteeContext.unresolvedNames.length) {
-      reply += `\nI still need email${
-        inviteeContext.unresolvedNames.length > 1 ? 's' : ''
-      } for ${unresolvedInviteeSummary(inviteeContext.unresolvedNames)}.`
-    }
+      recurrence: scheduleIntent.recurrence,
+      attendees: inviteeContext.invitees,
+      unresolvedInvitees: inviteeContext.unresolvedNames,
+    })
     await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
     return reply
   }

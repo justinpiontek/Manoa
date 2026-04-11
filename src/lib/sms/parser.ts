@@ -204,6 +204,16 @@ function parseBaseDate(text: string) {
 
 function parseCalendarHint(text: string) {
   const lower = text.toLowerCase()
+
+  const labeledCalendarMatch =
+    text.match(/\bon\s+([a-z0-9][a-z0-9 '&-]{1,40})\s+calendar\b/i) ||
+    text.match(/\binto\s+([a-z0-9][a-z0-9 '&-]{1,40})\b/i) ||
+    text.match(/\bfor\s+([a-z0-9][a-z0-9 '&-]{1,40})\s+calendar\b/i)
+
+  if (labeledCalendarMatch?.[1]) {
+    return labeledCalendarMatch[1].trim()
+  }
+
   if (lower.includes('work')) return 'Work'
   if (lower.includes('family')) return 'Family'
   if (lower.includes('personal') || lower.includes('home')) return 'Personal'
