@@ -1054,6 +1054,44 @@ export async function updateConfiguredGoogleCalendar({
   if (error) throw error
 }
 
+export async function disconnectCalendarAccount({
+  profileId,
+  provider,
+  accountId,
+}: {
+  profileId: string
+  provider: CalendarProvider
+  accountId: string
+}) {
+  const { data: existing, error: existingError } = await supabaseAdmin
+    .from('calendar_connections')
+    .select('id')
+    .eq('profile_id', profileId)
+    .eq('provider', provider)
+    .eq('account_id', accountId)
+    .eq('status', 'active')
+    .limit(1)
+    .maybeSingle<{ id: string }>()
+
+  if (existingError) throw existingError
+  if (!existing) {
+    throw new Error('Calendar account not found.')
+  }
+
+  const { error } = await supabaseAdmin
+    .from('calendar_connections')
+    .update({
+      status: 'inactive',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('profile_id', profileId)
+    .eq('provider', provider)
+    .eq('account_id', accountId)
+    .eq('status', 'active')
+
+  if (error) throw error
+}
+
 function toPlacementOption(connection: CalendarConnection): CalendarPlacementOption {
   return {
     connectionId: connection.id,

@@ -57,6 +57,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const displayNumber = manoaNumber ? formatPhoneForDisplay(manoaNumber) : ''
   const displayUserPhone = profile ? formatPhoneForDisplay(profile.phone_e164) : ''
   const calendarConnected = params.calendar === 'connected'
+  const calendarDisconnected = params.calendar === 'disconnected'
   const billingMissing = params.billing === 'missing'
   const billingReturned = params.billing === 'returned'
 
@@ -146,6 +147,12 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         {calendarConnected ? (
           <div className="notice success" role="status" aria-live="polite">
             Calendar connected successfully.
+          </div>
+        ) : null}
+
+        {calendarDisconnected ? (
+          <div className="notice success" role="status" aria-live="polite">
+            Calendar account disconnected. You can reconnect it any time from this page.
           </div>
         ) : null}
 
@@ -296,6 +303,14 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                     >
                       Reconnect account
                     </a>
+                    <form action="/api/calendar/disconnect" method="post">
+                      <input type="hidden" name="profile_id" value={profile.id} />
+                      <input type="hidden" name="provider" value={account.provider} />
+                      <input type="hidden" name="account_id" value={account.accountId} />
+                      <button className="nav-link secondary" type="submit">
+                        Disconnect
+                      </button>
+                    </form>
                   </div>
 
                   <div className="calendar-settings-grid">
