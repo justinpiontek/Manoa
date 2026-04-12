@@ -2,6 +2,17 @@ import { NextRequest } from 'next/server'
 import { appUrl } from '@/src/lib/env'
 import { googleOAuthClient, storeGoogleConnection } from '@/src/lib/calendar/google'
 
+function calendarErrorCode(error: unknown) {
+  const message = error instanceof Error ? error.message.toLowerCase() : ''
+
+  if (message.includes('supports up to 2 google accounts')) return 'account_limit'
+  if (message.includes('did not return any calendars')) return 'no_calendars'
+  if (message.includes('duplicate key')) return 'duplicate'
+  if (message.includes('there is no unique or exclusion constraint')) return 'db_constraint'
+  if (message.includes('does not exist')) return 'migration_missing'
+  return 'unknown'
+}
+
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get('code')
   const rawState = request.nextUrl.searchParams.get('state')
@@ -21,7 +32,12 @@ export async function GET(request: NextRequest) {
     })
 
     return Response.redirect(`${appUrl()}/dashboard?profile_id=${profileId}&calendar=connected`, 303)
-  } catch {
-    return Response.redirect(`${appUrl()}/dashboard?profile_id=${profileId}&calendar=error`, 303)
+  } catch (error) {
+    console.error('Google calendar callback failed', error)
+    const code = calendarErrorCode(error)
+    return Response.redirect(
+      `${appUrl()}/dashboard?profile_id=${profileId}&calendar=error&calendar_error=${encodeURIComponent(code)}`,
+      303,
+    )
   }
 }

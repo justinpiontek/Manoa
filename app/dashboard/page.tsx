@@ -16,6 +16,7 @@ type DashboardPageProps = {
     profile_id?: string
     session_id?: string
     calendar?: string
+    calendar_error?: string
     login?: string
     billing?: string
   }>
@@ -59,6 +60,23 @@ function nextStepCopy({
   }
 
   return 'Everything is lined up. Save the number once, send your first text, and Manoa is off to the races.'
+}
+
+function calendarErrorMessage(code: string | undefined) {
+  switch (code) {
+    case 'account_limit':
+      return "Manoa thinks you've already hit the 2 Google account limit. That usually means an older Google connection is still being counted."
+    case 'no_calendars':
+      return "Google connected, but it didn't return any writable calendars for this account."
+    case 'duplicate':
+      return 'This Google account looks like it has a calendar Manoa already knows about, and the save step collided.'
+    case 'db_constraint':
+      return 'The database save rules for calendars are still out of sync with the app.'
+    case 'migration_missing':
+      return 'The database is still missing part of the newer multi-calendar schema.'
+    default:
+      return "We couldn't finish that calendar connection yet. The callback is returning a real error, but it still needs one more fix."
+  }
 }
 
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
@@ -197,8 +215,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
         {calendarError ? (
           <div className="notice warning" role="status" aria-live="polite">
-            We couldn&apos;t finish that calendar connection. If you just turned on multi-calendar
-            routing, the newest Supabase migration may still need to be run.
+            {calendarErrorMessage(params.calendar_error)}
           </div>
         ) : null}
 
