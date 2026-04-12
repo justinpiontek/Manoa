@@ -60,6 +60,16 @@ button {
   gap: 10px;
 }
 
+.top-link {
+  color: var(--muted);
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.top-link:hover {
+  color: var(--blue);
+}
+
 .notice {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -712,6 +722,10 @@ footer a,
   color: var(--blue);
 }
 
+.anchor-section {
+  scroll-margin-top: 88px;
+}
+
 .steps {
   margin-top: 22px;
   padding: 24px;
@@ -754,11 +768,278 @@ footer a,
   line-height: 1.62;
 }
 
+.learn,
+.faq {
+  margin-top: 22px;
+}
+
+.learn {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+  gap: 18px;
+}
+
+.learn-panel,
+.faq-item {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 22px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+}
+
+.learn-panel-accent {
+  border-color: #d7e3f7;
+  background: linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%);
+}
+
+.learn-label,
+.faq-label {
+  margin: 0;
+  color: var(--blue);
+  font-size: 0.84rem;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.learn h2,
+.faq h2 {
+  max-width: none;
+  margin: 10px 0 0;
+  font-size: 2rem;
+  line-height: 1.08;
+}
+
+.learn-card-grid,
+.faq-grid {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.learn-card-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.learn-card {
+  border: 1px solid #d7e3f7;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 16px;
+}
+
+.learn-card h3,
+.faq-item h3 {
+  margin: 0;
+  font-size: 1.04rem;
+}
+
+.learn-card p,
+.faq-item p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.learn-list {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+}
+
+.learn-list li {
+  line-height: 1.65;
+}
+
+.faq-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 footer {
   margin-top: 24px;
   color: var(--muted);
   font-size: 0.9rem;
   text-align: center;
+}
+
+.use-case-shell {
+  width: min(1040px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 24px 0 48px;
+}
+
+.use-case-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+  padding: 24px;
+}
+
+.use-case-topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.use-case-eyebrow {
+  margin: 0;
+  color: var(--blue);
+  font-size: 0.9rem;
+  font-weight: 850;
+}
+
+.use-case-title {
+  max-width: 760px;
+  margin: 10px 0 0;
+  font-size: 3.2rem;
+  line-height: 1.02;
+}
+
+.use-case-lede {
+  max-width: 760px;
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: 1.08rem;
+  line-height: 1.72;
+}
+
+.use-case-hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  gap: 18px;
+  margin-top: 24px;
+}
+
+.use-case-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcff;
+  padding: 18px;
+}
+
+.use-case-cta-panel {
+  border-color: #c9d6f0;
+  background: linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%);
+}
+
+.use-case-panel-label,
+.use-case-section-label {
+  display: block;
+  margin: 0;
+  color: var(--blue);
+  font-size: 0.82rem;
+  font-weight: 850;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.use-case-copy {
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.use-case-example {
+  margin-top: 18px;
+}
+
+.use-case-benefit-grid,
+.use-case-list-grid,
+.use-case-faq-grid,
+.use-case-hub-grid {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.use-case-benefit-grid,
+.use-case-list-grid,
+.use-case-faq-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.use-case-mini-card,
+.use-case-hub-card,
+.use-case-link-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 16px;
+}
+
+.use-case-mini-card h2,
+.use-case-hub-card h2,
+.use-case-cta-title {
+  margin: 0;
+  font-size: 1.08rem;
+  line-height: 1.4;
+}
+
+.use-case-mini-card p,
+.use-case-hub-card p,
+.use-case-link-card span {
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.use-case-section {
+  margin-top: 22px;
+}
+
+.use-case-cta-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.use-case-cta-list span {
+  border: 1px solid #cfdbf2;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 10px 12px;
+  color: var(--ink);
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.use-case-secondary-link {
+  display: inline-flex;
+  width: auto;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.use-case-link-card strong,
+.use-case-link-card span,
+.use-case-hub-card span {
+  display: block;
+  color: var(--blue);
+  font-weight: 850;
+}
+
+.use-case-link-card {
+  display: block;
+}
+
+.use-case-hub-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.use-case-hub-card {
+  display: block;
+  background: #f8fbff;
+}
+
+.use-case-hub-card span {
+  display: inline-block;
+  margin-top: 12px;
 }
 
 .legal-shell {
@@ -1570,6 +1851,14 @@ footer {
   .demo,
   .step-grid,
   .hero-points,
+  .learn,
+  .learn-card-grid,
+  .faq-grid,
+  .use-case-hero-grid,
+  .use-case-benefit-grid,
+  .use-case-list-grid,
+  .use-case-faq-grid,
+  .use-case-hub-grid,
   .status-row,
   .setup-grid,
   .dashboard-grid,
@@ -1630,6 +1919,8 @@ footer {
   .top-actions {
     width: auto;
     flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 
   .top-actions .nav-link {
@@ -1672,8 +1963,16 @@ footer {
     padding: 18px;
   }
 
+  .use-case-card {
+    padding: 18px;
+  }
+
   .setup-title {
     font-size: 2.2rem;
+  }
+
+  .use-case-title {
+    font-size: 2.35rem;
   }
 
   .dashboard-card {
@@ -1695,6 +1994,17 @@ footer {
 
   .proof {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .learn-panel,
+  .faq-item {
+    padding: 18px;
+  }
+
+  .learn h2,
+  .faq h2 {
+    font-size: 1.65rem;
+    line-height: 1.12;
   }
 
   .demo-form {

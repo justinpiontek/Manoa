@@ -723,6 +723,12 @@ export default function ManoaSignupPage() {
           <span className="brand-name">Manoa</span>
         </a>
         <div className="top-actions">
+          <a className="top-link" href="#how-it-works">
+            How it works
+          </a>
+          <a className="top-link" href="#faq">
+            FAQ
+          </a>
           <a className="nav-link secondary" href="/login">
             Log in
           </a>
@@ -911,7 +917,7 @@ export default function ManoaSignupPage() {
         </div>
       </section>
 
-      <section className="steps" aria-label="How Manoa works">
+      <section id="how-it-works" className="steps anchor-section" aria-label="How Manoa works">
         <h2>How it works</h2>
         <p className="steps-lede">
           Sign up, connect your calendar, text what you need, and you&apos;re done.
@@ -935,8 +941,103 @@ export default function ManoaSignupPage() {
         </div>
       </section>
 
+      <section className="learn" aria-label="Learn more about Manoa">
+        <div className="learn-panel">
+          <p className="learn-label">Good fit for</p>
+          <h2>Built for people who already run their day from their phone.</h2>
+          <div className="learn-card-grid">
+            <article className="learn-card">
+              <h3>Busy professionals</h3>
+              <p>
+                If meetings, follow-ups, and quick calendar changes keep interrupting your day,
+                texting is faster than opening another app.
+              </p>
+            </article>
+            <article className="learn-card">
+              <h3>Work and personal jugglers</h3>
+              <p>
+                Manoa is especially useful when you need one place to keep work, personal, and
+                family calendars straight without thinking about routing.
+              </p>
+            </article>
+            <article className="learn-card">
+              <h3>People who forget the little stuff</h3>
+              <p>
+                Morning agendas and reminders help when the problem is not just scheduling, but
+                also keeping the day from slipping through the cracks.
+              </p>
+            </article>
+          </div>
+        </div>
+
+        <div className="learn-panel learn-panel-accent">
+          <p className="learn-label">What you can text</p>
+          <h2>Common things Manoa can handle right away.</h2>
+          <ul className="learn-list">
+            <li>Schedule something new and pick from three times by text.</li>
+            <li>Ask what&apos;s on your calendar today or tomorrow.</li>
+            <li>Move a personal event or a meeting you own.</li>
+            <li>
+              Handle dentist, doctor, salon, or service appointments honestly by prepping the
+              call and updating your calendar after you confirm the new time.
+            </li>
+            <li>Keep Google or Outlook calendars connected and ready for real scheduling.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="faq" className="faq anchor-section" aria-label="Frequently asked questions">
+        <p className="faq-label">FAQ</p>
+        <h2>Answers before you sign up.</h2>
+        <div className="faq-grid">
+          <article className="faq-item">
+            <h3>Do I need an app?</h3>
+            <p>
+              No. You sign up on the site once, connect Google Calendar or Outlook, and then use
+              Manoa by text.
+            </p>
+          </article>
+          <article className="faq-item">
+            <h3>What calendars work with Manoa?</h3>
+            <p>
+              Right now Manoa supports Google Calendar and Outlook. You connect them after
+              checkout in the setup flow.
+            </p>
+          </article>
+          <article className="faq-item">
+            <h3>Will Manoa change things without me knowing?</h3>
+            <p>
+              No. Manoa only books after you confirm by text, and it stays clear about what it
+              changed in your calendar versus what still needs a real call or follow-up.
+            </p>
+          </article>
+          <article className="faq-item">
+            <h3>Can Manoa reschedule doctor or dentist appointments?</h3>
+            <p>
+              Manoa will not pretend it changed an office appointment. It can prepare your best
+              times, hold space on your calendar, and update your reminder once the office confirms
+              the new time.
+            </p>
+          </article>
+          <article className="faq-item">
+            <h3>Can I cancel anytime?</h3>
+            <p>
+              Yes. The plan is monthly, and you can manage billing or cancel from your Manoa
+              dashboard.
+            </p>
+          </article>
+          <article className="faq-item">
+            <h3>What does setup look like?</h3>
+            <p>
+              Enter your email and phone, finish checkout, connect your calendar, and send your
+              first text. The whole flow is designed to stay short.
+            </p>
+          </article>
+        </div>
+      </section>
+
       <footer>
-        Manoa. Text your calendar back into shape.{' '}
+        Manoa. Text your calendar back into shape. <a href="/use-cases">Use cases</a> ·{' '}
         <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a>
       </footer>
     </main>
