@@ -17,6 +17,7 @@ type DashboardPageProps = {
     session_id?: string
     calendar?: string
     calendar_error?: string
+    calendar_error_detail?: string
     login?: string
     billing?: string
   }>
@@ -62,20 +63,22 @@ function nextStepCopy({
   return 'Everything is lined up. Save the number once, send your first text, and Manoa is off to the races.'
 }
 
-function calendarErrorMessage(code: string | undefined) {
+function calendarErrorMessage(code: string | undefined, detail?: string) {
+  const extra = detail ? ` Details: ${detail}` : ''
+
   switch (code) {
     case 'account_limit':
-      return "Manoa thinks you've already hit the 2 Google account limit. That usually means an older Google connection is still being counted."
+      return `Manoa thinks you've already hit the 2 Google account limit. That usually means an older Google connection is still being counted.${extra}`
     case 'no_calendars':
-      return "Google connected, but it didn't return any writable calendars for this account."
+      return `Google connected, but it didn't return any writable calendars for this account.${extra}`
     case 'duplicate':
-      return 'This Google account looks like it has a calendar Manoa already knows about, and the save step collided.'
+      return `This Google account looks like it has a calendar Manoa already knows about, and the save step collided.${extra}`
     case 'db_constraint':
-      return 'The database save rules for calendars are still out of sync with the app.'
+      return `The database save rules for calendars are still out of sync with the app.${extra}`
     case 'migration_missing':
-      return 'The database is still missing part of the newer multi-calendar schema.'
+      return `The database is still missing part of the newer multi-calendar schema.${extra}`
     default:
-      return "We couldn't finish that calendar connection yet. The callback is returning a real error, but it still needs one more fix."
+      return `We couldn't finish that calendar connection yet. The callback is returning a real error, but it still needs one more fix.${extra}`
   }
 }
 
@@ -215,7 +218,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
         {calendarError ? (
           <div className="notice warning" role="status" aria-live="polite">
-            {calendarErrorMessage(params.calendar_error)}
+            {calendarErrorMessage(params.calendar_error, params.calendar_error_detail)}
           </div>
         ) : null}
 

@@ -13,6 +13,17 @@ function calendarErrorCode(error: unknown) {
   return 'unknown'
 }
 
+function calendarErrorDetail(error: unknown) {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : 'Unknown calendar callback error.'
+
+  return message.replace(/\s+/g, ' ').trim().slice(0, 180)
+}
+
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get('code')
   const rawState = request.nextUrl.searchParams.get('state')
@@ -35,8 +46,9 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Google calendar callback failed', error)
     const code = calendarErrorCode(error)
+    const detail = calendarErrorDetail(error)
     return Response.redirect(
-      `${appUrl()}/dashboard?profile_id=${profileId}&calendar=error&calendar_error=${encodeURIComponent(code)}`,
+      `${appUrl()}/dashboard?profile_id=${profileId}&calendar=error&calendar_error=${encodeURIComponent(code)}&calendar_error_detail=${encodeURIComponent(detail)}`,
       303,
     )
   }
