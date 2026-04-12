@@ -117,7 +117,7 @@ function toParsedSmsIntent(payload: AiIntentPayload): ParsedSmsIntent {
         baseDate: parseBaseDate(payload.day, payload.weekday),
         exactTime: parseExactTime(payload.exact_time_24h),
         calendarHint: payload.calendar_hint || 'Calendar',
-        durationMinutes: payload.duration_minutes || 30,
+        durationMinutes: payload.duration_minutes,
         recurrence: parseRecurrence(payload),
       }
 

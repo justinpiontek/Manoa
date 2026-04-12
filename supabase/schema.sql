@@ -5,6 +5,7 @@ create table if not exists public.profiles (
   email text not null,
   phone_e164 text not null unique,
   timezone text not null default 'America/Chicago',
+  default_event_duration_minutes integer not null default 30,
   phone_confirmed_at timestamptz,
   sms_opted_out_at timestamptz,
   created_at timestamptz not null default now(),

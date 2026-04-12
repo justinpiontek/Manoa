@@ -7,6 +7,7 @@ export type Profile = {
   email: string
   phone_e164: string
   timezone: string
+  default_event_duration_minutes: number
 }
 
 export type DashboardProfile = Profile & {
@@ -88,7 +89,7 @@ export async function findOrCreateProfile({
 }) {
   const byPhone = await supabaseAdmin
     .from('profiles')
-    .select('id,email,phone_e164,timezone')
+    .select('id,email,phone_e164,timezone,default_event_duration_minutes')
     .eq('phone_e164', phoneE164)
     .maybeSingle<Profile>()
 
@@ -99,7 +100,7 @@ export async function findOrCreateProfile({
       .from('profiles')
       .update({ email, updated_at: new Date().toISOString() })
       .eq('id', byPhone.data.id)
-      .select('id,email,phone_e164,timezone')
+      .select('id,email,phone_e164,timezone,default_event_duration_minutes')
       .single<Profile>()
 
     if (updated.error) throw updated.error
@@ -109,7 +110,7 @@ export async function findOrCreateProfile({
 
   const byEmail = await supabaseAdmin
     .from('profiles')
-    .select('id,email,phone_e164,timezone')
+    .select('id,email,phone_e164,timezone,default_event_duration_minutes')
     .eq('email', email)
     .maybeSingle<Profile>()
 
@@ -120,7 +121,7 @@ export async function findOrCreateProfile({
       .from('profiles')
       .update({ phone_e164: phoneE164, updated_at: new Date().toISOString() })
       .eq('id', byEmail.data.id)
-      .select('id,email,phone_e164,timezone')
+      .select('id,email,phone_e164,timezone,default_event_duration_minutes')
       .single<Profile>()
 
     if (updated.error) throw updated.error
@@ -134,8 +135,9 @@ export async function findOrCreateProfile({
       email,
       phone_e164: phoneE164,
       timezone: defaultTimezone(),
+      default_event_duration_minutes: 30,
     })
-    .select('id,email,phone_e164,timezone')
+    .select('id,email,phone_e164,timezone,default_event_duration_minutes')
     .single<Profile>()
 
   if (created.error) throw created.error
@@ -152,7 +154,7 @@ export async function findProfileForAccess({
 }) {
   const { data, error } = await supabaseAdmin
     .from('profiles')
-    .select('id,email,phone_e164,timezone')
+    .select('id,email,phone_e164,timezone,default_event_duration_minutes')
     .eq('email', email)
     .eq('phone_e164', phoneE164)
     .maybeSingle<Profile>()
@@ -164,7 +166,7 @@ export async function findProfileForAccess({
 export async function getDashboardProfileByEmail(email: string) {
   const { data: profile, error } = await supabaseAdmin
     .from('profiles')
-    .select('id,email,phone_e164,timezone')
+    .select('id,email,phone_e164,timezone,default_event_duration_minutes')
     .eq('email', email.trim().toLowerCase())
     .maybeSingle<Profile>()
 
@@ -194,7 +196,7 @@ export async function getDashboardProfileByEmail(email: string) {
 export async function getDashboardProfile(profileId: string) {
   const { data: profile, error } = await supabaseAdmin
     .from('profiles')
-    .select('id,email,phone_e164,timezone')
+    .select('id,email,phone_e164,timezone,default_event_duration_minutes')
     .eq('id', profileId)
     .maybeSingle<Profile>()
 

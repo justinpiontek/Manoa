@@ -10,7 +10,7 @@ export type ParsedSmsIntent =
       baseDate: Date
       exactTime: { hour: number; minute: number } | null
       calendarHint: string
-      durationMinutes: number
+      durationMinutes: number | null
       recurrence: RecurrenceSpec | null
     }
   | {
@@ -150,7 +150,7 @@ function parseLooseTimeHint(text: string) {
 
 function parseDuration(text: string) {
   const match = text.toLowerCase().match(/\b(\d+)\s*(minute|min|hour|hr)\b/)
-  if (!match) return 30
+  if (!match) return null
 
   const value = Number(match[1])
   return match[2].startsWith('hour') || match[2] === 'hr' ? value * 60 : value

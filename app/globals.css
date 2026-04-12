@@ -1184,6 +1184,12 @@ footer {
   line-height: 1.6;
 }
 
+.duration-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
 .dashboard-button {
   width: auto;
   margin-top: 8px;
@@ -1349,6 +1355,10 @@ footer {
 .calendar-field span {
   font-size: 0.9rem;
   font-weight: 800;
+}
+
+.calendar-field select {
+  width: 100%;
 }
 
 .calendar-toggle {

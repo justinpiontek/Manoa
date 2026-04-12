@@ -6,6 +6,7 @@ import { getDashboardProfile, getDashboardProfileByEmail } from '@/src/lib/profi
 import { createSupabaseServerClient } from '@/src/lib/supabase/server'
 import CalendarSettingsForm from '@/src/components/CalendarSettingsForm'
 import DisconnectCalendarAccountForm from '@/src/components/DisconnectCalendarAccountForm'
+import DefaultDurationForm from '@/src/components/DefaultDurationForm'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -22,6 +23,7 @@ type DashboardPageProps = {
     calendar_error_detail?: string
     login?: string
     billing?: string
+    settings?: string
   }>
 }
 
@@ -245,6 +247,12 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </div>
         ) : null}
 
+        {params.settings === 'duration_saved' ? (
+          <div className="notice success" role="status" aria-live="polite">
+            Default event length saved. Manoa will use that when you do not specify a duration in the text.
+          </div>
+        ) : null}
+
         {billingMissing ? (
           <div className="notice warning" role="status" aria-live="polite">
             We could not find your billing record yet. Try again in a minute. If it still looks off,
@@ -322,6 +330,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             <p>Membership is {subscriptionLabel(profile.subscriptionStatus).toLowerCase()}.</p>
             <p>Use Manage billing anytime to update payment details or cancel your membership.</p>
             <p>Use Sign out in the top corner if you ever want to leave this dashboard on this device.</p>
+            <DefaultDurationForm
+              profileId={profile.id}
+              defaultDurationMinutes={profile.default_event_duration_minutes}
+            />
           </article>
 
           <article className="dashboard-section">

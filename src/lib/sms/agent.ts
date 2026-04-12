@@ -49,6 +49,7 @@ type SmsProfile = {
   email: string
   phone_e164: string
   timezone: string
+  default_event_duration_minutes: number
   phone_confirmed_at: string | null
   sms_opted_out_at: string | null
   subscriptionStatus: string
@@ -621,13 +622,14 @@ async function searchUpcomingEvents(profileId: string) {
 async function profileForPhone(phoneE164: string) {
   const { data: profile, error } = await supabaseAdmin
     .from('profiles')
-    .select('id,email,phone_e164,timezone,phone_confirmed_at,sms_opted_out_at')
+    .select('id,email,phone_e164,timezone,default_event_duration_minutes,phone_confirmed_at,sms_opted_out_at')
     .eq('phone_e164', phoneE164)
     .maybeSingle<{
       id: string
       email: string
       phone_e164: string
       timezone: string
+      default_event_duration_minutes: number
       phone_confirmed_at: string | null
       sms_opted_out_at: string | null
     }>()
@@ -2075,6 +2077,8 @@ export async function handleIncomingSms({
       cleanedIntent.type === 'schedule'
         ? cleanedIntent
         : intent
+    const scheduleDurationMinutes =
+      scheduleIntent.durationMinutes ?? profile.default_event_duration_minutes
 
     const placement = await resolveCalendarPlacement(profile.id, scheduleIntent.calendarHint)
     if (!placement.bookingCalendars.length) {
@@ -2106,7 +2110,7 @@ export async function handleIncomingSms({
             title: scheduleIntent.title,
             baseDate: scheduleIntent.baseDate.toISOString(),
             exactTime: scheduleIntent.exactTime,
-            durationMinutes: scheduleIntent.durationMinutes,
+            durationMinutes: scheduleDurationMinutes,
             recurrence: scheduleIntent.recurrence,
           },
         },
@@ -2126,11 +2130,11 @@ export async function handleIncomingSms({
 
     if (scheduleIntent.exactTime && !scheduleIntent.recurrence && chosenCalendar) {
       const requestedStart = setTime(scheduleIntent.baseDate, scheduleIntent.exactTime)
-      const requestedEnd = addMinutes(requestedStart, scheduleIntent.durationMinutes)
+      const requestedEnd = addMinutes(requestedStart, scheduleDurationMinutes)
       const overlappingEvents = (await listUpcomingEvents({
         profileId: profile.id,
         startAt: requestedStart,
-        windowMinutes: scheduleIntent.durationMinutes,
+        windowMinutes: scheduleDurationMinutes,
         maxResults: 12,
       })).filter((event) => overlapsOption(event, requestedStart, requestedEnd))
 
@@ -2149,7 +2153,7 @@ export async function handleIncomingSms({
           exactTime: scheduleIntent.exactTime,
           calendarId: chosenCalendar.calendarId,
           calendarHint: chosenCalendar.calendarLabel || scheduleIntent.calendarHint,
-          durationMinutes: scheduleIntent.durationMinutes,
+          durationMinutes: scheduleDurationMinutes,
           recurrence: scheduleIntent.recurrence,
         })
 
@@ -2192,7 +2196,7 @@ export async function handleIncomingSms({
       exactTime: scheduleIntent.exactTime,
       calendarId: chosenCalendar?.calendarId,
       calendarHint: chosenCalendar?.calendarLabel || scheduleIntent.calendarHint,
-      durationMinutes: scheduleIntent.durationMinutes,
+      durationMinutes: scheduleDurationMinutes,
       recurrence: scheduleIntent.recurrence,
     })
 
