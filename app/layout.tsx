@@ -28,11 +28,12 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: '/brand-icon?v=3', type: 'image/png', sizes: '64x64' },
-      { url: '/favicon.svg?v=3', type: 'image/svg+xml' },
+      { url: '/favicon.ico?v=4', type: 'image/png', sizes: '64x64' },
+      { url: '/brand-icon?v=4', type: 'image/png', sizes: '64x64' },
+      { url: '/favicon.svg?v=4', type: 'image/svg+xml' },
     ],
-    shortcut: [{ url: '/brand-icon?v=3', type: 'image/png', sizes: '64x64' }],
-    apple: [{ url: '/brand-apple-icon?v=3', type: 'image/png', sizes: '180x180' }],
+    shortcut: [{ url: '/favicon.ico?v=4', sizes: '64x64' }],
+    apple: [{ url: '/brand-apple-icon?v=4', type: 'image/png', sizes: '180x180' }],
   },
 }
 

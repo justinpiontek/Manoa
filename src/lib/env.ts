@@ -11,7 +11,20 @@ export function missingEnv(names: string[]) {
 }
 
 export function appUrl() {
-  return process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  const value = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+
+  try {
+    const url = new URL(value)
+
+    if (url.hostname === 'textmanoa.com') {
+      url.hostname = 'www.textmanoa.com'
+      return url.toString().replace(/\/$/, '')
+    }
+
+    return url.toString().replace(/\/$/, '')
+  } catch {
+    return value.replace(/\/$/, '')
+  }
 }
 
 export function defaultTimezone() {
