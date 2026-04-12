@@ -148,6 +148,7 @@ export function googleAuthUrl(state: string) {
     scope: [
       'https://www.googleapis.com/auth/calendar.events',
       'https://www.googleapis.com/auth/calendar.freebusy',
+      'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
     ],
   })
 }

@@ -71,6 +71,8 @@ function calendarErrorMessage(code: string | undefined, detail?: string) {
       return `Manoa thinks you've already hit the 2 Google account limit. That usually means an older Google connection is still being counted.${extra}`
     case 'no_calendars':
       return `Google connected, but it didn't return any writable calendars for this account.${extra}`
+    case 'insufficient_scopes':
+      return `Google approved the sign-in, but Manoa still needs one more calendar permission to finish adding that account. Reconnect once after the latest deploy and it should ask for the missing access.${extra}`
     case 'duplicate':
       return `This Google account looks like it has a calendar Manoa already knows about, and the save step collided.${extra}`
     case 'db_constraint':
