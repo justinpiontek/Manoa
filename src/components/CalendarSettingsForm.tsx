@@ -29,12 +29,20 @@ export default function CalendarSettingsForm({
 
   const isPending = pendingAction !== null
 
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    const submitEvent = event.nativeEvent as SubmitEvent
+    const submitter = submitEvent.submitter as HTMLButtonElement | null
+    const nextAction = submitter?.value === 'remove' ? 'remove' : 'save'
+    setPendingAction(nextAction)
+  }
+
   return (
     <form
-      action={pendingAction === 'remove' ? '/api/calendar/remove' : '/api/calendar/google/update'}
+      action="/api/calendar/google/update"
       method="post"
       className={`calendar-setting-card${isPending ? ' is-pending' : ''}`}
       aria-busy={isPending}
+      onSubmit={handleSubmit}
     >
       <input type="hidden" name="profile_id" value={profileId} />
       <input type="hidden" name="connection_id" value={connectionId} />
@@ -77,15 +85,18 @@ export default function CalendarSettingsForm({
           className="nav-link calendar-save-button"
           type="submit"
           disabled={isPending}
-          onClick={() => setPendingAction('save')}
+          name="intent"
+          value="save"
         >
           {pendingAction === 'save' ? 'Saving...' : 'Save calendar settings'}
         </button>
         <button
           className="nav-link secondary calendar-remove-button"
           type="submit"
+          formAction="/api/calendar/remove"
           disabled={isPending}
-          onClick={() => setPendingAction('remove')}
+          name="intent"
+          value="remove"
         >
           {pendingAction === 'remove' ? 'Removing...' : 'Remove from Manoa'}
         </button>
