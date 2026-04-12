@@ -21,6 +21,7 @@ The intended assistant behavior is documented in:
 - `docs/manoa-scenario-matrix.md`
 - `docs/manoa-cost-tracker.md`
 - `docs/vercel-deploy-checklist.md`
+- `docs/manoa-growth-plan.md`
 
 This is the contract for how Manoa should handle scheduling, rescheduling,
 cancellations, reminders, daily agenda texts, attendee notifications, and

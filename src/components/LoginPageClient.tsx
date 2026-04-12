@@ -94,7 +94,7 @@ export default function LoginPageClient({
       }
 
       const supabase = getSupabaseBrowser()
-      const redirectBase = (appUrl || window.location.origin).replace(/\/$/, '')
+      const redirectBase = window.location.origin.replace(/\/$/, '') || (appUrl || '').replace(/\/$/, '')
       const { error } = await supabase.auth.signInWithOtp({
         email: normalizedEmail,
         options: {

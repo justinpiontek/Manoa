@@ -887,14 +887,47 @@ export default function ManoaSignupPage() {
           <h1>Stop Scheduling. Just Text Manoa.</h1>
           <p className="tagline">Book meetings, get reminders, and manage your calendar — all by text.</p>
           <div className="hero-example" aria-label="Example conversation">
-            <p className="hero-example-label">Example</p>
-            <div className="hero-example-bubble user">
-              <strong>You</strong>
-              <span>Need a meeting with Dr. Beth this week</span>
+            <div className="hero-example-head">
+              <p className="hero-example-label">Example text thread</p>
+              <span className="hero-example-badge">Real flow</span>
             </div>
-            <div className="hero-example-bubble manoa">
-              <strong>Manoa</strong>
-              <span>Best options: Tues 10am, Wed 2pm, Thurs 11am. Reply 1, 2, or 3.</span>
+            <div className="hero-thread">
+              <p className="hero-thread-date">Today</p>
+
+              <div className="hero-thread-message user">
+                <div className="hero-thread-bubble">
+                  Need a meeting with Dr. Beth this week
+                </div>
+              </div>
+
+              <div className="hero-thread-message manoa">
+                <div className="hero-thread-avatar" aria-hidden="true">
+                  M
+                </div>
+                <div className="hero-thread-stack">
+                  <span className="hero-thread-sender">Manoa</span>
+                  <div className="hero-thread-bubble">
+                    I found three times: 1. Tue 10:00 AM 2. Wed 2:00 PM 3. Thu 11:00 AM. Reply
+                    1, 2, or 3.
+                  </div>
+                </div>
+              </div>
+
+              <div className="hero-thread-message user">
+                <div className="hero-thread-bubble">2 works</div>
+              </div>
+
+              <div className="hero-thread-message manoa">
+                <div className="hero-thread-avatar" aria-hidden="true">
+                  M
+                </div>
+                <div className="hero-thread-stack">
+                  <span className="hero-thread-sender">Manoa</span>
+                  <div className="hero-thread-bubble">
+                    Booked. Dr. Beth is on Wednesday at 2:00 PM.
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
           <p className="lede">

@@ -1,6 +1,5 @@
 import { NextRequest } from 'next/server'
 import type { EmailOtpType } from '@supabase/supabase-js'
-import { appUrl } from '@/src/lib/env'
 import { createSupabaseServerClient } from '@/src/lib/supabase/server'
 
 export async function GET(request: NextRequest) {
@@ -9,7 +8,8 @@ export async function GET(request: NextRequest) {
   const type = requestUrl.searchParams.get('type') as EmailOtpType | null
   const code = requestUrl.searchParams.get('code')
   const next = requestUrl.searchParams.get('next') || '/dashboard'
-  const redirectUrl = new URL(next, appUrl())
+  const safeNext = next.startsWith('/') ? next : '/dashboard'
+  const redirectUrl = new URL(safeNext, requestUrl.origin)
   const supabase = await createSupabaseServerClient()
 
   if (code) {
@@ -30,5 +30,5 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return Response.redirect(`${appUrl()}/?login=error#access`, 303)
+  return Response.redirect(new URL('/login?login=error', requestUrl.origin).toString(), 303)
 }
