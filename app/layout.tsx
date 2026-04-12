@@ -27,9 +27,12 @@ export const metadata: Metadata = {
       'Manoa is a calendar assistant you text. Send a request, get the best times, reply with a number, and it books the event.',
   },
   icons: {
-    icon: '/favicon.svg?v=2',
-    shortcut: '/favicon.svg?v=2',
-    apple: '/favicon.svg?v=2',
+    icon: [
+      { url: '/brand-icon?v=3', type: 'image/png', sizes: '64x64' },
+      { url: '/favicon.svg?v=3', type: 'image/svg+xml' },
+    ],
+    shortcut: [{ url: '/brand-icon?v=3', type: 'image/png', sizes: '64x64' }],
+    apple: [{ url: '/brand-apple-icon?v=3', type: 'image/png', sizes: '180x180' }],
   },
 }
 
