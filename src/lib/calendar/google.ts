@@ -599,13 +599,36 @@ async function ensureOutlookAccessToken(connection: CalendarConnection) {
 }
 
 function canonicalAccountId(
-  connection: Pick<CalendarConnection, 'provider' | 'account_id' | 'account_email'>,
+  connection: Pick<CalendarConnection, 'provider' | 'account_id' | 'account_email' | 'calendar_id'>,
 ) {
-  if (connection.provider === 'google' && connection.account_id === 'primary' && connection.account_email) {
-    return connection.account_email
+  if (connection.provider === 'google' && connection.account_id === 'primary') {
+    if (connection.account_email) return connection.account_email
+    if (connection.calendar_id && connection.calendar_id !== 'primary') return connection.calendar_id
   }
 
   return connection.account_id
+}
+
+function isLegacyGooglePlaceholderConnection(
+  connection: Pick<CalendarConnection, 'provider' | 'account_id' | 'account_email' | 'calendar_id'>,
+) {
+  return (
+    connection.provider === 'google' &&
+    connection.account_id === 'primary' &&
+    !connection.account_email &&
+    (!connection.calendar_id || connection.calendar_id === 'primary')
+  )
+}
+
+function normalizeGoogleAccountConnections(connections: CalendarConnection[]) {
+  const hasNamedGoogleAccount = connections.some(
+    (connection) =>
+      connection.provider === 'google' && !isLegacyGooglePlaceholderConnection(connection),
+  )
+
+  if (!hasNamedGoogleAccount) return connections
+
+  return connections.filter((connection) => !isLegacyGooglePlaceholderConnection(connection))
 }
 
 async function deactivateGoogleAccountRows(profileId: string, accountId: string) {
@@ -638,11 +661,17 @@ async function deactivateGoogleAccountRows(profileId: string, accountId: string)
 }
 
 function uniqueAccountIds(connections: CalendarConnection[]) {
-  return [...new Set(connections.map((connection) => canonicalAccountId(connection)).filter(Boolean))]
+  return [
+    ...new Set(
+      normalizeGoogleAccountConnections(connections)
+        .map((connection) => canonicalAccountId(connection))
+        .filter(Boolean),
+    ),
+  ]
 }
 
 function groupConnectionsByAccount(connections: CalendarConnection[]) {
-  return connections.reduce<Record<string, CalendarConnection[]>>((groups, connection) => {
+  return normalizeGoogleAccountConnections(connections).reduce<Record<string, CalendarConnection[]>>((groups, connection) => {
     const key = `${connection.provider}:${canonicalAccountId(connection)}`
     groups[key] ||= []
     groups[key].push(connection)
@@ -1196,8 +1225,9 @@ export async function resolveCalendarPlacement(
 }
 
 function groupedAvailabilityConnections(connections: CalendarConnection[]) {
-  const included = connections.filter((connection) => connection.include_in_conflicts)
-  return (included.length ? included : connections).reduce<Record<string, CalendarConnection[]>>(
+  const normalizedConnections = normalizeGoogleAccountConnections(connections)
+  const included = normalizedConnections.filter((connection) => connection.include_in_conflicts)
+  return (included.length ? included : normalizedConnections).reduce<Record<string, CalendarConnection[]>>(
     (groups, connection) => {
       const key = `${connection.provider}:${canonicalAccountId(connection)}`
       groups[key] ||= []
