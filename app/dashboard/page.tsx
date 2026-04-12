@@ -109,6 +109,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const displayUserPhone = profile ? formatPhoneForDisplay(profile.phone_e164) : ''
   const calendarConnected = params.calendar === 'connected'
   const calendarDisconnected = params.calendar === 'disconnected'
+  const calendarRemoved = params.calendar === 'removed'
   const calendarError = params.calendar === 'error'
   const billingMissing = params.billing === 'missing'
   const billingReturned = params.billing === 'returned'
@@ -215,6 +216,12 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         {calendarDisconnected ? (
           <div className="notice success" role="status" aria-live="polite">
             Calendar account disconnected. You can reconnect it any time from this page.
+          </div>
+        ) : null}
+
+        {calendarRemoved ? (
+          <div className="notice success" role="status" aria-live="polite">
+            Calendar removed from Manoa. You can reconnect the account later if you want it back.
           </div>
         ) : null}
 
@@ -463,9 +470,19 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                           </span>
                         </label>
 
-                        <button className="nav-link calendar-save-button" type="submit">
-                          Save calendar settings
-                        </button>
+                        <div className="calendar-card-actions">
+                          <button className="nav-link calendar-save-button" type="submit">
+                            Save calendar settings
+                          </button>
+                          <button
+                            className="nav-link secondary calendar-remove-button"
+                            type="submit"
+                            formAction="/api/calendar/remove"
+                            formMethod="post"
+                          >
+                            Remove from Manoa
+                          </button>
+                        </div>
                       </form>
                     ))}
                   </div>

@@ -1115,6 +1115,37 @@ export async function updateConfiguredGoogleCalendar({
   if (error) throw error
 }
 
+export async function removeConfiguredCalendar({
+  profileId,
+  connectionId,
+}: {
+  profileId: string
+  connectionId: string
+}) {
+  const { data: existing, error: existingError } = await supabaseAdmin
+    .from('calendar_connections')
+    .select('id')
+    .eq('id', connectionId)
+    .eq('profile_id', profileId)
+    .eq('status', 'active')
+    .maybeSingle<{ id: string }>()
+
+  if (existingError) throw existingError
+  if (!existing) throw new Error('Calendar connection not found.')
+
+  const { error } = await supabaseAdmin
+    .from('calendar_connections')
+    .update({
+      status: 'inactive',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', connectionId)
+    .eq('profile_id', profileId)
+    .eq('status', 'active')
+
+  if (error) throw error
+}
+
 export async function disconnectCalendarAccount({
   profileId,
   provider,

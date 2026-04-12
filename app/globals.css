@@ -1368,6 +1368,18 @@ footer {
   justify-content: center;
 }
 
+.calendar-card-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.calendar-remove-button {
+  justify-content: center;
+  color: #8d2f2f;
+}
+
 .dashboard-checklist-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1576,6 +1588,10 @@ footer {
   }
 
   .calendar-settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .calendar-card-actions {
     grid-template-columns: 1fr;
   }
 }
