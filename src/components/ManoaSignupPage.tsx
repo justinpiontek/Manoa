@@ -896,7 +896,7 @@ export default function ManoaSignupPage() {
 
               <div className="hero-thread-message user">
                 <div className="hero-thread-bubble">
-                  Need a meeting with Dr. Beth this week
+                  Need a meeting with Beth this week
                 </div>
               </div>
 
@@ -906,9 +906,12 @@ export default function ManoaSignupPage() {
                 </div>
                 <div className="hero-thread-stack">
                   <span className="hero-thread-sender">Manoa</span>
-                  <div className="hero-thread-bubble">
-                    I found three times: 1. Tue 10:00 AM 2. Wed 2:00 PM 3. Thu 11:00 AM. Reply
-                    1, 2, or 3.
+                  <div className="hero-thread-bubble hero-thread-bubble-list">
+                    <span>I found three times:</span>
+                    <span>1. Tue 10:00 AM</span>
+                    <span>2. Wed 2:00 PM</span>
+                    <span>3. Thu 11:00 AM</span>
+                    <span>Reply 1, 2, or 3.</span>
                   </div>
                 </div>
               </div>
@@ -924,7 +927,7 @@ export default function ManoaSignupPage() {
                 <div className="hero-thread-stack">
                   <span className="hero-thread-sender">Manoa</span>
                   <div className="hero-thread-bubble">
-                    Booked. Dr. Beth is on Wednesday at 2:00 PM.
+                    Booked. Beth is on Wednesday at 2:00 PM.
                   </div>
                 </div>
               </div>

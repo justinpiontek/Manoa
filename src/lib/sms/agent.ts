@@ -145,6 +145,10 @@ function calendarChoiceList(calendars: CalendarPlacementOption[]) {
     .join('\n')
 }
 
+function actionChoiceList(lines: string[]) {
+  return lines.join('\n')
+}
+
 function recurrenceLine(options: ScheduleOption[]) {
   const firstOption = options[0]
   const summary = recurrenceSummary(firstOption?.recurrence, firstOption?.start || '')
@@ -299,18 +303,38 @@ function reminderForPending(pending: PendingAction) {
       return 'Reply with the calendar name you want, or 1, 2, or 3.'
     case 'reschedule':
       if (pending.payload.stage === 'scope') {
-        return 'Reply 1 for just this one, 2 for the whole series, or 3 to keep it.'
+        return actionChoiceList([
+          'Reply with:',
+          '1. Just this one',
+          '2. The whole series',
+          '3. Keep it',
+        ])
       }
       return 'Reply with the option you want, like 1, 2, or 3.'
     case 'select_reschedule_target':
       return 'Reply with which one you mean, like 1, 2, or 3.'
     case 'invited_reschedule_action':
-      return 'Reply 1 to hold a time, 2 for a draft to the organizer, or 3 to keep it.'
+      return actionChoiceList([
+        'Reply with:',
+        '1. Hold a time on my calendar',
+        '2. Draft a note to the organizer',
+        '3. Keep it',
+      ])
     case 'invited_cancel_action':
       if (pending.payload.stage === 'scope') {
-        return 'Reply 1 for just this one, 2 for the whole series, or 3 to keep it.'
+        return actionChoiceList([
+          'Reply with:',
+          '1. Just this one',
+          '2. The whole series',
+          '3. Keep it',
+        ])
       }
-      return 'Reply 1 to remove it from your calendar, 2 for a draft message, or 3 to keep it.'
+      return actionChoiceList([
+        'Reply with:',
+        '1. Remove it from my calendar',
+        '2. Draft a message',
+        '3. Keep it',
+      ])
     case 'resolve_invitees':
       return 'Reply with the missing email, like "Priya priya@company.com", or say "book it without invites."'
     case 'save_business_contact_phone':
@@ -1518,7 +1542,11 @@ async function handleChoice({
       if (choice === 2) {
         const series = await loadSeriesMaster(profile.id, target)
         if (!series?.seriesTarget || !series.recurrence) {
-          return `I can move just this occurrence by text, but ${target.title} uses a custom repeat pattern I can't safely change yet.\nReply 1 if you want to move just this one, or 3 to keep it as is.`
+          return `I can move just this occurrence by text, but ${target.title} uses a custom repeat pattern I can't safely change yet.\n${actionChoiceList([
+            'Reply with:',
+            '1. Move just this one',
+            '3. Keep it as is',
+          ])}`
         }
 
         const baseDate = pending.payload.requestedBaseDate
@@ -1722,7 +1750,11 @@ async function handleChoice({
         const series = await loadSeriesMaster(profile.id, target)
         const seriesTarget = series?.seriesTarget
         if (!seriesTarget) {
-          return `I couldn't find the full ${target.title} series right now.\nReply 1 if you want to cancel just this occurrence, or 3 to keep it.`
+          return `I couldn't find the full ${target.title} series right now.\n${actionChoiceList([
+            'Reply with:',
+            '1. Cancel just this occurrence',
+            '3. Keep it',
+          ])}`
         }
 
         await deleteCalendarEvent(profile.id, seriesTarget.id, seriesTarget.calendarId, sendUpdates)

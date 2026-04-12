@@ -305,6 +305,15 @@ h1 {
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
 }
 
+.hero-thread-bubble-list {
+  display: grid;
+  gap: 6px;
+}
+
+.hero-thread-bubble-list span {
+  display: block;
+}
+
 .hero-thread-message.user .hero-thread-bubble {
   border-color: transparent;
   background: linear-gradient(180deg, #2f63d8 0%, #2457c5 100%);
