@@ -99,6 +99,7 @@ export type EventSummary = {
   description: string
   organizerEmail: string
   attendeeCount: number
+  selfResponseStatus?: string | null
   recurrence?: string[] | null
   recurringEventId?: string | null
   originalStart?: string | null
@@ -249,8 +250,16 @@ function displayCalendarName(connection: CalendarConnection) {
 
 function mapGoogleEvent(
   event: calendar_v3.Schema$Event,
-  connection: Pick<CalendarConnection, 'calendar_id' | 'calendar_name' | 'calendar_label'>,
+  connection: Pick<
+    CalendarConnection,
+    'calendar_id' | 'calendar_name' | 'calendar_label' | 'account_email'
+  >,
 ) {
+  const normalizedAccountEmail = (connection.account_email || '').trim().toLowerCase()
+  const selfAttendee =
+    event.attendees?.find((attendee) => attendee.self) ||
+    event.attendees?.find((attendee) => (attendee.email || '').trim().toLowerCase() === normalizedAccountEmail)
+
   return {
     id: event.id || '',
     title: event.summary || 'Untitled event',
@@ -264,6 +273,7 @@ function mapGoogleEvent(
     description: event.description || '',
     organizerEmail: event.organizer?.email || '',
     attendeeCount: event.attendees?.length || 0,
+    selfResponseStatus: selfAttendee?.responseStatus || null,
     recurrence: event.recurrence || null,
     recurringEventId: event.recurringEventId || null,
     originalStart: event.originalStartTime?.dateTime || event.originalStartTime?.date || null,
@@ -303,6 +313,7 @@ function mapOutlookEvent(
     bodyPreview?: string | null
     organizer?: { emailAddress?: { address?: string | null } | null } | null
     attendees?: Array<unknown> | null
+    responseStatus?: { response?: string | null } | null
     recurrence?: unknown
     seriesMasterId?: string | null
     type?: string | null
@@ -326,6 +337,7 @@ function mapOutlookEvent(
     description: event.bodyPreview || '',
     organizerEmail: event.organizer?.emailAddress?.address || '',
     attendeeCount: event.attendees?.length || 0,
+    selfResponseStatus: event.responseStatus?.response || null,
     recurrence: recurrence ? [recurrenceSummary(recurrence, start) || 'Recurring event'] : null,
     recurringEventId: event.seriesMasterId || null,
     originalStart: event.originalStart || null,
@@ -1287,7 +1299,7 @@ async function listOutlookEventsForConnection({
   params.set('endDateTime', timeMax.toISOString())
   params.set(
     '$select',
-    'id,subject,start,end,location,bodyPreview,organizer,attendees,recurrence,seriesMasterId,type,originalStart',
+    'id,subject,start,end,location,bodyPreview,organizer,attendees,responseStatus,recurrence,seriesMasterId,type,originalStart',
   )
   params.set('$orderby', 'start/dateTime')
   params.set('$top', String(maxResults))
@@ -1302,6 +1314,7 @@ async function listOutlookEventsForConnection({
       bodyPreview?: string | null
       organizer?: { emailAddress?: { address?: string | null } | null } | null
       attendees?: Array<unknown> | null
+      responseStatus?: { response?: string | null } | null
       recurrence?: unknown
       seriesMasterId?: string | null
       type?: string | null
@@ -1424,6 +1437,7 @@ export async function getCalendarEvent(profileId: string, eventId: string, calen
           bodyPreview?: string | null
           organizer?: { emailAddress?: { address?: string | null } | null } | null
           attendees?: Array<unknown> | null
+          responseStatus?: { response?: string | null } | null
           recurrence?: unknown
           seriesMasterId?: string | null
           type?: string | null

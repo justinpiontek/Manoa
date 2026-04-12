@@ -158,6 +158,67 @@ function bookingText(option: ScheduleOption) {
   return `Booked ${option.title} for ${option.dayLabel} at ${option.timeLabel}.`
 }
 
+function normalizeEmail(value: string | null | undefined) {
+  return (value || '').trim().toLowerCase()
+}
+
+function overlapsOption(event: EventSummary, start: Date, end: Date) {
+  const eventStart = new Date(event.start)
+  const eventEnd = new Date(event.end)
+
+  if (Number.isNaN(eventStart.getTime()) || Number.isNaN(eventEnd.getTime())) {
+    return false
+  }
+
+  return eventStart < end && eventEnd > start
+}
+
+function isPendingInviteConflict(event: EventSummary, profileEmail: string) {
+  const response = (event.selfResponseStatus || '').trim().toLowerCase()
+  const organizerEmail = normalizeEmail(event.organizerEmail)
+  const userEmail = normalizeEmail(profileEmail)
+
+  return (
+    organizerEmail.length > 0 &&
+    userEmail.length > 0 &&
+    organizerEmail !== userEmail &&
+    (response === 'tentative' || response === 'needsaction')
+  )
+}
+
+function pendingInviteScheduleReply({
+  conflict,
+  requestedOption,
+  alternatives,
+}: {
+  conflict: EventSummary
+  requestedOption: ScheduleOption
+  alternatives: ScheduleOption[]
+}) {
+  const lines = [
+    `You have a pending invite for "${conflict.title}" at ${conflict.timeLabel}.`,
+    `1. Book over it anyway: ${requestedOption.dayLabel} at ${requestedOption.timeLabel} on ${requestedOption.calendarName}`,
+  ]
+
+  if (alternatives[0]) {
+    lines.push(`2. ${alternatives[0].dayLabel} at ${alternatives[0].timeLabel} on ${alternatives[0].calendarName}`)
+  }
+
+  if (alternatives[1]) {
+    lines.push(`3. ${alternatives[1].dayLabel} at ${alternatives[1].timeLabel} on ${alternatives[1].calendarName}`)
+  }
+
+  if (alternatives[1]) {
+    lines.push('Reply 1, 2, or 3.')
+  } else if (alternatives[0]) {
+    lines.push('Reply 1 or 2.')
+  } else {
+    lines.push('Reply 1 to book over it anyway, or text a different day or time.')
+  }
+
+  return lines.join('\n')
+}
+
 function sortAgendaEvents(events: EventSummary[]) {
   return [...events].sort((left, right) => {
     const leftTime = new Date(left.start).getTime()
@@ -2062,6 +2123,67 @@ export async function handleIncomingSms({
     const chosenCalendar =
       placement.matches[0] ||
       placement.bookingCalendars[0]
+
+    if (scheduleIntent.exactTime && !scheduleIntent.recurrence && chosenCalendar) {
+      const requestedStart = setTime(scheduleIntent.baseDate, scheduleIntent.exactTime)
+      const requestedEnd = addMinutes(requestedStart, scheduleIntent.durationMinutes)
+      const overlappingEvents = (await listUpcomingEvents({
+        profileId: profile.id,
+        startAt: requestedStart,
+        windowMinutes: scheduleIntent.durationMinutes,
+        maxResults: 12,
+      })).filter((event) => overlapsOption(event, requestedStart, requestedEnd))
+
+      const pendingInviteConflict = overlappingEvents.find((event) =>
+        isPendingInviteConflict(event, profile.email),
+      )
+      const hardConflict = overlappingEvents.find(
+        (event) => !isPendingInviteConflict(event, profile.email),
+      )
+
+      if (pendingInviteConflict && !hardConflict) {
+        const alternatives = await findScheduleOptions({
+          profileId: profile.id,
+          title: scheduleIntent.title,
+          baseDate: scheduleIntent.baseDate,
+          exactTime: scheduleIntent.exactTime,
+          calendarId: chosenCalendar.calendarId,
+          calendarHint: chosenCalendar.calendarLabel || scheduleIntent.calendarHint,
+          durationMinutes: scheduleIntent.durationMinutes,
+          recurrence: scheduleIntent.recurrence,
+        })
+
+        const requestedOption: ScheduleOption = {
+          title: scheduleIntent.title,
+          start: requestedStart.toISOString(),
+          end: requestedEnd.toISOString(),
+          provider: chosenCalendar.provider,
+          calendarId: chosenCalendar.calendarId,
+          calendarName: chosenCalendar.calendarLabel,
+          dayLabel: formatSmsDate(requestedStart),
+          timeLabel: formatSmsTime(requestedStart),
+          recurrence: null,
+        }
+
+        const options = [requestedOption, ...alternatives].slice(0, 3)
+
+        await storeScheduleOptionsPending({
+          profileId: profile.id,
+          smsFrom: from,
+          options,
+          attendees: inviteeContext.invitees,
+          unresolvedInvitees: inviteeContext.unresolvedNames,
+        })
+
+        const reply = pendingInviteScheduleReply({
+          conflict: pendingInviteConflict,
+          requestedOption,
+          alternatives: alternatives.slice(0, 2),
+        })
+        await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+        return reply
+      }
+    }
 
     const options = await findScheduleOptions({
       profileId: profile.id,
