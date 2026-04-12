@@ -598,13 +598,52 @@ async function ensureOutlookAccessToken(connection: CalendarConnection) {
   return refreshed.accessToken
 }
 
+function canonicalAccountId(
+  connection: Pick<CalendarConnection, 'provider' | 'account_id' | 'account_email'>,
+) {
+  if (connection.provider === 'google' && connection.account_id === 'primary' && connection.account_email) {
+    return connection.account_email
+  }
+
+  return connection.account_id
+}
+
+async function deactivateGoogleAccountRows(profileId: string, accountId: string) {
+  const updatedAt = new Date().toISOString()
+
+  const { error: directError } = await supabaseAdmin
+    .from('calendar_connections')
+    .update({
+      status: 'inactive',
+      updated_at: updatedAt,
+    })
+    .eq('profile_id', profileId)
+    .eq('provider', 'google')
+    .eq('account_id', accountId)
+
+  if (directError) throw directError
+
+  const { error: legacyError } = await supabaseAdmin
+    .from('calendar_connections')
+    .update({
+      status: 'inactive',
+      updated_at: updatedAt,
+    })
+    .eq('profile_id', profileId)
+    .eq('provider', 'google')
+    .eq('account_id', 'primary')
+    .eq('account_email', accountId)
+
+  if (legacyError) throw legacyError
+}
+
 function uniqueAccountIds(connections: CalendarConnection[]) {
-  return [...new Set(connections.map((connection) => connection.account_id).filter(Boolean))]
+  return [...new Set(connections.map((connection) => canonicalAccountId(connection)).filter(Boolean))]
 }
 
 function groupConnectionsByAccount(connections: CalendarConnection[]) {
   return connections.reduce<Record<string, CalendarConnection[]>>((groups, connection) => {
-    const key = `${connection.provider}:${connection.account_id}`
+    const key = `${connection.provider}:${canonicalAccountId(connection)}`
     groups[key] ||= []
     groups[key].push(connection)
     return groups
@@ -780,7 +819,7 @@ async function calendarForProfile(
       ? connections.find((item) => item.calendar_id === options.calendarId)
       : null) ||
     (options?.accountId
-      ? connections.find((item) => item.account_id === options.accountId)
+      ? connections.find((item) => canonicalAccountId(item) === options.accountId)
       : null) ||
     connections[0]
 
@@ -821,19 +860,11 @@ export async function storeGoogleConnection(
 
   const existingByCalendarId = new Map(
     existingConnections
-      .filter((connection) => connection.account_id === accountId)
+      .filter((connection) => canonicalAccountId(connection) === accountId)
       .map((connection) => [connection.calendar_id, connection]),
   )
 
-  await supabaseAdmin
-    .from('calendar_connections')
-    .update({
-      status: 'inactive',
-      updated_at: new Date().toISOString(),
-    })
-    .eq('profile_id', profileId)
-    .eq('provider', 'google')
-    .eq('account_id', options?.reconnectAccountId || accountId)
+  await deactivateGoogleAccountRows(profileId, options?.reconnectAccountId || accountId)
 
   const rows = persistedDescriptors.map((descriptor) => {
     const existing = existingByCalendarId.get(descriptor.id)
@@ -965,7 +996,7 @@ function configuredAccountsFromConnections(connections: CalendarConnection[]) {
         })
         .map<ConfiguredCalendar>((connection) => ({
           connectionId: connection.id,
-          accountId: connection.account_id,
+          accountId: canonicalAccountId(connection),
           accountEmail: connection.account_email,
           calendarId: connection.calendar_id,
           provider: connection.provider,
@@ -979,7 +1010,7 @@ function configuredAccountsFromConnections(connections: CalendarConnection[]) {
 
       return {
         provider: group[0].provider,
-        accountId: group[0].account_id,
+        accountId: canonicalAccountId(group[0]),
         accountEmail: group[0].account_email,
         calendars: sortedCalendars,
       } satisfies ConfiguredCalendarAccount
@@ -1063,6 +1094,18 @@ export async function disconnectCalendarAccount({
   provider: CalendarProvider
   accountId: string
 }) {
+  if (provider === 'google') {
+    const existingConnections = await getGoogleConnections(profileId)
+    const existing = existingConnections.find((connection) => canonicalAccountId(connection) === accountId)
+
+    if (!existing) {
+      throw new Error('Calendar account not found.')
+    }
+
+    await deactivateGoogleAccountRows(profileId, accountId)
+    return
+  }
+
   const { data: existing, error: existingError } = await supabaseAdmin
     .from('calendar_connections')
     .select('id')
@@ -1095,7 +1138,7 @@ export async function disconnectCalendarAccount({
 function toPlacementOption(connection: CalendarConnection): CalendarPlacementOption {
   return {
     connectionId: connection.id,
-    accountId: connection.account_id,
+    accountId: canonicalAccountId(connection),
     accountEmail: connection.account_email,
     calendarId: connection.calendar_id,
     calendarName: connection.calendar_name,
@@ -1156,7 +1199,7 @@ function groupedAvailabilityConnections(connections: CalendarConnection[]) {
   const included = connections.filter((connection) => connection.include_in_conflicts)
   return (included.length ? included : connections).reduce<Record<string, CalendarConnection[]>>(
     (groups, connection) => {
-      const key = `${connection.provider}:${connection.account_id}`
+      const key = `${connection.provider}:${canonicalAccountId(connection)}`
       groups[key] ||= []
       groups[key].push(connection)
       return groups
