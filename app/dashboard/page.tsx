@@ -238,12 +238,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </div>
         ) : null}
 
-        {user ? (
-          <div className="notice success" role="status" aria-live="polite">
-            Signed in as {user.email}.
-          </div>
-        ) : null}
-
         {billingReturned ? (
           <div className="notice success" role="status" aria-live="polite">
             Billing updated. You are back in your Manoa dashboard.
@@ -323,10 +317,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         <div className="dashboard-grid">
           <article className="dashboard-section">
             <p className="dashboard-label">Account</p>
-            <h3>{profile.email}</h3>
-            <p>Your saved phone: {displayUserPhone}</p>
-            <p>Subscription: {subscriptionLabel(profile.subscriptionStatus)}</p>
+            <h3>Billing and access</h3>
+            <p>Membership is {subscriptionLabel(profile.subscriptionStatus).toLowerCase()}.</p>
             <p>Use Manage billing anytime to update payment details or cancel your membership.</p>
+            <p>Use Sign out in the top corner if you ever want to leave this dashboard on this device.</p>
           </article>
 
           <article className="dashboard-section">
