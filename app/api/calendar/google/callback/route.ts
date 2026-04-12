@@ -13,11 +13,15 @@ export async function GET(request: NextRequest) {
     return new Response('Missing Google OAuth code or state.', { status: 400 })
   }
 
-  const client = googleOAuthClient()
-  const tokenResponse = await client.getToken(code)
-  await storeGoogleConnection(profileId, tokenResponse.tokens, {
-    reconnectAccountId,
-  })
+  try {
+    const client = googleOAuthClient()
+    const tokenResponse = await client.getToken(code)
+    await storeGoogleConnection(profileId, tokenResponse.tokens, {
+      reconnectAccountId,
+    })
 
-  return Response.redirect(`${appUrl()}/dashboard?profile_id=${profileId}&calendar=connected`, 303)
+    return Response.redirect(`${appUrl()}/dashboard?profile_id=${profileId}&calendar=connected`, 303)
+  } catch {
+    return Response.redirect(`${appUrl()}/dashboard?profile_id=${profileId}&calendar=error`, 303)
+  }
 }

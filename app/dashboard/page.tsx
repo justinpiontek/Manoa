@@ -33,6 +33,34 @@ function providerLabel(provider: 'google' | 'outlook') {
   return provider === 'outlook' ? 'Outlook' : 'Google'
 }
 
+function textLineLabel(number: string) {
+  return number ? 'Ready' : 'Pending approval'
+}
+
+function nextStepCopy({
+  subscriptionStatus,
+  calendarConnected,
+  manoaNumber,
+}: {
+  subscriptionStatus: string | null
+  calendarConnected: boolean
+  manoaNumber: string
+}) {
+  if (subscriptionStatus !== 'active' && subscriptionStatus !== 'trialing') {
+    return 'Your account is almost there. As soon as billing is settled, Manoa will be fully ready.'
+  }
+
+  if (!calendarConnected) {
+    return 'Connect a calendar, then Manoa can start finding open times and booking by text.'
+  }
+
+  if (!manoaNumber) {
+    return 'Your account and calendar are ready. The text line is still finishing approval, so keep this page handy.'
+  }
+
+  return 'Everything is lined up. Save the number once, send your first text, and Manoa is off to the races.'
+}
+
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
   const params = await searchParams
   let profileId = params.profile_id || ''
@@ -58,6 +86,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const displayUserPhone = profile ? formatPhoneForDisplay(profile.phone_e164) : ''
   const calendarConnected = params.calendar === 'connected'
   const calendarDisconnected = params.calendar === 'disconnected'
+  const calendarError = params.calendar === 'error'
   const billingMissing = params.billing === 'missing'
   const billingReturned = params.billing === 'returned'
 
@@ -102,6 +131,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const canAddGoogleAccount = googleAccounts.length < 2
   const canAddOutlookAccount = outlookAccounts.length < 2
   const totalConnectedAccounts = calendarAccounts.length
+  const readyToText = Boolean(manoaNumber && profile.calendarConnected)
+  const firstTextExample = totalConnectedAccounts > 1
+    ? 'Schedule lunch Tuesday on Personal'
+    : "What's on my calendar tomorrow?"
 
   return (
     <main className="dashboard-shell">
@@ -129,6 +162,12 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           and whether your subscription and calendar are ready.
         </p>
 
+        <p className="dashboard-next-step">{nextStepCopy({
+          subscriptionStatus: profile.subscriptionStatus,
+          calendarConnected: profile.calendarConnected,
+          manoaNumber,
+        })}</p>
+
         <div className="status-row" aria-label="Account status">
           <div className={`status-pill ${profile.subscriptionStatus === 'active' || profile.subscriptionStatus === 'trialing' ? 'ready' : 'pending'}`}>
             <strong>Subscription</strong>
@@ -140,7 +179,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </div>
           <div className={`status-pill ${manoaNumber ? 'ready' : 'pending'}`}>
             <strong>Text line</strong>
-            <span>{displayNumber || 'Finishing setup'}</span>
+            <span>{textLineLabel(manoaNumber)}</span>
           </div>
         </div>
 
@@ -153,6 +192,13 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         {calendarDisconnected ? (
           <div className="notice success" role="status" aria-live="polite">
             Calendar account disconnected. You can reconnect it any time from this page.
+          </div>
+        ) : null}
+
+        {calendarError ? (
+          <div className="notice warning" role="status" aria-live="polite">
+            We couldn&apos;t finish that calendar connection. If you just turned on multi-calendar
+            routing, the newest Supabase migration may still need to be run.
           </div>
         ) : null}
 
@@ -188,7 +234,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         ) : null}
 
         <section className="dashboard-hero-panel">
-          <div>
+          <div className="dashboard-hero-copy">
             <p className="dashboard-kicker">Text this number</p>
             <h2>{displayNumber || 'Manoa number is still being finalized.'}</h2>
             <p>
@@ -199,23 +245,48 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
               your billing link is right here too.
             </p>
             <p className="dashboard-hero-subnote">
-              If carrier approval is still in progress, keep this page handy. The number and account
-              setup are already in place.
+              {manoaNumber
+                ? 'Once the number is saved, texting Manoa should feel like texting a real assistant.'
+                : 'If carrier approval is still in progress, keep this page handy. The account and calendar setup are already in place.'}
             </p>
+
+            <div className="dashboard-example-card">
+              <span className="dashboard-example-label">First text to send</span>
+              <strong>{firstTextExample}</strong>
+            </div>
           </div>
-          <div className="dashboard-hero-actions">
-            {manoaNumber ? <a className="button dashboard-button" href={`sms:${manoaNumber}`}>Open text app</a> : null}
-            <a className="button dashboard-button secondary-button" href="/api/contact-card">
-              Save Manoa contact
-            </a>
-            <a className="button dashboard-button secondary-button" href={`/api/billing-portal?profile_id=${profile.id}`}>
-              Manage billing
-            </a>
-            {!manoaNumber ? (
-              <span className="dashboard-note">
-                Add `TWILIO_FROM_NUMBER` in Vercel to show the live number here.
-              </span>
-            ) : null}
+
+          <div className="dashboard-hero-side">
+            <div className="dashboard-hero-actions">
+              {manoaNumber ? <a className="button dashboard-button" href={`sms:${manoaNumber}`}>Text Manoa now</a> : null}
+              <a className="button dashboard-button secondary-button" href="/api/contact-card">
+                Save Manoa contact
+              </a>
+              <a className="button dashboard-button secondary-button" href={`/api/billing-portal?profile_id=${profile.id}`}>
+                Manage billing
+              </a>
+            </div>
+
+            <div className="dashboard-hero-meta">
+              <div>
+                <span>Signed in</span>
+                <strong>{profile.email}</strong>
+              </div>
+              <div>
+                <span>Your phone</span>
+                <strong>{displayUserPhone}</strong>
+              </div>
+              <div>
+                <span>Calendars ready</span>
+                <strong>{totalConnectedAccounts || 0}</strong>
+              </div>
+            </div>
+
+            <p className="dashboard-note">
+              {manoaNumber
+                ? 'Manoa only books after you confirm by text.'
+                : 'Your number will appear here as soon as texting approval finishes.'}
+            </p>
           </div>
         </section>
 
@@ -248,10 +319,12 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
           <article className="dashboard-section">
             <p className="dashboard-label">Start texting</p>
-            <h3>Try one of these</h3>
-            <p>9am meeting Tuesday on work calendar</p>
-            <p>What&apos;s on my calendar tomorrow?</p>
-            <p>Reschedule dentist</p>
+            <h3>{readyToText ? 'Start with one of these' : 'What you will text soon'}</h3>
+            <ul className="dashboard-example-list">
+              <li>9am meeting Tuesday on work calendar</li>
+              <li>What&apos;s on my calendar tomorrow?</li>
+              <li>Reschedule dentist</li>
+            </ul>
             <p>Save Manoa in your contacts so this feels like texting a real assistant.</p>
           </article>
         </div>
@@ -293,24 +366,26 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                         {account.calendars.length === 1 ? '' : 's'} connected
                       </p>
                     </div>
-                    <a
-                      className="nav-link"
-                      href={
-                        account.provider === 'outlook'
-                          ? `/api/calendar/outlook/start?profile_id=${profile.id}&account_id=${account.accountId}`
-                          : `/api/calendar/google/start?profile_id=${profile.id}&account_id=${account.accountId}`
-                      }
-                    >
-                      Reconnect account
-                    </a>
-                    <form action="/api/calendar/disconnect" method="post">
-                      <input type="hidden" name="profile_id" value={profile.id} />
-                      <input type="hidden" name="provider" value={account.provider} />
-                      <input type="hidden" name="account_id" value={account.accountId} />
-                      <button className="nav-link secondary" type="submit">
-                        Disconnect
-                      </button>
-                    </form>
+                    <div className="calendar-account-actions">
+                      <a
+                        className="nav-link"
+                        href={
+                          account.provider === 'outlook'
+                            ? `/api/calendar/outlook/start?profile_id=${profile.id}&account_id=${account.accountId}`
+                            : `/api/calendar/google/start?profile_id=${profile.id}&account_id=${account.accountId}`
+                        }
+                      >
+                        Reconnect account
+                      </a>
+                      <form action="/api/calendar/disconnect" method="post">
+                        <input type="hidden" name="profile_id" value={profile.id} />
+                        <input type="hidden" name="provider" value={account.provider} />
+                        <input type="hidden" name="account_id" value={account.accountId} />
+                        <button className="nav-link secondary" type="submit">
+                          Disconnect
+                        </button>
+                      </form>
+                    </div>
                   </div>
 
                   <div className="calendar-settings-grid">

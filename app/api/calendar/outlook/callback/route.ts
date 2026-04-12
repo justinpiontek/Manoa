@@ -13,9 +13,13 @@ export async function GET(request: NextRequest) {
     return new Response('Missing Outlook OAuth code or state.', { status: 400 })
   }
 
-  await storeOutlookConnection(profileId, code, {
-    reconnectAccountId,
-  })
+  try {
+    await storeOutlookConnection(profileId, code, {
+      reconnectAccountId,
+    })
 
-  return Response.redirect(`${appUrl()}/dashboard?profile_id=${profileId}&calendar=connected`, 303)
+    return Response.redirect(`${appUrl()}/dashboard?profile_id=${profileId}&calendar=connected`, 303)
+  } catch {
+    return Response.redirect(`${appUrl()}/dashboard?profile_id=${profileId}&calendar=error`, 303)
+  }
 }
