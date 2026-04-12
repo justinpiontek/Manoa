@@ -4,6 +4,7 @@ import { formatPhoneForDisplay } from '@/src/lib/phone'
 import { listConfiguredCalendarAccounts } from '@/src/lib/calendar/google'
 import { getDashboardProfile, getDashboardProfileByEmail } from '@/src/lib/profiles'
 import { createSupabaseServerClient } from '@/src/lib/supabase/server'
+import CalendarSettingsForm from '@/src/components/CalendarSettingsForm'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -419,71 +420,18 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
                   <div className="calendar-settings-grid">
                     {account.calendars.map((calendar) => (
-                      <form
+                      <CalendarSettingsForm
                         key={calendar.connectionId}
-                        action="/api/calendar/google/update"
-                        method="post"
-                        className="calendar-setting-card"
-                      >
-                        <input type="hidden" name="profile_id" value={profile.id} />
-                        <input type="hidden" name="connection_id" value={calendar.connectionId} />
-
-                        <div className="calendar-setting-head">
-                          <div>
-                            <strong>{calendar.sourceName}</strong>
-                            <span>
-                              {calendar.isPrimary
-                                ? `Primary ${providerLabel(calendar.provider)} calendar`
-                                : `${providerLabel(calendar.provider)} calendar`}
-                            </span>
-                          </div>
-                          {!calendar.canWrite ? (
-                            <span className="calendar-setting-badge">Read only</span>
-                          ) : null}
-                        </div>
-
-                        <label className="calendar-field">
-                          <span>Name in Manoa</span>
-                          <input name="calendar_label" defaultValue={calendar.label} />
-                        </label>
-
-                        <label className="calendar-toggle">
-                          <input
-                            type="checkbox"
-                            name="include_in_conflicts"
-                            defaultChecked={calendar.includeInConflicts}
-                          />
-                          <span>Use this to block conflicting times</span>
-                        </label>
-
-                        <label className="calendar-toggle">
-                          <input
-                            type="checkbox"
-                            name="allow_new_events"
-                            defaultChecked={calendar.allowNewEvents}
-                            disabled={!calendar.canWrite}
-                          />
-                          <span>
-                            {calendar.canWrite
-                              ? 'Let Manoa place new events here'
-                              : 'This calendar is read only'}
-                          </span>
-                        </label>
-
-                        <div className="calendar-card-actions">
-                          <button className="nav-link calendar-save-button" type="submit">
-                            Save calendar settings
-                          </button>
-                          <button
-                            className="nav-link secondary calendar-remove-button"
-                            type="submit"
-                            formAction="/api/calendar/remove"
-                            formMethod="post"
-                          >
-                            Remove from Manoa
-                          </button>
-                        </div>
-                      </form>
+                        profileId={profile.id}
+                        connectionId={calendar.connectionId}
+                        sourceName={calendar.sourceName}
+                        providerLabel={providerLabel(calendar.provider)}
+                        isPrimary={calendar.isPrimary}
+                        canWrite={calendar.canWrite}
+                        label={calendar.label}
+                        includeInConflicts={calendar.includeInConflicts}
+                        allowNewEvents={calendar.allowNewEvents}
+                      />
                     ))}
                   </div>
                 </article>

@@ -1303,6 +1303,10 @@ footer {
   padding: 14px;
 }
 
+.calendar-setting-card.is-pending {
+  opacity: 0.86;
+}
+
 .calendar-setting-head {
   display: flex;
   align-items: flex-start;
@@ -1378,6 +1382,11 @@ footer {
 .calendar-remove-button {
   justify-content: center;
   color: #8d2f2f;
+}
+
+.calendar-card-actions button:disabled {
+  cursor: progress;
+  opacity: 0.78;
 }
 
 .dashboard-checklist-grid {
