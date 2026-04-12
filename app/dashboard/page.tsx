@@ -253,6 +253,12 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </div>
         ) : null}
 
+        {params.settings === 'duration_unavailable' ? (
+          <div className="notice warning" role="status" aria-live="polite">
+            Default event length could not be saved yet because the latest profile settings update has not finished in the database.
+          </div>
+        ) : null}
+
         {billingMissing ? (
           <div className="notice warning" role="status" aria-live="polite">
             We could not find your billing record yet. Try again in a minute. If it still looks off,

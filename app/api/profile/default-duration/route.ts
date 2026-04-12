@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { appUrl } from '@/src/lib/env'
+import { isMissingDefaultDurationColumnError } from '@/src/lib/profiles'
 import { supabaseAdmin } from '@/src/lib/supabaseAdmin'
 
 const allowedDurations = new Set([15, 30, 45, 60, 90])
@@ -26,6 +27,12 @@ export async function POST(request: NextRequest) {
     .eq('id', profileId)
 
   if (error) {
+    if (isMissingDefaultDurationColumnError(error)) {
+      return Response.redirect(
+        `${appUrl()}/dashboard?profile_id=${profileId}&settings=duration_unavailable`,
+        303,
+      )
+    }
     throw error
   }
 

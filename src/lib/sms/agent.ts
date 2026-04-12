@@ -33,6 +33,7 @@ import {
   findPersonContact,
   saveOrUpdatePersonContact,
 } from '../peopleContacts'
+import { isMissingDefaultDurationColumnError } from '../profiles'
 import {
   classifyEventAuthority,
   looksExternalAppointment,
@@ -620,7 +621,7 @@ async function searchUpcomingEvents(profileId: string) {
 }
 
 async function profileForPhone(phoneE164: string) {
-  const { data: profile, error } = await supabaseAdmin
+  const result = await supabaseAdmin
     .from('profiles')
     .select('id,email,phone_e164,timezone,default_event_duration_minutes,phone_confirmed_at,sms_opted_out_at')
     .eq('phone_e164', phoneE164)
@@ -634,7 +635,31 @@ async function profileForPhone(phoneE164: string) {
       sms_opted_out_at: string | null
     }>()
 
-  if (error) throw error
+  let profile = result.data
+  if (result.error && isMissingDefaultDurationColumnError(result.error)) {
+    const fallback = await supabaseAdmin
+      .from('profiles')
+      .select('id,email,phone_e164,timezone,phone_confirmed_at,sms_opted_out_at')
+      .eq('phone_e164', phoneE164)
+      .maybeSingle<{
+        id: string
+        email: string
+        phone_e164: string
+        timezone: string
+        phone_confirmed_at: string | null
+        sms_opted_out_at: string | null
+      }>()
+
+    if (fallback.error) throw fallback.error
+    if (!fallback.data) return null
+    profile = {
+      ...fallback.data,
+      default_event_duration_minutes: 30,
+    }
+  } else if (result.error) {
+    throw result.error
+  }
+
   if (!profile) return null
 
   if (!profile.phone_confirmed_at) {

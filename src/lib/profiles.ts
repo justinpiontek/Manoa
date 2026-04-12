@@ -10,10 +10,73 @@ export type Profile = {
   default_event_duration_minutes: number
 }
 
+type ProfileRow = {
+  id: string
+  email: string
+  phone_e164: string
+  timezone: string
+  default_event_duration_minutes?: number | null
+}
+
 export type DashboardProfile = Profile & {
   subscriptionStatus: string | null
   calendarConnected: boolean
   googleCalendarConnected: boolean
+}
+
+const profileSelectColumns = 'id,email,phone_e164,timezone,default_event_duration_minutes'
+const legacyProfileSelectColumns = 'id,email,phone_e164,timezone'
+
+export function isMissingDefaultDurationColumnError(error: unknown) {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'object' && error && 'message' in error
+        ? String((error as { message?: unknown }).message || '')
+        : ''
+
+  const lower = message.toLowerCase()
+  return lower.includes('default_event_duration_minutes') && lower.includes('does not exist')
+}
+
+function normalizeProfileRow(row: ProfileRow): Profile {
+  return {
+    id: row.id,
+    email: row.email,
+    phone_e164: row.phone_e164,
+    timezone: row.timezone,
+    default_event_duration_minutes: row.default_event_duration_minutes ?? 30,
+  }
+}
+
+async function selectProfileMaybeSingle(
+  build: (columns: string) => PromiseLike<{ data: ProfileRow | null; error: unknown }>,
+) {
+  const result = await build(profileSelectColumns)
+  if (result.error && isMissingDefaultDurationColumnError(result.error)) {
+    const fallback = await build(legacyProfileSelectColumns)
+    if (fallback.error) throw fallback.error
+    return fallback.data ? normalizeProfileRow(fallback.data) : null
+  }
+
+  if (result.error) throw result.error
+  return result.data ? normalizeProfileRow(result.data) : null
+}
+
+async function selectProfileSingle(
+  build: (columns: string) => PromiseLike<{ data: ProfileRow | null; error: unknown }>,
+) {
+  const result = await build(profileSelectColumns)
+  if (result.error && isMissingDefaultDurationColumnError(result.error)) {
+    const fallback = await build(legacyProfileSelectColumns)
+    if (fallback.error) throw fallback.error
+    if (!fallback.data) throw new Error('Profile could not be loaded after saving.')
+    return normalizeProfileRow(fallback.data)
+  }
+
+  if (result.error) throw result.error
+  if (!result.data) throw new Error('Profile could not be loaded after saving.')
+  return normalizeProfileRow(result.data)
 }
 
 async function resolveDashboardSubscriptionStatus(profile: Profile) {
@@ -87,46 +150,40 @@ export async function findOrCreateProfile({
   email: string
   phoneE164: string
 }) {
-  const byPhone = await supabaseAdmin
-    .from('profiles')
-    .select('id,email,phone_e164,timezone,default_event_duration_minutes')
-    .eq('phone_e164', phoneE164)
-    .maybeSingle<Profile>()
+  const byPhone = await selectProfileMaybeSingle((columns) =>
+    supabaseAdmin.from('profiles').select(columns).eq('phone_e164', phoneE164).maybeSingle<ProfileRow>(),
+  )
 
-  if (byPhone.error) throw byPhone.error
+  if (byPhone) {
+    const updated = await selectProfileSingle((columns) =>
+      supabaseAdmin
+        .from('profiles')
+        .update({ email, updated_at: new Date().toISOString() })
+        .eq('id', byPhone.id)
+        .select(columns)
+        .single<ProfileRow>(),
+    )
 
-  if (byPhone.data) {
-    const updated = await supabaseAdmin
-      .from('profiles')
-      .update({ email, updated_at: new Date().toISOString() })
-      .eq('id', byPhone.data.id)
-      .select('id,email,phone_e164,timezone,default_event_duration_minutes')
-      .single<Profile>()
-
-    if (updated.error) throw updated.error
     await ensureAuthUserForEmail(email)
-    return updated.data
+    return updated
   }
 
-  const byEmail = await supabaseAdmin
-    .from('profiles')
-    .select('id,email,phone_e164,timezone,default_event_duration_minutes')
-    .eq('email', email)
-    .maybeSingle<Profile>()
+  const byEmail = await selectProfileMaybeSingle((columns) =>
+    supabaseAdmin.from('profiles').select(columns).eq('email', email).maybeSingle<ProfileRow>(),
+  )
 
-  if (byEmail.error) throw byEmail.error
+  if (byEmail) {
+    const updated = await selectProfileSingle((columns) =>
+      supabaseAdmin
+        .from('profiles')
+        .update({ phone_e164: phoneE164, updated_at: new Date().toISOString() })
+        .eq('id', byEmail.id)
+        .select(columns)
+        .single<ProfileRow>(),
+    )
 
-  if (byEmail.data) {
-    const updated = await supabaseAdmin
-      .from('profiles')
-      .update({ phone_e164: phoneE164, updated_at: new Date().toISOString() })
-      .eq('id', byEmail.data.id)
-      .select('id,email,phone_e164,timezone,default_event_duration_minutes')
-      .single<Profile>()
-
-    if (updated.error) throw updated.error
     await ensureAuthUserForEmail(email)
-    return updated.data
+    return updated
   }
 
   const created = await supabaseAdmin
@@ -137,12 +194,32 @@ export async function findOrCreateProfile({
       timezone: defaultTimezone(),
       default_event_duration_minutes: 30,
     })
-    .select('id,email,phone_e164,timezone,default_event_duration_minutes')
-    .single<Profile>()
+    .select(profileSelectColumns)
+    .single<ProfileRow>()
 
-  if (created.error) throw created.error
+  let createdProfile: Profile
+  if (created.error && isMissingDefaultDurationColumnError(created.error)) {
+    const legacyCreated = await supabaseAdmin
+      .from('profiles')
+      .insert({
+        email,
+        phone_e164: phoneE164,
+        timezone: defaultTimezone(),
+      })
+      .select(legacyProfileSelectColumns)
+      .single<ProfileRow>()
+
+    if (legacyCreated.error) throw legacyCreated.error
+    if (!legacyCreated.data) throw new Error('Profile could not be created.')
+    createdProfile = normalizeProfileRow(legacyCreated.data)
+  } else {
+    if (created.error) throw created.error
+    if (!created.data) throw new Error('Profile could not be created.')
+    createdProfile = normalizeProfileRow(created.data)
+  }
+
   await ensureAuthUserForEmail(email)
-  return created.data
+  return createdProfile
 }
 
 export async function findProfileForAccess({
@@ -152,25 +229,25 @@ export async function findProfileForAccess({
   email: string
   phoneE164: string
 }) {
-  const { data, error } = await supabaseAdmin
-    .from('profiles')
-    .select('id,email,phone_e164,timezone,default_event_duration_minutes')
-    .eq('email', email)
-    .eq('phone_e164', phoneE164)
-    .maybeSingle<Profile>()
-
-  if (error) throw error
-  return data
+  return selectProfileMaybeSingle((columns) =>
+    supabaseAdmin
+      .from('profiles')
+      .select(columns)
+      .eq('email', email)
+      .eq('phone_e164', phoneE164)
+      .maybeSingle<ProfileRow>(),
+  )
 }
 
 export async function getDashboardProfileByEmail(email: string) {
-  const { data: profile, error } = await supabaseAdmin
-    .from('profiles')
-    .select('id,email,phone_e164,timezone,default_event_duration_minutes')
-    .eq('email', email.trim().toLowerCase())
-    .maybeSingle<Profile>()
+  const profile = await selectProfileMaybeSingle((columns) =>
+    supabaseAdmin
+      .from('profiles')
+      .select(columns)
+      .eq('email', email.trim().toLowerCase())
+      .maybeSingle<ProfileRow>(),
+  )
 
-  if (error) throw error
   if (!profile) return null
 
   const subscriptionStatus = await resolveDashboardSubscriptionStatus(profile)
@@ -194,13 +271,10 @@ export async function getDashboardProfileByEmail(email: string) {
 }
 
 export async function getDashboardProfile(profileId: string) {
-  const { data: profile, error } = await supabaseAdmin
-    .from('profiles')
-    .select('id,email,phone_e164,timezone,default_event_duration_minutes')
-    .eq('id', profileId)
-    .maybeSingle<Profile>()
+  const profile = await selectProfileMaybeSingle((columns) =>
+    supabaseAdmin.from('profiles').select(columns).eq('id', profileId).maybeSingle<ProfileRow>(),
+  )
 
-  if (error) throw error
   if (!profile) return null
 
   const subscriptionStatus = await resolveDashboardSubscriptionStatus(profile)
