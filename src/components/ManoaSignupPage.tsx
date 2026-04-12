@@ -110,6 +110,128 @@ const starterMessages: DemoMessage[] = [
   },
 ]
 
+const homepageUseCases = [
+  {
+    href: '/schedule-by-text',
+    label: 'Schedule by text',
+    title: 'Book something new',
+    description:
+      'Text what you need, get a few open times, and confirm with 1, 2, or 3 instead of opening your calendar.',
+  },
+  {
+    href: '/calendar-reminders-by-text',
+    label: 'Agenda and reminders',
+    title: 'Stay on top of the day',
+    description:
+      'Get morning agenda texts and short reminders so your schedule stays visible without another app.',
+  },
+  {
+    href: '/reschedule-appointments-by-text',
+    label: 'Appointment changes',
+    title: 'Handle dentist and doctor moves honestly',
+    description:
+      'Prep the call, hold time on your calendar, and update the reminder after the office confirms the change.',
+  },
+  {
+    href: '/multiple-calendars-by-text',
+    label: 'Work and personal calendars',
+    title: 'Route events to the right calendar',
+    description:
+      'Use simple hints like work or personal so Manoa can help across the calendars that matter.',
+  },
+  {
+    href: '/invite-people-by-text',
+    label: 'Invitees',
+    title: 'Set up meetings with people by text',
+    description:
+      'Start the meeting from a text and let Manoa handle known contacts while asking for missing emails once.',
+  },
+  {
+    href: '/recurring-events-by-text',
+    label: 'Recurring events',
+    title: 'Create weekly and monthly repeats',
+    description:
+      'Text recurring schedules in plain language instead of clicking through repeat-rule menus.',
+  },
+]
+
+const homepageFaqs = [
+  {
+    question: 'Do I need an app?',
+    answer:
+      'No. You sign up on the site once, connect Google Calendar or Outlook, and then use Manoa by text.',
+  },
+  {
+    question: 'What calendars work with Manoa?',
+    answer:
+      'Right now Manoa supports Google Calendar and Outlook. You connect them after checkout in the setup flow.',
+  },
+  {
+    question: 'Will Manoa change things without me knowing?',
+    answer:
+      'No. Manoa only books after you confirm by text, and it stays clear about what it changed in your calendar versus what still needs a real call or follow-up.',
+  },
+  {
+    question: 'Can Manoa reschedule doctor or dentist appointments?',
+    answer:
+      'Manoa will not pretend it changed an office appointment. It can prepare your best times, hold space on your calendar, and update your reminder once the office confirms the new time.',
+  },
+  {
+    question: 'Can I cancel anytime?',
+    answer:
+      'Yes. The plan is monthly, and you can manage billing or cancel from your Manoa dashboard.',
+  },
+  {
+    question: 'What does setup look like?',
+    answer:
+      'Enter your email and phone, finish checkout, connect your calendar, and send your first text. The whole flow is designed to stay short.',
+  },
+]
+
+const siteUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+
+const homepageSoftwareApplicationStructuredData = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'Manoa',
+  applicationCategory: 'ProductivityApplication',
+  operatingSystem: 'Any',
+  url: siteUrl,
+  description:
+    'Manoa is a calendar assistant you text. Book meetings, get reminders, and manage your calendar by text.',
+  offers: {
+    '@type': 'Offer',
+    price: '19.99',
+    priceCurrency: 'USD',
+    url: `${siteUrl}/#signup`,
+  },
+}
+
+const homepageFaqStructuredData = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: homepageFaqs.map((faq) => ({
+    '@type': 'Question',
+    name: faq.question,
+    acceptedAnswer: {
+      '@type': 'Answer',
+      text: faq.answer,
+    },
+  })),
+}
+
+const homepageUseCaseStructuredData = {
+  '@context': 'https://schema.org',
+  '@type': 'ItemList',
+  name: 'Popular Manoa use cases',
+  itemListElement: homepageUseCases.map((useCase, index) => ({
+    '@type': 'ListItem',
+    position: index + 1,
+    name: useCase.title,
+    url: `${siteUrl}${useCase.href}`,
+  })),
+}
+
 function titleCase(value: string) {
   return value
     .split(' ')
@@ -715,6 +837,24 @@ export default function ManoaSignupPage() {
 
   return (
     <main className="shell">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(homepageSoftwareApplicationStructuredData),
+        }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(homepageFaqStructuredData),
+        }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(homepageUseCaseStructuredData),
+        }}
+      />
       <header className="topbar">
         <a className="brand" href="#" aria-label="Manoa home">
           <span className="mark" aria-hidden="true">
@@ -986,53 +1126,39 @@ export default function ManoaSignupPage() {
         </div>
       </section>
 
+      <section className="home-use-cases" aria-label="Popular use cases">
+        <p className="faq-label">Popular use cases</p>
+        <h2>Learn from the workflow closest to yours.</h2>
+        <p className="home-use-cases-lede">
+          These pages go deeper on the jobs Manoa already handles well, without changing the
+          simple signup flow on the homepage.
+        </p>
+        <div className="home-use-case-grid">
+          {homepageUseCases.map((useCase) => (
+            <a key={useCase.href} className="home-use-case-card" href={useCase.href}>
+              <span className="home-use-case-label">{useCase.label}</span>
+              <h3>{useCase.title}</h3>
+              <p>{useCase.description}</p>
+            </a>
+          ))}
+        </div>
+        <div className="home-use-case-footer">
+          <a className="nav-link" href="/use-cases">
+            See all use cases
+          </a>
+        </div>
+      </section>
+
       <section id="faq" className="faq anchor-section" aria-label="Frequently asked questions">
         <p className="faq-label">FAQ</p>
         <h2>Answers before you sign up.</h2>
         <div className="faq-grid">
-          <article className="faq-item">
-            <h3>Do I need an app?</h3>
-            <p>
-              No. You sign up on the site once, connect Google Calendar or Outlook, and then use
-              Manoa by text.
-            </p>
-          </article>
-          <article className="faq-item">
-            <h3>What calendars work with Manoa?</h3>
-            <p>
-              Right now Manoa supports Google Calendar and Outlook. You connect them after
-              checkout in the setup flow.
-            </p>
-          </article>
-          <article className="faq-item">
-            <h3>Will Manoa change things without me knowing?</h3>
-            <p>
-              No. Manoa only books after you confirm by text, and it stays clear about what it
-              changed in your calendar versus what still needs a real call or follow-up.
-            </p>
-          </article>
-          <article className="faq-item">
-            <h3>Can Manoa reschedule doctor or dentist appointments?</h3>
-            <p>
-              Manoa will not pretend it changed an office appointment. It can prepare your best
-              times, hold space on your calendar, and update your reminder once the office confirms
-              the new time.
-            </p>
-          </article>
-          <article className="faq-item">
-            <h3>Can I cancel anytime?</h3>
-            <p>
-              Yes. The plan is monthly, and you can manage billing or cancel from your Manoa
-              dashboard.
-            </p>
-          </article>
-          <article className="faq-item">
-            <h3>What does setup look like?</h3>
-            <p>
-              Enter your email and phone, finish checkout, connect your calendar, and send your
-              first text. The whole flow is designed to stay short.
-            </p>
-          </article>
+          {homepageFaqs.map((faq) => (
+            <article key={faq.question} className="faq-item">
+              <h3>{faq.question}</h3>
+              <p>{faq.answer}</p>
+            </article>
+          ))}
         </div>
       </section>
 

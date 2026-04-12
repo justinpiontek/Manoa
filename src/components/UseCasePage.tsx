@@ -1,25 +1,8 @@
-type UseCaseLink = {
-  href: string
-  label: string
-  description: string
-}
-
-type UseCaseFaq = {
-  question: string
-  answer: string
-}
-
-type UseCaseStep = {
-  title: string
-  body: string
-}
-
-type UseCaseBenefit = {
-  title: string
-  body: string
-}
+import { appUrl } from '@/src/lib/env'
+import type { UseCaseBenefit, UseCaseFaq, UseCaseLink, UseCaseStep } from '@/src/lib/useCases'
 
 type UseCasePageProps = {
+  href: string
   eyebrow: string
   title: string
   description: string
@@ -34,6 +17,7 @@ type UseCasePageProps = {
 }
 
 export default function UseCasePage({
+  href,
   eyebrow,
   title,
   description,
@@ -46,8 +30,80 @@ export default function UseCasePage({
   faqs,
   relatedLinks,
 }: UseCasePageProps) {
+  const baseUrl = appUrl()
+  const fullUrl = `${baseUrl}${href}`
+  const softwareApplicationStructuredData = {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: 'Manoa',
+    applicationCategory: 'ProductivityApplication',
+    operatingSystem: 'Any',
+    url: baseUrl,
+    description,
+    offers: {
+      '@type': 'Offer',
+      price: '19.99',
+      priceCurrency: 'USD',
+      url: `${baseUrl}/#signup`,
+    },
+  }
+  const faqStructuredData = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: faqs.map((faq) => ({
+      '@type': 'Question',
+      name: faq.question,
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: faq.answer,
+      },
+    })),
+  }
+  const breadcrumbStructuredData = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      {
+        '@type': 'ListItem',
+        position: 1,
+        name: 'Manoa',
+        item: baseUrl,
+      },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: 'Use cases',
+        item: `${baseUrl}/use-cases`,
+      },
+      {
+        '@type': 'ListItem',
+        position: 3,
+        name: title,
+        item: fullUrl,
+      },
+    ],
+  }
+
   return (
     <main className="use-case-shell">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(softwareApplicationStructuredData),
+        }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(faqStructuredData),
+        }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(breadcrumbStructuredData),
+        }}
+      />
       <div className="use-case-card">
         <div className="use-case-topbar">
           <a className="legal-back" href="/">

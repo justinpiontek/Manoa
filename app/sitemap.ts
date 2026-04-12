@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next'
 import { appUrl } from '@/src/lib/env'
+import { useCases } from '@/src/lib/useCases'
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = appUrl()
@@ -18,24 +19,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'weekly',
       priority: 0.8,
     },
-    {
-      url: `${baseUrl}/schedule-by-text`,
+    ...useCases.map((useCase) => ({
+      url: `${baseUrl}${useCase.href}`,
       lastModified: now,
-      changeFrequency: 'weekly',
+      changeFrequency: 'weekly' as const,
       priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/calendar-reminders-by-text`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/reschedule-appointments-by-text`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.8,
-    },
+    })),
     {
       url: `${baseUrl}/login`,
       lastModified: now,

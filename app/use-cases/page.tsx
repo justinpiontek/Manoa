@@ -1,31 +1,11 @@
 import type { Metadata } from 'next'
+import { useCases } from '@/src/lib/useCases'
 
 export const metadata: Metadata = {
   title: 'Use Cases | Manoa',
   description:
     'Explore ways to use Manoa to schedule by text, get calendar reminders, and handle appointment changes without opening another app.',
 }
-
-const useCases = [
-  {
-    href: '/schedule-by-text',
-    title: 'Schedule by text',
-    description:
-      'Text what you need, get the best times, and confirm with 1, 2, or 3 instead of bouncing between calendar views.',
-  },
-  {
-    href: '/calendar-reminders-by-text',
-    title: 'Calendar reminders by text',
-    description:
-      'Get a daily agenda plus short reminder texts so your schedule stays visible without opening your calendar app.',
-  },
-  {
-    href: '/reschedule-appointments-by-text',
-    title: 'Reschedule appointments by text',
-    description:
-      'Handle doctor, dentist, salon, and service appointments honestly by prepping the call and updating your calendar after the change is confirmed.',
-  },
-]
 
 export default function UseCasesPage() {
   return (
@@ -38,45 +18,45 @@ export default function UseCasesPage() {
         <p className="use-case-eyebrow">Use cases</p>
         <h1 className="use-case-title">Ways people can use Manoa right now.</h1>
         <p className="use-case-lede">
-          These pages go deeper on the kinds of calendar work Manoa handles best today, while the
-          main site stays focused on the simple signup flow.
+          If you want to see where Manoa fits into your day before signing up, start with the
+          workflow that sounds most like you.
         </p>
 
         <div className="use-case-hub-grid">
           {useCases.map((item) => (
             <a key={item.href} className="use-case-hub-card" href={item.href}>
-              <span className="use-case-panel-label">{item.title}</span>
-              <h2>{item.title}</h2>
-              <p>{item.description}</p>
+              <span className="use-case-panel-label">{item.eyebrow}</span>
+              <h2>{item.cardTitle}</h2>
+              <p>{item.cardDescription}</p>
               <span>Read more</span>
             </a>
           ))}
         </div>
 
         <section className="use-case-section">
-          <p className="use-case-section-label">Why this exists</p>
+          <p className="use-case-section-label">Start here</p>
           <div className="use-case-list-grid">
-            <article className="use-case-mini-card">
-              <h2>Keep the homepage simple</h2>
-              <p>
-                Your main landing page should keep selling the core idea. These pages handle the
-                deeper questions for people who want specifics.
-              </p>
-            </article>
-            <article className="use-case-mini-card">
-              <h2>Support SEO and sharing</h2>
-              <p>
-                Each page gives you a cleaner destination to share in content, social posts,
-                directory listings, and future ad tests.
-              </p>
-            </article>
-            <article className="use-case-mini-card">
-              <h2>Grow without redesigning</h2>
-              <p>
-                You can keep adding new pages over time for workflows like recurring events,
-                invitees, or work and personal calendar routing.
-              </p>
-            </article>
+            <a className="use-case-link-card" href="/schedule-by-text">
+              <strong>I need to book something new</strong>
+              <span>
+                Start with schedule by text if the main problem is turning a quick request into a
+                real calendar event without opening your calendar.
+              </span>
+            </a>
+            <a className="use-case-link-card" href="/calendar-reminders-by-text">
+              <strong>I need to stay on top of my day</strong>
+              <span>
+                Start with calendar reminders by text if you want morning agendas and short
+                reminders to keep your schedule visible.
+              </span>
+            </a>
+            <a className="use-case-link-card" href="/reschedule-appointments-by-text">
+              <strong>I need to move an existing appointment</strong>
+              <span>
+                Start with reschedule appointments by text if the tricky part is changing
+                dentist, doctor, salon, or service appointments honestly.
+              </span>
+            </a>
           </div>
         </section>
       </div>
