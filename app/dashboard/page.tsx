@@ -5,6 +5,7 @@ import { listConfiguredCalendarAccounts } from '@/src/lib/calendar/google'
 import { getDashboardProfile, getDashboardProfileByEmail } from '@/src/lib/profiles'
 import { createSupabaseServerClient } from '@/src/lib/supabase/server'
 import CalendarSettingsForm from '@/src/components/CalendarSettingsForm'
+import DisconnectCalendarAccountForm from '@/src/components/DisconnectCalendarAccountForm'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -401,14 +402,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                       >
                         Reconnect account
                       </a>
-                      <form action="/api/calendar/disconnect" method="post">
-                        <input type="hidden" name="profile_id" value={profile.id} />
-                        <input type="hidden" name="provider" value={account.provider} />
-                        <input type="hidden" name="account_id" value={account.accountId} />
-                        <button className="nav-link secondary" type="submit">
-                          Disconnect
-                        </button>
-                      </form>
+                      <DisconnectCalendarAccountForm
+                        profileId={profile.id}
+                        provider={account.provider}
+                        accountId={account.accountId}
+                      />
                     </div>
                   </div>
 

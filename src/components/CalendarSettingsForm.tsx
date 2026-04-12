@@ -33,7 +33,9 @@ export default function CalendarSettingsForm({
     const submitEvent = event.nativeEvent as SubmitEvent
     const submitter = submitEvent.submitter as HTMLButtonElement | null
     const nextAction = submitter?.value === 'remove' ? 'remove' : 'save'
-    setPendingAction(nextAction)
+    window.setTimeout(() => {
+      setPendingAction(nextAction)
+    }, 0)
   }
 
   return (
