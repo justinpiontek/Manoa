@@ -1,6 +1,6 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import type { EmailOtpType } from '@supabase/supabase-js'
-import { createSupabaseServerClient } from '@/src/lib/supabase/server'
+import { createSupabaseRouteHandlerClient } from '@/src/lib/supabase/server'
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url)
@@ -10,12 +10,25 @@ export async function GET(request: NextRequest) {
   const next = requestUrl.searchParams.get('next') || '/dashboard'
   const safeNext = next.startsWith('/') ? next : '/dashboard'
   const redirectUrl = new URL(safeNext, requestUrl.origin)
-  const supabase = await createSupabaseServerClient()
+  const responseCookies: Array<{ name: string; value: string; options?: Parameters<NextResponse['cookies']['set']>[2] }> = []
+  const supabase = await createSupabaseRouteHandlerClient((cookiesToSet) => {
+    responseCookies.push(...cookiesToSet)
+  })
+
+  function redirectWithCookies(url: URL | string) {
+    const response = NextResponse.redirect(url, 303)
+
+    responseCookies.forEach(({ name, value, options }) => {
+      response.cookies.set(name, value, options)
+    })
+
+    return response
+  }
 
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code)
     if (!error) {
-      return Response.redirect(redirectUrl.toString(), 303)
+      return redirectWithCookies(redirectUrl.toString())
     }
   }
 
@@ -26,9 +39,9 @@ export async function GET(request: NextRequest) {
     })
 
     if (!error) {
-      return Response.redirect(redirectUrl.toString(), 303)
+      return redirectWithCookies(redirectUrl.toString())
     }
   }
 
-  return Response.redirect(new URL('/login?login=error', requestUrl.origin).toString(), 303)
+  return redirectWithCookies(new URL('/login?login=error', requestUrl.origin).toString())
 }

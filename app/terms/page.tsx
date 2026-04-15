@@ -93,8 +93,8 @@ export default function TermsPage() {
         <section className="legal-section">
           <h2>Questions</h2>
           <p>
-            For questions about these terms, contact Manoa support through the
-            service signup or account support channel you used to join.
+            For questions about these terms, contact Manoa support at{' '}
+            <a href="mailto:justin.piontek@gmail.com">justin.piontek@gmail.com</a>.
           </p>
         </section>
       </div>

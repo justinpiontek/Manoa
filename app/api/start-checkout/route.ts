@@ -30,6 +30,7 @@ export async function POST(request: NextRequest) {
   const email = String(formData.get('email') || '').trim().toLowerCase()
   const phone = String(formData.get('phone') || '').trim()
   const plan = String(formData.get('plan') || '')
+  const smsConsent = String(formData.get('sms_consent') || '').trim().toLowerCase()
 
   if (!email.includes('@')) {
     return new Response('A valid email is required.', { status: 400 })
@@ -42,6 +43,12 @@ export async function POST(request: NextRequest) {
 
   if (plan !== 'personal_monthly_1999') {
     return new Response('Unknown plan.', { status: 400 })
+  }
+
+  if (smsConsent !== 'yes') {
+    return new Response('Please agree to receive Manoa service texts before continuing.', {
+      status: 400,
+    })
   }
 
   const profile = await findOrCreateProfile({ email, phoneE164 })
@@ -65,11 +72,16 @@ export async function POST(request: NextRequest) {
       profile_id: profile.id,
       phone_e164: phoneE164,
       plan,
+      sms_consent: 'yes',
+      sms_consent_source: 'website_signup',
+      sms_consent_at: new Date().toISOString(),
     },
     subscription_data: {
       metadata: {
         profile_id: profile.id,
         plan,
+        sms_consent: 'yes',
+        sms_consent_source: 'website_signup',
       },
     },
     success_url: `${baseUrl}/setup?profile_id=${profile.id}`,

@@ -999,16 +999,30 @@ export default function ManoaSignupPage() {
                 required
               />
             </div>
+            <label className="consent-check" htmlFor="sms-consent">
+              <input
+                id="sms-consent"
+                name="sms_consent"
+                type="checkbox"
+                value="yes"
+                required
+              />
+              <span>
+                I agree to receive service-related text messages from Manoa, including scheduling,
+                reminder, and daily agenda messages. Message frequency varies. Msg &amp; data rates
+                may apply. Reply HELP for help or STOP to opt out. See{' '}
+                <a href="/privacy">Privacy Policy</a> and{' '}
+                <a href="/terms">Terms and Conditions</a>.
+              </span>
+            </label>
             <button className="button" type="submit">
               Start texting Manoa
             </button>
           </form>
 
           <p className="fine-print">
-            By starting, you agree to receive service texts from Manoa. Message
-            and data rates may apply. Reply STOP to opt out. See{' '}
-            <a href="/privacy">Privacy Policy</a> and{' '}
-            <a href="/terms">Terms and Conditions</a>.
+            Manoa only sends service-related account texts. Message frequency varies. Msg &amp;
+            data rates may apply.
           </p>
         </aside>
       </section>

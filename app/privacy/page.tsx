@@ -76,7 +76,8 @@ export default function PrivacyPage() {
           <p>
             You can reply <strong>STOP</strong> to opt out of SMS messages at
             any time, reply <strong>START</strong> to opt back in, and reply
-            <strong> HELP</strong> for assistance. You may also disconnect your
+            <strong> HELP</strong> for assistance. Message frequency varies and
+            message and data rates may apply. You may also disconnect your
             calendar accounts or cancel your subscription through Manoa support.
           </p>
         </section>
@@ -84,8 +85,8 @@ export default function PrivacyPage() {
         <section className="legal-section">
           <h2>Questions</h2>
           <p>
-            For privacy questions, contact Manoa support through the service
-            signup or account support channel you used to join.
+            For privacy questions, contact Manoa support at{' '}
+            <a href="mailto:justin.piontek@gmail.com">justin.piontek@gmail.com</a>.
           </p>
         </section>
       </div>

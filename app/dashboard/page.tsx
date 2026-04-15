@@ -27,44 +27,21 @@ type DashboardPageProps = {
   }>
 }
 
-function subscriptionLabel(status: string | null) {
-  if (status === 'active') return 'Active'
-  if (status === 'trialing') return 'Trialing'
-  if (status === 'past_due') return 'Past due'
-  if (status === 'canceled') return 'Canceled'
-  return 'Pending'
-}
-
 function providerLabel(provider: 'google' | 'outlook') {
   return provider === 'outlook' ? 'Outlook' : 'Google'
 }
 
-function textLineLabel(number: string) {
-  return number ? 'Ready' : 'Pending approval'
-}
-
-function nextStepCopy({
-  subscriptionStatus,
+function statusLine({
   calendarConnected,
   manoaNumber,
 }: {
-  subscriptionStatus: string | null
   calendarConnected: boolean
   manoaNumber: string
 }) {
-  if (subscriptionStatus !== 'active' && subscriptionStatus !== 'trialing') {
-    return 'Your account is almost there. As soon as billing is settled, Manoa will be fully ready.'
-  }
+  const calendarLabel = calendarConnected ? 'Calendar connected' : 'Calendar needs attention'
+  const textLabel = manoaNumber ? 'Texting ready' : 'Texting pending approval'
 
-  if (!calendarConnected) {
-    return 'Connect a calendar, then Manoa can start finding open times and booking by text.'
-  }
-
-  if (!manoaNumber) {
-    return 'Your account and calendar are ready. The text line is still finishing approval, so keep this page handy.'
-  }
-
-  return 'Everything is lined up. Save the number once, send your first text, and Manoa is off to the races.'
+  return `✅ ${calendarLabel} • ${textLabel}`
 }
 
 function calendarErrorMessage(code: string | undefined, detail?: string) {
@@ -185,31 +162,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
         <p className="legal-eyebrow">Dashboard</p>
         <h1 className="dashboard-title">You&apos;re ready to text Manoa.</h1>
-        <p className="dashboard-lede">
-          This is your home base for Manoa. It shows the number to text, the phone on your account,
-          and whether your subscription and calendar are ready.
-        </p>
-
-        <p className="dashboard-next-step">{nextStepCopy({
-          subscriptionStatus: profile.subscriptionStatus,
+        <p className="dashboard-lede">Everything is set up. Send your first text to get started.</p>
+        <p className="dashboard-status-line">{statusLine({
           calendarConnected: profile.calendarConnected,
           manoaNumber,
         })}</p>
-
-        <div className="status-row" aria-label="Account status">
-          <div className={`status-pill ${profile.subscriptionStatus === 'active' || profile.subscriptionStatus === 'trialing' ? 'ready' : 'pending'}`}>
-            <strong>Subscription</strong>
-            <span>{subscriptionLabel(profile.subscriptionStatus)}</span>
-          </div>
-          <div className={`status-pill ${profile.calendarConnected ? 'ready' : 'pending'}`}>
-            <strong>Calendar</strong>
-            <span>{profile.calendarConnected ? 'Connected' : 'Needs attention'}</span>
-          </div>
-          <div className={`status-pill ${manoaNumber ? 'ready' : 'pending'}`}>
-            <strong>Text line</strong>
-            <span>{textLineLabel(manoaNumber)}</span>
-          </div>
-        </div>
 
         {calendarConnected ? (
           <div className="notice success" role="status" aria-live="polite">
@@ -279,15 +236,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             <p>
               Text from <strong>{displayUserPhone}</strong> so Manoa recognizes you right away.
             </p>
-            <p>
-              Save Manoa once, then you always know where to text. If you ever need to stop or cancel,
-              your billing link is right here too.
-            </p>
-            <p className="dashboard-hero-subnote">
-              {manoaNumber
-                ? 'Once the number is saved, texting Manoa should feel like texting a real assistant.'
-                : 'If carrier approval is still in progress, keep this page handy. The account and calendar setup are already in place.'}
-            </p>
 
             <div className="dashboard-example-card">
               <span className="dashboard-example-label">First text to send</span>
@@ -331,18 +279,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
         <div className="dashboard-grid">
           <article className="dashboard-section">
-            <p className="dashboard-label">Account</p>
-            <h3>Billing and access</h3>
-            <p>Membership is {subscriptionLabel(profile.subscriptionStatus).toLowerCase()}.</p>
-            <p>Use Manage billing anytime to update payment details or cancel your membership.</p>
-            <p>Use Sign out in the top corner if you ever want to leave this dashboard on this device.</p>
-            <DefaultDurationForm
-              profileId={profile.id}
-              defaultDurationMinutes={profile.default_event_duration_minutes}
-            />
-          </article>
-
-          <article className="dashboard-section">
             <p className="dashboard-label">Calendar</p>
             <h3>{profile.calendarConnected ? 'Calendar connected' : 'Calendar still missing'}</h3>
             <p>
@@ -358,6 +294,18 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                 {outlookAccounts.length ? 'Connect or reconnect Outlook' : 'Connect Outlook Calendar'}
               </a>
             </div>
+          </article>
+
+          <article className="dashboard-section">
+            <p className="dashboard-label">Scheduling defaults</p>
+            <h3>How long new events should be</h3>
+            <p>
+              When your text does not include a duration, Manoa will use this as the default length.
+            </p>
+            <DefaultDurationForm
+              profileId={profile.id}
+              defaultDurationMinutes={profile.default_event_duration_minutes}
+            />
           </article>
 
           <article className="dashboard-section">
@@ -449,24 +397,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             </div>
           </section>
         ) : null}
-
-        <section className="dashboard-checklist">
-          <p className="dashboard-label">Next steps</p>
-          <div className="dashboard-checklist-grid">
-            <div className="check-item">
-              <strong>1. Save the number</strong>
-              <span>Keep Manoa in your contacts so you do not have to hunt for it later.</span>
-            </div>
-            <div className="check-item">
-              <strong>2. Send one real text</strong>
-              <span>Start with a simple request like “What&apos;s on my calendar tomorrow?”</span>
-            </div>
-            <div className="check-item">
-              <strong>3. Bookmark this page</strong>
-              <span>Come back here for billing, reconnection, and account fixes.</span>
-            </div>
-          </div>
-        </section>
 
         <div className="dashboard-footer">
           <a className="nav-link" href="/">

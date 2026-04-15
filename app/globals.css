@@ -530,6 +530,34 @@ h1 {
   color: #eef4ff;
 }
 
+.consent-check {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: flex-start;
+  margin-top: 4px;
+  color: #d8e4f6;
+  font-weight: 600;
+  line-height: 1.55;
+}
+
+.consent-check input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  margin: 3px 0 0;
+  accent-color: #ffffff;
+}
+
+.consent-check span {
+  font-size: 0.9rem;
+}
+
+.consent-check a {
+  color: #ffffff;
+}
+
 .signup .button {
   grid-column: 1 / -1;
   width: 100%;
@@ -1441,9 +1469,9 @@ footer {
   line-height: 1.7;
 }
 
-.dashboard-next-step {
+.dashboard-status-line {
   max-width: 760px;
-  margin: 14px 0 0;
+  margin: 12px 0 0;
   color: var(--ink);
   font-size: 1rem;
   font-weight: 700;
@@ -1483,11 +1511,6 @@ footer {
   margin: 10px 0 0;
   color: var(--muted);
   line-height: 1.6;
-}
-
-.dashboard-hero-subnote {
-  color: var(--ink) !important;
-  font-weight: 700;
 }
 
 .dashboard-example-card {
@@ -1630,14 +1653,6 @@ footer {
   justify-content: flex-start;
   gap: 12px;
   margin-top: 22px;
-}
-
-.dashboard-checklist {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fbfcff;
-  margin-top: 20px;
-  padding: 18px;
 }
 
 .dashboard-calendar-manager {
@@ -1813,13 +1828,6 @@ footer {
   opacity: 0.78;
 }
 
-.dashboard-checklist-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin-top: 12px;
-}
-
 .dashboard-example-list {
   margin: 0;
   padding-left: 18px;
@@ -1833,21 +1841,6 @@ footer {
 
 .dashboard-example-list li:last-child {
   margin-bottom: 0;
-}
-
-.check-item strong,
-.check-item span {
-  display: block;
-}
-
-.check-item strong {
-  font-size: 1rem;
-}
-
-.check-item span {
-  margin-top: 8px;
-  color: var(--muted);
-  line-height: 1.6;
 }
 
 .lab-shell {
