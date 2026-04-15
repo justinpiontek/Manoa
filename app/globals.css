@@ -485,33 +485,27 @@ h1 {
   line-height: 1.42;
 }
 
-.trust-line {
-  border: 1px solid #35527f;
-  border-radius: 8px;
-  margin: 12px 0 0;
-  background: rgba(255, 255, 255, 0.08);
-  color: #edf4ff;
-  padding: 11px 12px;
-  font-size: 0.94rem;
-  font-weight: 750;
-  line-height: 1.5;
-}
-
 .mini-points {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 14px;
 }
 
 .mini-points span {
   border: 1px solid #34517c;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.07);
-  padding: 8px 10px;
+  padding: 7px 10px;
   color: #d2deef;
-  font-size: 0.86rem;
-  font-weight: 750;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.mini-points strong {
+  color: #ffffff;
+  font-weight: 800;
 }
 
 .signup form {
@@ -534,24 +528,29 @@ h1 {
   grid-column: 1 / -1;
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 12px;
+  gap: 10px;
   align-items: flex-start;
-  margin-top: 4px;
+  margin-top: 2px;
   color: #d8e4f6;
-  font-weight: 600;
-  line-height: 1.55;
+  font-weight: 500;
+  line-height: 1.48;
 }
 
 .consent-check input[type='checkbox'] {
-  width: 18px;
-  height: 18px;
-  min-width: 18px;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
   margin: 3px 0 0;
   accent-color: #ffffff;
 }
 
 .consent-check span {
-  font-size: 0.9rem;
+  font-size: 0.84rem;
+}
+
+.consent-check strong {
+  color: #ffffff;
+  font-weight: 750;
 }
 
 .consent-check a {

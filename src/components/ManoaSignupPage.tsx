@@ -965,13 +965,10 @@ export default function ManoaSignupPage() {
             <span>/ month</span>
           </div>
           <p className="plan-line">Your calendar handled for you — by text.</p>
-          <p className="trust-line">
-            Try it. If it doesn&apos;t save you time this week, cancel.
-          </p>
           <div className="mini-points" aria-label="Plan details">
-            <span>Takes 30 seconds to set up</span>
-            <span>Cancel anytime</span>
-            <span>Connect Google or Outlook after checkout</span>
+            <span><strong>30-second setup</strong></span>
+            <span><strong>Cancel anytime</strong></span>
+            <span><strong>Connect Google or Outlook</strong> after checkout</span>
           </div>
 
           <form action="/api/start-checkout" method="post">
@@ -1008,9 +1005,10 @@ export default function ManoaSignupPage() {
                 required
               />
               <span>
-                I agree to receive service-related text messages from Manoa, including scheduling,
-                reminder, and daily agenda messages. Message frequency varies. Msg &amp; data rates
-                may apply. Reply HELP for help or STOP to opt out. See{' '}
+                I agree to receive <strong>service-related text messages</strong> from Manoa,
+                including scheduling, reminder, and daily agenda messages. <strong>Message
+                frequency varies.</strong> <strong>Msg &amp; data rates may apply.</strong> Reply{' '}
+                <strong>HELP</strong> for help or <strong>STOP</strong> to opt out. See{' '}
                 <a href="/privacy">Privacy Policy</a> and{' '}
                 <a href="/terms">Terms and Conditions</a>.
               </span>
