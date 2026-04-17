@@ -385,8 +385,30 @@ function buildCallNote(target: EventSummary, options: ScheduleOption[]) {
   return `Need to move ${target.title} from ${eventDateLabel(target)}. Best times: ${bestTimes}.`
 }
 
+function buildNewAppointmentCallNote(title: string, options: ScheduleOption[]) {
+  const bestTimes = options.map((option) => `${option.dayLabel} ${option.timeLabel}`).join(', ')
+  return `Need to book ${title}. Best times: ${bestTimes}.`
+}
+
 function buildCancelNote(target: EventSummary) {
   return `Need to cancel ${target.title} scheduled for ${eventDateLabel(target)}.`
+}
+
+function looksExternalScheduleRequest(title: string) {
+  return looksExternalAppointment({
+    id: '',
+    title,
+    start: '',
+    end: '',
+    provider: 'google',
+    calendarId: '',
+    calendarName: '',
+    timeLabel: '',
+    location: '',
+    description: '',
+    organizerEmail: '',
+    attendeeCount: 0,
+  } as EventSummary)
 }
 
 function tokenizeText(value: string) {
@@ -991,6 +1013,76 @@ async function prepareExternalCallPrep({
   return reply
 }
 
+async function prepareExternalScheduleCallPrep({
+  profile,
+  smsFrom,
+  title,
+  baseDate,
+  exactTime,
+  durationMinutes,
+  chosenCalendar,
+}: {
+  profile: SmsProfile
+  smsFrom: string
+  title: string
+  baseDate: Date
+  exactTime: { hour: number; minute: number } | null
+  durationMinutes: number
+  chosenCalendar?: CalendarPlacementOption | null
+}) {
+  const inferredContact = await inferBusinessContact({
+    profileId: profile.id,
+    query: title,
+    location: '',
+    description: '',
+  })
+
+  const businessName = inferredContact?.label || title
+  const options = await findScheduleOptions({
+    profileId: profile.id,
+    title: `Call ${businessName} to book`,
+    baseDate,
+    exactTime,
+    calendarId: chosenCalendar?.calendarId,
+    calendarHint: chosenCalendar?.calendarLabel || 'Personal',
+    durationMinutes: 20,
+  })
+
+  if (!options.length) {
+    return `I found ${title}, but I could not find a good time for the call. Try another day or time.`
+  }
+
+  const callNote = buildNewAppointmentCallNote(title, options)
+  await storePendingAction({
+    profileId: profile.id,
+    smsFrom,
+    kind: 'external_call_prep',
+    payload: {
+      options,
+      businessName,
+      phoneE164: inferredContact?.phone_e164 || null,
+      callNote,
+      authority: 'external_appointment',
+      scheduleRequest: {
+        title,
+        baseDate: baseDate.toISOString(),
+        exactTime,
+        durationMinutes,
+        recurrence: null,
+      },
+    },
+  })
+
+  let reply = `I can't book ${title} with the office by text, but I can get you ready to call.\nHere are your next openings:\n${callPrepOptionList(options)}\nReply 1, 2, or 3 and I'll hold that time while you confirm with the office.`
+
+  if (inferredContact?.phone_e164) {
+    reply += `\nOffice number: ${inferredContact.phone_e164}.`
+  }
+
+  reply += `\nCall note: ${callNote}`
+  return reply
+}
+
 async function prepareInvitedReschedule({
   profile,
   smsFrom,
@@ -1167,6 +1259,10 @@ async function handleSaveBusinessPhoneReply({
   }
 
   if (pending.payload.followUpKind === 'external_reschedule_confirm') {
+    const isNewExternalAppointment =
+      Boolean(pending.payload.holdEventId) &&
+      pending.payload.target?.id === pending.payload.holdEventId
+
     await storePendingAction({
       profileId: profile.id,
       smsFrom: from,
@@ -1182,7 +1278,9 @@ async function handleSaveBusinessPhoneReply({
       },
     })
     await clearPendingAction(pending.id)
-    return `Saved ${businessName} as ${phone} for next time.\nWhen the office confirms the new time, text something like "They moved it to Tuesday at 2pm" and I'll update your calendar.\nYou can keep texting me other things in the meantime.`
+    return isNewExternalAppointment
+      ? `Saved ${businessName} as ${phone} for next time.\nWhen the office confirms the time, text something like "They booked it for Tuesday at 2pm" and I'll add it to your calendar.\nYou can keep texting me other things in the meantime.`
+      : `Saved ${businessName} as ${phone} for next time.\nWhen the office confirms the new time, text something like "They moved it to Tuesday at 2pm" and I'll update your calendar.\nYou can keep texting me other things in the meantime.`
   }
 
   await clearPendingAction(pending.id)
@@ -1361,6 +1459,18 @@ async function handleChoice({
     const pickedCalendar = choose(pending.payload.calendarChoices, choice)
     const scheduleRequest = pending.payload.scheduleRequest
     if (!pickedCalendar || !scheduleRequest) return 'Reply with the calendar you want, like 1, 2, or 3.'
+
+    if (looksExternalScheduleRequest(scheduleRequest.title)) {
+      return prepareExternalScheduleCallPrep({
+        profile,
+        smsFrom,
+        title: scheduleRequest.title,
+        baseDate: new Date(scheduleRequest.baseDate),
+        exactTime: scheduleRequest.exactTime,
+        durationMinutes: scheduleRequest.durationMinutes,
+        chosenCalendar: pickedCalendar,
+      })
+    }
 
     const attendees = pending.payload.attendees || []
     const unresolvedInvitees = pending.payload.unresolvedInvitees || []
@@ -1797,7 +1907,9 @@ async function handleChoice({
   if (pending.kind === 'external_call_prep') {
     const option = choose(pending.payload.options, choice)
     const target = pending.payload.target
-    if (!option || !target) return 'Reply with 1, 2, or 3.'
+    const requestedSchedule = pending.payload.scheduleRequest
+    const requestedTitle = requestedSchedule?.title || pending.payload.businessName || target?.title || 'appointment'
+    if (!option) return 'Reply with 1, 2, or 3.'
 
     const created = await createCalendarEvent(profile.id, option)
     await maybeQueueReminderForOption({
@@ -1809,9 +1921,31 @@ async function handleChoice({
       leadMinutes: 15,
     })
 
-    const businessName = pending.payload.businessName || target.title
-    const callNote = pending.payload.callNote || buildCallNote(target, [option])
+    const businessName = pending.payload.businessName || requestedTitle
+    const followUpTarget =
+      target ||
+      ({
+        id: created.id || '',
+        title: requestedTitle,
+        start: option.start,
+        end: addMinutes(
+          new Date(option.start),
+          requestedSchedule?.durationMinutes || profile.default_event_duration_minutes,
+        ).toISOString(),
+        provider: option.provider,
+        calendarId: option.calendarId,
+        calendarName: option.calendarName,
+        timeLabel: formatSmsTime(new Date(option.start)),
+        location: '',
+        description: '',
+        organizerEmail: '',
+        attendeeCount: 0,
+      } satisfies EventSummary)
+    const callNote =
+      pending.payload.callNote ||
+      (target ? buildCallNote(target, [option]) : buildNewAppointmentCallNote(requestedTitle, [option]))
     const knownPhone = pending.payload.phoneE164 || null
+    const isNewAppointment = !target
 
     if (knownPhone) {
       await clearPendingAction(pending.id)
@@ -1820,7 +1954,7 @@ async function handleChoice({
         smsFrom,
         kind: 'external_reschedule_confirm',
         payload: {
-          target,
+          target: followUpTarget,
           businessName,
           phoneE164: knownPhone,
           callNote,
@@ -1829,7 +1963,9 @@ async function handleChoice({
           holdCalendarId: option.calendarId,
         },
       })
-      return `Held ${option.dayLabel} at ${option.timeLabel} for your call about ${target.title}.\nOffice number: ${knownPhone}.\nCall note: ${callNote}\nWhen the office confirms the new time, text something like "They moved it to Tuesday at 2pm" and I'll update your calendar.\nYou can keep texting me other things in the meantime.`
+      return isNewAppointment
+        ? `Held ${option.dayLabel} at ${option.timeLabel} for your call to book ${requestedTitle}.\nOffice number: ${knownPhone}.\nCall note: ${callNote}\nWhen the office confirms the new time, text something like "They booked it for Tuesday at 2pm" and I'll add it to your calendar.\nYou can keep texting me other things in the meantime.`
+        : `Held ${option.dayLabel} at ${option.timeLabel} for your call about ${target.title}.\nOffice number: ${knownPhone}.\nCall note: ${callNote}\nWhen the office confirms the new time, text something like "They moved it to Tuesday at 2pm" and I'll update your calendar.\nYou can keep texting me other things in the meantime.`
     }
 
     await storePendingAction({
@@ -1837,7 +1973,7 @@ async function handleChoice({
       smsFrom,
       kind: 'save_business_contact_phone',
       payload: {
-        target,
+        target: followUpTarget,
         businessName,
         callNote,
         authority: 'external_appointment',
@@ -1847,7 +1983,9 @@ async function handleChoice({
       },
     })
 
-    return `Held ${option.dayLabel} at ${option.timeLabel} for your call about ${target.title}.\nI don't have the office number yet. Reply with it and I'll save it for next time.\nCall note: ${callNote}\nWhen the office confirms the new time, text something like "They moved it to Tuesday at 2pm" and I'll update your calendar.`
+    return isNewAppointment
+      ? `Held ${option.dayLabel} at ${option.timeLabel} for your call to book ${requestedTitle}.\nI don't have the office number yet. Reply with it and I'll save it for next time.\nCall note: ${callNote}\nWhen the office confirms the new time, text something like "They booked it for Tuesday at 2pm" and I'll add it to your calendar.`
+      : `Held ${option.dayLabel} at ${option.timeLabel} for your call about ${target.title}.\nI don't have the office number yet. Reply with it and I'll save it for next time.\nCall note: ${callNote}\nWhen the office confirms the new time, text something like "They moved it to Tuesday at 2pm" and I'll update your calendar.`
   }
 
   if (pending.kind === 'save_business_contact_phone') {
@@ -1963,19 +2101,23 @@ export async function handleIncomingSms({
     onlyKind: 'external_reschedule_confirm',
   })
   if (externalReschedulePending?.payload.target) {
+    const target = externalReschedulePending.payload.target
+    const isNewExternalAppointment =
+      Boolean(externalReschedulePending.payload.holdEventId) &&
+      externalReschedulePending.payload.target.id === externalReschedulePending.payload.holdEventId
+
     if (
       mentionsOfficeDelay(
         body,
-        externalReschedulePending.payload.target,
+        target,
         externalReschedulePending.payload.businessName,
       ) ||
       mentionsFailedExternalReschedule(
         body,
-        externalReschedulePending.payload.target,
+        target,
         externalReschedulePending.payload.businessName,
       )
     ) {
-      const target = externalReschedulePending.payload.target
       if (externalReschedulePending.payload.holdEventId) {
         await deleteCalendarEvent(
           profile.id,
@@ -1988,23 +2130,26 @@ export async function handleIncomingSms({
 
       const reply = mentionsFailedExternalReschedule(
         body,
-        externalReschedulePending.payload.target,
+        target,
         externalReschedulePending.payload.businessName,
       )
-        ? `Okay. I cleared the temporary call hold and left ${target.title} where it was.\nIf the office offers another time later, text me the new day and time and I'll update your calendar.`
-        : `Okay. I cleared the temporary call hold and left ${target.title} where it was.\nWhen the office gets back to you with a new time, text me and I'll update your calendar.`
+        ? isNewExternalAppointment
+          ? `Okay. I cleared the temporary call hold for ${target.title}.\nIf the office offers another time later, text me the new day and time and I'll add it to your calendar.`
+          : `Okay. I cleared the temporary call hold and left ${target.title} where it was.\nIf the office offers another time later, text me the new day and time and I'll update your calendar.`
+        : isNewExternalAppointment
+          ? `Okay. I cleared the temporary call hold for ${target.title}.\nWhen the office gets back to you with a new time, text me and I'll add it to your calendar.`
+          : `Okay. I cleared the temporary call hold and left ${target.title} where it was.\nWhen the office gets back to you with a new time, text me and I'll update your calendar.`
       await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
       return reply
     }
 
     const followUp = parseExternalRescheduleConfirmation(
       body,
-      externalReschedulePending.payload.target,
+      target,
       externalReschedulePending.payload.businessName,
     )
 
     if (followUp.kind === 'confirmed_reschedule') {
-      const target = externalReschedulePending.payload.target
       const option = optionFromExactExternalTime(target, followUp.baseDate, followUp.exactTime)
       await updateCalendarEvent(profile.id, target.id, option, 'none')
       await queueReminderForEvent({
@@ -2016,7 +2161,7 @@ export async function handleIncomingSms({
         start: option.start,
       })
 
-      if (externalReschedulePending.payload.holdEventId) {
+      if (externalReschedulePending.payload.holdEventId && !isNewExternalAppointment) {
         await deleteCalendarEvent(
           profile.id,
           externalReschedulePending.payload.holdEventId,
@@ -2027,14 +2172,17 @@ export async function handleIncomingSms({
       }
 
       await clearPendingAction(externalReschedulePending.id)
-      const reply = `Updated ${target.title} to ${option.dayLabel} at ${option.timeLabel} on your calendar.\nI also cleared the call hold.`
+      const reply = isNewExternalAppointment
+        ? `Added ${target.title} for ${option.dayLabel} at ${option.timeLabel} on your calendar.\nI turned the temporary call hold into the real appointment.`
+        : `Updated ${target.title} to ${option.dayLabel} at ${option.timeLabel} on your calendar.\nI also cleared the call hold.`
       await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
       return reply
     }
 
     if (followUp.kind === 'needs_details') {
-      const target = externalReschedulePending.payload.target
-      const reply = `Tell me the new day and time the office confirmed for ${target.title}, like "They moved it to Tuesday at 2pm."`
+      const reply = isNewExternalAppointment
+        ? `Tell me the day and time the office confirmed for ${target.title}, like "They booked it for Tuesday at 2pm."`
+        : `Tell me the new day and time the office confirmed for ${target.title}, like "They moved it to Tuesday at 2pm."`
       await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
       return reply
     }
@@ -2184,6 +2332,20 @@ export async function handleIncomingSms({
     const chosenCalendar =
       placement.matches[0] ||
       placement.bookingCalendars[0]
+
+    if (looksExternalScheduleRequest(scheduleIntent.title)) {
+      const reply = await prepareExternalScheduleCallPrep({
+        profile,
+        smsFrom: from,
+        title: scheduleIntent.title,
+        baseDate: scheduleIntent.baseDate,
+        exactTime: scheduleIntent.exactTime,
+        durationMinutes: scheduleDurationMinutes,
+        chosenCalendar,
+      })
+      await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+      return reply
+    }
 
     if (scheduleIntent.exactTime && !scheduleIntent.recurrence && chosenCalendar) {
       const requestedStart = setTime(scheduleIntent.baseDate, scheduleIntent.exactTime)

@@ -34,7 +34,8 @@ type DemoPendingAction =
   | { kind: 'reschedule'; targetEventId: string; options: DemoOption[] }
   | {
       kind: 'external_call_prep'
-      targetEventId: string
+      targetEventId?: string
+      title: string
       options: DemoOption[]
       officeNumber?: string
       callNote: string
@@ -154,6 +155,31 @@ function normalizeText(value: string) {
   return value.trim().toLowerCase()
 }
 
+function detectLooseAgendaIntent(value: string): 'today' | 'tomorrow' | null {
+  const lower = normalizeText(value)
+  const asksWhat =
+    lower.includes('what') ||
+    lower.includes("what's") ||
+    lower.includes('whats') ||
+    lower.includes('show') ||
+    lower.includes('happening') ||
+    lower.includes('doing') ||
+    lower.includes('calendar') ||
+    lower.includes('schedule')
+
+  if (!asksWhat) return null
+
+  if (/\b(tomorrow|tmrw|tomororw|tomororws)\b/.test(lower)) {
+    return 'tomorrow'
+  }
+
+  if (/\b(today|todays|today's|toda|todao|todau|todya)\b/.test(lower)) {
+    return 'today'
+  }
+
+  return null
+}
+
 function isSameDay(left: Date, right: Date) {
   return (
     left.getFullYear() === right.getFullYear() &&
@@ -249,6 +275,7 @@ function extractCalendar(rawText: string) {
   if (lower.includes('work')) return 'Work'
   if (lower.includes('personal') || lower.includes('home')) return 'Personal'
   if (lower.includes('family')) return 'Family'
+  if (looksLikeExternalAppointment(rawText)) return 'Personal'
   return 'Work'
 }
 
@@ -397,6 +424,35 @@ function scheduleReply(state: DemoState, rawText: string): DemoState {
       role: 'manoa',
       lines: ['Try: Need a meeting with Beth this week.', 'Then reply with 1, 2, or 3.'],
     })
+  }
+
+  if (looksLikeExternalAppointment(rawText)) {
+    const options = buildCallPrepOptions(intent.baseDate)
+    const title = inferScheduleTitle(rawText)
+    const note = `Call the office to confirm ${title}. Best times: ${options
+      .map((option) => `${option.dayLabel} at ${option.timeLabel}`)
+      .join(', ')}.`
+    const message: DemoMessage = {
+      role: 'manoa',
+      lines: [
+        `I can't book ${title} with the office by text, but I can get you ready to call.`,
+        'Here are your next openings:',
+        ...optionLines(options),
+        "Reply 1, 2, or 3 and I'll hold that time while you confirm with the office.",
+        `Call note: ${note}`,
+      ],
+      options,
+    }
+
+    return {
+      ...appendMessage(state, message),
+      pendingAction: {
+        kind: 'external_call_prep' as const,
+        title,
+        options,
+        callNote: note,
+      },
+    }
   }
 
   const options = buildScheduleOptions(rawText, intent.baseDate, intent.exactTime)
@@ -551,6 +607,7 @@ function rescheduleReply(state: DemoState, rawText: string): DemoState {
       pendingAction: {
         kind: 'external_call_prep' as const,
         targetEventId: target.id,
+        title: target.title,
         options,
         officeNumber: target.officeNumber,
         callNote: note,
@@ -646,10 +703,12 @@ function applyChoice(state: DemoState, choice: number): DemoState {
   }
 
   if (pendingAction.kind === 'external_call_prep') {
-    const target = state.events.find((event) => event.id === pendingAction.targetEventId)
+    const target = pendingAction.targetEventId
+      ? state.events.find((event) => event.id === pendingAction.targetEventId)
+      : null
     const heldEvent: DemoEvent = {
       id: `hold-${picked.start}`,
-      title: `Call ${target?.title || 'office'} to reschedule`,
+      title: target ? `Call ${target.title} to reschedule` : pendingAction.title,
       calendar: picked.calendarName,
       start: picked.start,
       kind: 'owned',
@@ -657,7 +716,7 @@ function applyChoice(state: DemoState, choice: number): DemoState {
     const message: DemoMessage = {
       role: 'manoa',
       lines: [
-        `Held ${picked.dayLabel} at ${picked.timeLabel} for your call about ${target?.title || 'that appointment'}.`,
+        `Held ${picked.dayLabel} at ${picked.timeLabel} for your call about ${target?.title || pendingAction.title}.`,
         ...(pendingAction.officeNumber ? [`Office number: ${pendingAction.officeNumber}.`] : []),
         `Call note: ${pendingAction.callNote}`,
       ],
@@ -736,6 +795,14 @@ export function applyDemoText(state: DemoState, text: string): DemoState {
   if (!trimmed) return state
 
   const withUserMessage = appendMessage(state, { role: 'user', lines: [trimmed] })
+  const looseAgenda = detectLooseAgendaIntent(trimmed)
+  if (looseAgenda) {
+    return appendMessage(
+      { ...withUserMessage, pendingAction: null },
+      agendaReply(withUserMessage.events, looseAgenda),
+    )
+  }
+
   const intent = parseSmsIntent(trimmed)
 
   if (intent.type === 'choice') {
