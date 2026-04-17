@@ -37,7 +37,13 @@ export default function TermsPage() {
           </p>
           <p>
             Reply <strong>STOP</strong> to opt out, <strong>START</strong> to
-            opt back in, and <strong>HELP</strong> for assistance.
+            opt back in, and <strong>HELP</strong> for assistance. Carriers are
+            not liable for delayed or undelivered messages.
+          </p>
+          <p>
+            See the <a href="/privacy">Privacy Policy</a> and{' '}
+            <a href="/terms">Terms and Conditions</a> for more information
+            about the Manoa SMS program.
           </p>
         </section>
 

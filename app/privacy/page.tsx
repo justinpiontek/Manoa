@@ -56,8 +56,11 @@ export default function PrivacyPage() {
             When you sign up for Manoa and provide your phone number, you are
             giving consent to receive service-related text messages such as
             scheduling options, booking confirmations, reminders, daily agenda
-            messages, and account support messages. SMS consent is not shared
-            with third parties or affiliates for marketing purposes.
+            messages, and account support messages. Mobile information will not
+            be shared with third parties or affiliates for marketing or
+            promotional purposes. Text messaging originator opt-in data and
+            consent will not be shared with third parties for their own
+            marketing or promotional purposes.
           </p>
         </section>
 
