@@ -393,7 +393,7 @@ export default function ManoaSignupPage() {
   const [tomorrowAgenda, setTomorrowAgenda] = useState<DemoEvent[]>(
     sortDemoEvents(initialTomorrowAgenda),
   )
-  const [demoInput, setDemoInput] = useState('')
+  const [demoInput, setDemoInput] = useState('Need a meeting with Beth this week')
   const [statusNotice, setStatusNotice] = useState<{
     tone: 'success' | 'warning'
     text: string
@@ -834,7 +834,7 @@ export default function ManoaSignupPage() {
     setRescheduleTarget(null)
     setAgenda(sortDemoEvents(initialAgenda))
     setTomorrowAgenda(sortDemoEvents(initialTomorrowAgenda))
-    setDemoInput('')
+    setDemoInput('Need a meeting with Beth this week')
   }
 
   return (
@@ -880,6 +880,9 @@ export default function ManoaSignupPage() {
           <a className="top-link" href="#pricing" onClick={() => setMobileMenuOpen(false)}>
             Pricing
           </a>
+          <a className="top-link" href="#signup" onClick={() => setMobileMenuOpen(false)}>
+            Sign up
+          </a>
           <a className="top-link" href="#faq" onClick={() => setMobileMenuOpen(false)}>
             FAQ
           </a>
@@ -899,7 +902,7 @@ export default function ManoaSignupPage() {
         <p className="eyebrow">Calendar assistant by text</p>
         <h1>Stop checking your calendar. Just text Manoa.</h1>
         <p className="simple-hero-lede">
-          It finds when you&apos;re free and gives you the best times instantly.
+          Book meetings, get reminders, and manage your calendar — all by text.
         </p>
 
         <div className="simple-thread" aria-label="Example conversation">
@@ -916,6 +919,10 @@ export default function ManoaSignupPage() {
           Start texting Manoa
         </a>
         <p className="simple-hero-note">Takes 30 seconds • Cancel anytime</p>
+        <ul className="simple-hero-benefits" aria-label="Why Manoa feels simple">
+          <li>No apps or links</li>
+          <li>Never forget anything with daily agenda and reminders by text</li>
+        </ul>
       </section>
 
       <section className="home-section working-demo-section" aria-label="Working demo">
@@ -1009,8 +1016,8 @@ export default function ManoaSignupPage() {
         </div>
         <ul className="simple-benefit-list" aria-label="Why Manoa feels simple">
           <li>Finds your free time instantly</li>
-          <li>No need to open your calendar</li>
-          <li>Works by simple text</li>
+          <li>No apps or links</li>
+          <li>Daily agenda and reminders get sent by text</li>
         </ul>
       </section>
 

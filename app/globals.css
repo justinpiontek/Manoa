@@ -252,6 +252,21 @@ button {
   font-weight: 700;
 }
 
+.simple-hero-benefits {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.simple-hero-benefits li {
+  color: var(--blue);
+  font-size: 0.98rem;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
 .home-section {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -394,19 +409,11 @@ button {
 
 .pricing-consent {
   margin-top: 14px;
-  color: var(--muted);
+  color: #42526b;
 }
 
 .pricing-consent input[type='checkbox'] {
   accent-color: var(--blue);
-}
-
-.pricing-consent strong {
-  color: var(--ink);
-}
-
-.pricing-consent a {
-  color: var(--blue);
 }
 
 .pricing-button {
@@ -850,6 +857,27 @@ h1 {
 
 .consent-check a {
   color: #ffffff;
+}
+
+.pricing-card .pricing-consent {
+  color: #42526b;
+  line-height: 1.6;
+}
+
+.pricing-card .pricing-consent span {
+  font-size: 0.92rem;
+}
+
+.pricing-card .pricing-consent strong {
+  color: var(--ink);
+}
+
+.pricing-card .pricing-consent a {
+  color: var(--blue);
+}
+
+.pricing-card .pricing-consent input[type='checkbox'] {
+  accent-color: var(--blue);
 }
 
 .signup .button {
