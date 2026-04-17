@@ -21,7 +21,7 @@ export default function ManoaWordmark({
         alt="Manoa"
         className="manoa-wordmark-image"
         priority={priority}
-        sizes="(max-width: 620px) 150px, 210px"
+        sizes="(max-width: 620px) 190px, 280px"
       />
     </a>
   )

@@ -918,6 +918,76 @@ export default function ManoaSignupPage() {
         <p className="simple-hero-note">Takes 30 seconds • Cancel anytime</p>
       </section>
 
+      <section className="home-section working-demo-section" aria-label="Working demo">
+        <div className="working-demo-grid">
+          <div>
+            <p className="section-label section-label-left">Working demo</p>
+            <h2 className="working-demo-title">See how the text flow actually feels.</h2>
+            <p className="working-demo-lede">
+              Type a request, then reply with 1, 2, or 3. After signup, the real conversation
+              happens from your phone through Manoa&apos;s number.
+            </p>
+            <button className="demo-prompt working-demo-reset" type="button" onClick={resetDemo}>
+              Reset demo
+            </button>
+          </div>
+
+          <div className="demo-panel">
+            <div className="phone-preview" aria-label="SMS preview">
+              <div className="phone-header">
+                <span>Manoa</span>
+                <small>Text message</small>
+              </div>
+              <div ref={threadRef} className="demo-thread" aria-live="polite">
+                {messages.map((message, messageIndex) => (
+                  <div key={`${message.role}-${messageIndex}`} className={`sms ${message.role}`}>
+                    {message.lines.map((line, lineIndex) => (
+                      <span key={`${line}-${lineIndex}`}>
+                        {line}
+                        {lineIndex < message.lines.length - 1 ? <br /> : null}
+                      </span>
+                    ))}
+                    {message.options ? (
+                      <div className="demo-choices">
+                        {message.options.map((option, optionIndex) => (
+                          <button
+                            key={`${option.day}-${option.time}-${option.calendar}-${optionIndex}`}
+                            type="button"
+                            className="demo-choice"
+                            onClick={() => handleDemoText(String(optionIndex + 1))}
+                          >
+                            {optionIndex + 1}. {option.day} {option.time} on {option.calendar}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <form
+              className="demo-form"
+              onSubmit={(event) => {
+                event.preventDefault()
+                handleDemoText(demoInput)
+                setDemoInput('')
+              }}
+            >
+              <input
+                value={demoInput}
+                onChange={(event) => setDemoInput(event.target.value)}
+                autoComplete="off"
+                placeholder="9am meeting Tuesday on work calendar"
+                aria-label="Text Manoa demo"
+              />
+              <button className="button" type="submit">
+                Send
+              </button>
+            </form>
+          </div>
+        </div>
+      </section>
+
       <section id="how-it-works" className="home-section anchor-section" aria-label="How Manoa works">
         <p className="section-label">How it works</p>
         <div className="simple-step-grid">
@@ -986,11 +1056,9 @@ export default function ManoaSignupPage() {
                 required
               />
               <span>
-                I agree to receive <strong>recurring service-related SMS messages</strong> from{' '}
-                <strong>Manoa</strong>, including scheduling, reminders, and account
-                notifications. <strong>Message frequency varies.</strong>{' '}
-                <strong>Msg &amp; data rates may apply.</strong> Reply <strong>STOP</strong> to
-                opt out and <strong>HELP</strong> for help. See{' '}
+                I agree to receive recurring service-related SMS messages from Manoa, including
+                scheduling, reminders, and account notifications. Message frequency varies. Msg
+                &amp; data rates may apply. Reply STOP to opt out and HELP for help. See{' '}
                 <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms</a>.
               </span>
             </label>

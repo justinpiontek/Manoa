@@ -139,11 +139,11 @@ button {
 .manoa-wordmark-image {
   display: block;
   width: auto;
-  height: 42px;
+  height: 58px;
 }
 
 .manoa-wordmark.compact .manoa-wordmark-image {
-  height: 34px;
+  height: 42px;
 }
 
 .mark {
@@ -269,6 +269,40 @@ button {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   text-align: center;
+}
+
+.section-label-left {
+  text-align: left;
+}
+
+.working-demo-section {
+  padding: 24px;
+}
+
+.working-demo-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(320px, 0.85fr);
+  gap: 22px;
+  align-items: start;
+}
+
+.working-demo-title {
+  max-width: none;
+  margin: 10px 0 0;
+  font-size: 2rem;
+  line-height: 1.08;
+}
+
+.working-demo-lede {
+  max-width: 34rem;
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.working-demo-reset {
+  margin-top: 16px;
 }
 
 .simple-step-grid {
@@ -2279,7 +2313,8 @@ footer {
   }
 
   .simple-step-grid,
-  .pricing-form-grid {
+  .pricing-form-grid,
+  .working-demo-grid {
     grid-template-columns: 1fr;
   }
 
@@ -2356,11 +2391,11 @@ footer {
   }
 
   .manoa-wordmark-image {
-    height: 36px;
+    height: 46px;
   }
 
   .manoa-wordmark.compact .manoa-wordmark-image {
-    height: 31px;
+    height: 36px;
   }
 
   .mark {
@@ -2403,6 +2438,10 @@ footer {
 
   .home-section,
   .pricing-card {
+    padding: 18px;
+  }
+
+  .working-demo-section {
     padding: 18px;
   }
 
