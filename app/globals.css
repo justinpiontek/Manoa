@@ -52,12 +52,45 @@ button {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 18px;
+  position: relative;
 }
 
 .top-actions {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.top-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.menu-toggle {
+  display: none;
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  padding: 0;
+}
+
+.menu-toggle span {
+  display: block;
+  width: 18px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--ink);
+  transition: transform 160ms ease, opacity 160ms ease;
+}
+
+.menu-toggle span + span {
+  margin-top: 4px;
 }
 
 .top-link {
@@ -145,6 +178,218 @@ button {
 
 .nav-link.secondary {
   background: #f8fafc;
+}
+
+.simple-hero {
+  display: grid;
+  justify-items: center;
+  gap: 0;
+  border: 1px solid #d7e3f7;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%);
+  box-shadow: 0 18px 40px rgba(36, 87, 197, 0.08);
+  padding: 36px 24px 34px;
+  text-align: center;
+}
+
+.simple-hero h1 {
+  max-width: 12ch;
+}
+
+.simple-hero-lede {
+  max-width: 34rem;
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 1.18rem;
+  line-height: 1.72;
+  text-wrap: balance;
+}
+
+.simple-thread {
+  display: grid;
+  gap: 12px;
+  width: min(100%, 640px);
+  margin-top: 28px;
+  padding-top: 22px;
+  border-top: 1px solid #dce5f4;
+}
+
+.simple-bubble {
+  max-width: 340px;
+  border: 1px solid #d7e2f3;
+  border-radius: 18px;
+  background: #ffffff;
+  padding: 14px 16px;
+  color: var(--ink);
+  font-size: 1rem;
+  line-height: 1.55;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  text-align: left;
+}
+
+.simple-bubble.user {
+  justify-self: start;
+  color: var(--blue);
+  font-weight: 800;
+}
+
+.simple-bubble.manoa {
+  justify-self: end;
+  display: grid;
+  gap: 4px;
+}
+
+.simple-hero-button {
+  width: auto;
+  min-width: 240px;
+  margin-top: 28px;
+}
+
+.simple-hero-note {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.home-section {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-top: 22px;
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+  padding: 24px;
+}
+
+.section-label {
+  margin: 0;
+  color: var(--blue);
+  font-size: 0.84rem;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+.simple-step-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.simple-step-card {
+  border: 1px solid #d7e3f7;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 16px;
+  text-align: center;
+}
+
+.simple-step-card h3 {
+  margin: 12px 0 8px;
+  font-size: 1.02rem;
+}
+
+.simple-step-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.simple-benefit-list {
+  display: grid;
+  gap: 10px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 20px auto 0;
+  padding: 0;
+  list-style: none;
+}
+
+.simple-benefit-list li {
+  position: relative;
+  padding-left: 28px;
+  color: var(--ink);
+  font-size: 1.02rem;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.simple-benefit-list li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--blue);
+  font-weight: 900;
+}
+
+.pricing-section {
+  text-align: center;
+}
+
+.pricing-title {
+  max-width: none;
+  margin: 10px 0 0;
+  font-size: 2.8rem;
+  line-height: 1.04;
+}
+
+.pricing-lede {
+  max-width: 36rem;
+  margin: 14px auto 0;
+  color: var(--muted);
+  font-size: 1.06rem;
+  line-height: 1.7;
+}
+
+.pricing-card {
+  width: min(100%, 760px);
+  margin: 22px auto 0;
+  padding: 22px;
+  text-align: left;
+}
+
+.pricing-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pricing-consent {
+  margin-top: 14px;
+  color: var(--muted);
+}
+
+.pricing-consent input[type='checkbox'] {
+  accent-color: var(--blue);
+}
+
+.pricing-consent strong {
+  color: var(--ink);
+}
+
+.pricing-consent a {
+  color: var(--blue);
+}
+
+.pricing-button {
+  margin-top: 14px;
+}
+
+.pricing-meta {
+  margin: 14px 0 0;
+  color: var(--ink);
+  font-size: 0.92rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.pricing-fine-print {
+  color: var(--muted);
+  text-align: center;
 }
 
 .copy {
@@ -1988,6 +2233,56 @@ footer {
 }
 
 @media (max-width: 860px) {
+  .menu-toggle {
+    display: inline-flex;
+    flex-direction: column;
+  }
+
+  .menu-toggle.open span:nth-child(1) {
+    transform: translateY(6px) rotate(45deg);
+  }
+
+  .menu-toggle.open span:nth-child(2) {
+    opacity: 0;
+  }
+
+  .menu-toggle.open span:nth-child(3) {
+    transform: translateY(-6px) rotate(-45deg);
+  }
+
+  .top-nav {
+    display: none;
+    position: absolute;
+    top: calc(100% + 10px);
+    left: 0;
+    right: 0;
+    z-index: 20;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--paper);
+    box-shadow: var(--shadow);
+    padding: 12px;
+  }
+
+  .top-nav.open {
+    display: grid;
+  }
+
+  .top-nav .top-link,
+  .top-nav .nav-link {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    padding: 12px 14px;
+  }
+
+  .simple-step-grid,
+  .pricing-form-grid {
+    grid-template-columns: 1fr;
+  }
+
   .hero-grid,
   .demo,
   .step-grid,
@@ -2053,21 +2348,7 @@ footer {
   }
 
   .topbar {
-    align-items: center;
-    flex-direction: row;
-    gap: 12px;
-  }
-
-  .top-actions {
-    width: auto;
-    flex-direction: row;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-  }
-
-  .top-actions .nav-link {
-    width: auto;
-    padding: 10px 14px;
+    margin-bottom: 14px;
   }
 
   .brand {
@@ -2091,14 +2372,42 @@ footer {
     font-size: 1.3rem;
   }
 
-  .copy {
-    padding: 18px;
-  }
-
   .eyebrow {
     margin-bottom: 14px;
     padding: 7px 10px;
     font-size: 0.84rem;
+  }
+
+  .simple-hero {
+    padding: 22px 16px 24px;
+  }
+
+  .simple-hero h1 {
+    max-width: 9ch;
+    font-size: 3rem;
+  }
+
+  .simple-hero-lede {
+    font-size: 1rem;
+  }
+
+  .simple-thread {
+    margin-top: 22px;
+    padding-top: 18px;
+  }
+
+  .simple-bubble {
+    max-width: 100%;
+    font-size: 0.96rem;
+  }
+
+  .home-section,
+  .pricing-card {
+    padding: 18px;
+  }
+
+  .pricing-title {
+    font-size: 2.2rem;
   }
 
   .legal-card {

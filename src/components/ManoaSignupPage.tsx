@@ -382,6 +382,7 @@ function agendaLines(events: DemoEvent[]) {
 }
 
 export default function ManoaSignupPage() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [messages, setMessages] = useState<DemoMessage[]>(starterMessages)
   const [pendingOptions, setPendingOptions] = useState<DemoOption[]>([])
   const [pendingMode, setPendingMode] = useState<
@@ -858,17 +859,34 @@ export default function ManoaSignupPage() {
       />
       <header className="topbar">
         <ManoaWordmark className="brand" href="/" priority />
-        <div className="top-actions">
-          <a className="top-link" href="#how-it-works">
+        <button
+          className={`menu-toggle ${mobileMenuOpen ? 'open' : ''}`}
+          type="button"
+          aria-label="Open navigation"
+          aria-expanded={mobileMenuOpen}
+          onClick={() => setMobileMenuOpen((open) => !open)}
+        >
+          <span />
+          <span />
+          <span />
+        </button>
+        <nav className={`top-nav ${mobileMenuOpen ? 'open' : ''}`} aria-label="Main navigation">
+          <a className="top-link" href="/use-cases" onClick={() => setMobileMenuOpen(false)}>
+            Features
+          </a>
+          <a className="top-link" href="#how-it-works" onClick={() => setMobileMenuOpen(false)}>
             How it works
           </a>
-          <a className="top-link" href="#faq">
+          <a className="top-link" href="#pricing" onClick={() => setMobileMenuOpen(false)}>
+            Pricing
+          </a>
+          <a className="top-link" href="#faq" onClick={() => setMobileMenuOpen(false)}>
             FAQ
           </a>
-          <a className="nav-link secondary" href="/login">
+          <a className="nav-link secondary" href="/login" onClick={() => setMobileMenuOpen(false)}>
             Log in
           </a>
-        </div>
+        </nav>
       </header>
 
       {statusNotice ? (
@@ -877,122 +895,89 @@ export default function ManoaSignupPage() {
         </div>
       ) : null}
 
-      <section className="hero-grid" aria-label="Text Manoa">
-        <div className="copy">
-          <p className="eyebrow">Calendar assistant by text</p>
-          <h1>Stop Scheduling. Just Text Manoa.</h1>
-          <p className="tagline">Book meetings, get reminders, and manage your calendar — all by text.</p>
-          <div className="hero-example" aria-label="Example conversation">
-            <div className="hero-example-head">
-              <p className="hero-example-label">Example text thread</p>
-              <span className="hero-example-badge">Real flow</span>
-            </div>
-            <div className="hero-thread">
-              <p className="hero-thread-date">Today</p>
+      <section className="simple-hero" aria-label="Text Manoa">
+        <p className="eyebrow">Calendar assistant by text</p>
+        <h1>Stop checking your calendar. Just text Manoa.</h1>
+        <p className="simple-hero-lede">
+          It finds when you&apos;re free and gives you the best times instantly.
+        </p>
 
-              <div className="hero-thread-message user">
-                <div className="hero-thread-bubble">
-                  Need a meeting with Beth this week
-                </div>
-              </div>
-
-              <div className="hero-thread-message manoa">
-                <div className="hero-thread-avatar" aria-hidden="true">
-                  M
-                </div>
-                <div className="hero-thread-stack">
-                  <span className="hero-thread-sender">Manoa</span>
-                  <div className="hero-thread-bubble hero-thread-bubble-list">
-                    <span>I found three times:</span>
-                    <span>1. Tue 10:00 AM</span>
-                    <span>2. Wed 2:00 PM</span>
-                    <span>3. Thu 11:00 AM</span>
-                    <span>Reply 1, 2, or 3.</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="hero-thread-message user">
-                <div className="hero-thread-bubble">2 works</div>
-              </div>
-
-              <div className="hero-thread-message manoa">
-                <div className="hero-thread-avatar" aria-hidden="true">
-                  M
-                </div>
-                <div className="hero-thread-stack">
-                  <span className="hero-thread-sender">Manoa</span>
-                  <div className="hero-thread-bubble">
-                    Booked. Beth is on Wednesday at 2:00 PM.
-                  </div>
-                </div>
-              </div>
-            </div>
+        <div className="simple-thread" aria-label="Example conversation">
+          <div className="simple-bubble user">Schedule a meeting this week</div>
+          <div className="simple-bubble manoa">
+            <span>Here are 3 times that work:</span>
+            <span>Tue 10am</span>
+            <span>Wed 2pm</span>
+            <span>Thu 11am</span>
           </div>
-          <p className="lede">
-            Built for busy people who don&apos;t have time to schedule.
-          </p>
-          <div className="hero-points" aria-label="Why Manoa feels simple">
-            <div className="hero-point">
-              <strong>No back-and-forth</strong>
-              <span>Manoa finds the best times instantly.</span>
-            </div>
-            <div className="hero-point">
-              <strong>No apps or links</strong>
-              <span>Just send a text like you normally would.</span>
-            </div>
-            <div className="hero-point">
-              <strong>Never forget anything</strong>
-              <span>Daily agenda and reminders get sent to your phone.</span>
-            </div>
-          </div>
-          <p className="quick-note">
-            Sign up once, connect your calendar, and text what you need.
-          </p>
-          <p className="hero-summary">
-            No links. No apps. No back-and-forth.
-          </p>
         </div>
 
-        <aside id="signup" className="panel signup hero-signup" aria-label="Start Manoa">
-          <p className="plan-label">Personal plan</p>
-          <div className="price" aria-label="$19.99 per month">
-            <strong>$19.99</strong>
-            <span>/ month</span>
-          </div>
-          <p className="plan-line">Your calendar handled for you — by text.</p>
-          <div className="mini-points" aria-label="Plan details">
-            <span><strong>30-second setup</strong></span>
-            <span><strong>Cancel anytime</strong></span>
-            <span><strong>Connect Google or Outlook</strong> after checkout</span>
-          </div>
+        <a className="button simple-hero-button" href="#pricing">
+          Start texting Manoa
+        </a>
+        <p className="simple-hero-note">Takes 30 seconds • Cancel anytime</p>
+      </section>
 
+      <section id="how-it-works" className="home-section anchor-section" aria-label="How Manoa works">
+        <p className="section-label">How it works</p>
+        <div className="simple-step-grid">
+          <article className="simple-step-card">
+            <span className="step-number">1</span>
+            <h3>Connect your calendar</h3>
+            <p>Takes seconds</p>
+          </article>
+          <article className="simple-step-card">
+            <span className="step-number">2</span>
+            <h3>Text what you need</h3>
+            <p>&ldquo;Schedule a meeting this week&rdquo;</p>
+          </article>
+          <article className="simple-step-card">
+            <span className="step-number">3</span>
+            <h3>Pick a time</h3>
+            <p>Manoa handles the rest</p>
+          </article>
+        </div>
+        <ul className="simple-benefit-list" aria-label="Why Manoa feels simple">
+          <li>Finds your free time instantly</li>
+          <li>No need to open your calendar</li>
+          <li>Works by simple text</li>
+        </ul>
+      </section>
+
+      <section id="pricing" className="home-section pricing-section anchor-section" aria-label="Pricing">
+        <p className="section-label">Simple pricing</p>
+        <h2 className="pricing-title">$19.99 / month</h2>
+        <p className="pricing-lede">Your availability handled for you — by text.</p>
+
+        <aside id="signup" className="panel pricing-card" aria-label="Start Manoa">
           <form action="/api/start-checkout" method="post">
             <input type="hidden" name="plan" value="personal_monthly_1999" />
-            <div className="field">
-              <label htmlFor="email">Email</label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                placeholder="you@example.com"
-                required
-              />
+            <div className="pricing-form-grid">
+              <div className="field">
+                <label htmlFor="email">Email</label>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  required
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="phone">Phone</label>
+                <input
+                  id="phone"
+                  name="phone"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  placeholder="+1 555 555 5555"
+                  required
+                />
+              </div>
             </div>
-            <div className="field">
-              <label htmlFor="phone">Phone</label>
-              <input
-                id="phone"
-                name="phone"
-                type="tel"
-                inputMode="tel"
-                autoComplete="tel"
-                placeholder="+1 555 555 5555"
-                required
-              />
-            </div>
-            <label className="consent-check" htmlFor="sms-consent">
+            <label className="consent-check pricing-consent" htmlFor="sms-consent">
               <input
                 id="sms-consent"
                 name="sms_consent"
@@ -1009,188 +994,17 @@ export default function ManoaSignupPage() {
                 <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms</a>.
               </span>
             </label>
-            <button className="button" type="submit">
+            <button className="button pricing-button" type="submit">
               Start texting Manoa
             </button>
           </form>
 
-          <p className="fine-print">
+          <p className="pricing-meta">Connect Google or Outlook after checkout.</p>
+          <p className="fine-print pricing-fine-print">
             Manoa only sends service-related account texts. Message frequency varies. Msg &amp;
             data rates may apply.
           </p>
         </aside>
-      </section>
-
-      <section className="demo" aria-label="Manoa text demo">
-        <div>
-          <p className="eyebrow">Working demo</p>
-          <h2>Just text it. Your calendar handles the rest.</h2>
-          <p>
-            Type a request, then reply with 1, 2, or 3. After signup, the real
-            conversation happens from your phone through Manoa&apos;s number.
-          </p>
-          <p className="demo-note">
-            This preview shows the texting loop. Your real account, billing, contact save, and
-            calendar setup live in the dashboard.
-          </p>
-          <div className="demo-actions" aria-label="Demo controls">
-            <button className="demo-prompt" type="button" onClick={resetDemo}>
-              Reset
-            </button>
-          </div>
-        </div>
-
-        <div className="demo-panel">
-          <div className="phone-preview" aria-label="SMS preview">
-            <div className="phone-header">
-              <span>Manoa</span>
-              <small>Text message</small>
-            </div>
-            <div ref={threadRef} className="demo-thread" aria-live="polite">
-              {messages.map((message, messageIndex) => (
-                <div key={`${message.role}-${messageIndex}`} className={`sms ${message.role}`}>
-                  {message.lines.map((line, lineIndex) => (
-                    <span key={`${line}-${lineIndex}`}>
-                      {line}
-                      {lineIndex < message.lines.length - 1 ? <br /> : null}
-                    </span>
-                  ))}
-                  {message.options ? (
-                    <div className="demo-choices">
-                      {message.options.map((option, optionIndex) => (
-                        <button
-                          key={`${option.day}-${option.time}-${option.calendar}-${optionIndex}`}
-                          type="button"
-                          className="demo-choice"
-                          onClick={() => handleDemoText(String(optionIndex + 1))}
-                        >
-                          {optionIndex + 1}. {option.day} {option.time} on {option.calendar}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          </div>
-          <form
-            className="demo-form"
-            onSubmit={(event) => {
-              event.preventDefault()
-              handleDemoText(demoInput)
-              setDemoInput('')
-            }}
-          >
-            <input
-              value={demoInput}
-              onChange={(event) => setDemoInput(event.target.value)}
-              autoComplete="off"
-              placeholder="9am meeting Tuesday on work calendar"
-              aria-label="Text Manoa demo"
-            />
-            <button className="button" type="submit">
-              Send
-            </button>
-          </form>
-        </div>
-        <div className="demo-footer-copy">
-          <p className="demo-close">No links. No apps. No back-and-forth.</p>
-          <a className="button demo-cta-button" href="#signup">
-            Start texting Manoa
-          </a>
-        </div>
-      </section>
-
-      <section id="how-it-works" className="steps anchor-section" aria-label="How Manoa works">
-        <h2>How it works</h2>
-        <p className="steps-lede">
-          Sign up, connect your calendar, text what you need, and you&apos;re done.
-        </p>
-        <div className="step-grid">
-          <article className="step">
-            <span className="step-number">1</span>
-            <h3>Sign up</h3>
-            <p>Enter your email and phone.</p>
-          </article>
-          <article className="step">
-            <span className="step-number">2</span>
-            <h3>Connect your calendar</h3>
-            <p>Takes 10 seconds.</p>
-          </article>
-          <article className="step">
-            <span className="step-number">3</span>
-            <h3>Text Manoa</h3>
-            <p>&ldquo;Schedule meeting this week.&rdquo; Done.</p>
-          </article>
-        </div>
-      </section>
-
-      <section className="learn" aria-label="Learn more about Manoa">
-        <div className="learn-panel">
-          <p className="learn-label">Good fit for</p>
-          <h2>Built for people who already run their day from their phone.</h2>
-          <div className="learn-card-grid">
-            <article className="learn-card">
-              <h3>Busy professionals</h3>
-              <p>
-                If meetings, follow-ups, and quick calendar changes keep interrupting your day,
-                texting is faster than opening another app.
-              </p>
-            </article>
-            <article className="learn-card">
-              <h3>Work and personal jugglers</h3>
-              <p>
-                Manoa is especially useful when you need one place to keep work, personal, and
-                family calendars straight without thinking about routing.
-              </p>
-            </article>
-            <article className="learn-card">
-              <h3>People who forget the little stuff</h3>
-              <p>
-                Morning agendas and reminders help when the problem is not just scheduling, but
-                also keeping the day from slipping through the cracks.
-              </p>
-            </article>
-          </div>
-        </div>
-
-        <div className="learn-panel learn-panel-accent">
-          <p className="learn-label">What you can text</p>
-          <h2>Common things Manoa can handle right away.</h2>
-          <ul className="learn-list">
-            <li>Schedule something new and pick from three times by text.</li>
-            <li>Ask what&apos;s on your calendar today or tomorrow.</li>
-            <li>Move a personal event or a meeting you own.</li>
-            <li>
-              Handle dentist, doctor, salon, or service appointments honestly by prepping the
-              call and updating your calendar after you confirm the new time.
-            </li>
-            <li>Keep Google or Outlook calendars connected and ready for real scheduling.</li>
-          </ul>
-        </div>
-      </section>
-
-      <section className="home-use-cases" aria-label="Popular use cases">
-        <p className="faq-label">Popular use cases</p>
-        <h2>Learn from the workflow closest to yours.</h2>
-        <p className="home-use-cases-lede">
-          These pages go deeper on the jobs Manoa already handles well, without changing the
-          simple signup flow on the homepage.
-        </p>
-        <div className="home-use-case-grid">
-          {homepageUseCases.map((useCase) => (
-            <a key={useCase.href} className="home-use-case-card" href={useCase.href}>
-              <span className="home-use-case-label">{useCase.label}</span>
-              <h3>{useCase.title}</h3>
-              <p>{useCase.description}</p>
-            </a>
-          ))}
-        </div>
-        <div className="home-use-case-footer">
-          <a className="nav-link" href="/use-cases">
-            See all use cases
-          </a>
-        </div>
       </section>
 
       <section id="faq" className="faq anchor-section" aria-label="Frequently asked questions">
