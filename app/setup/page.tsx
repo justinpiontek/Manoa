@@ -1,5 +1,6 @@
 import { stripe } from '@/src/lib/stripeClient'
 import { formatPhoneForDisplay } from '@/src/lib/phone'
+import ManoaWordmark from '@/src/components/ManoaWordmark'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -36,9 +37,7 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
   return (
     <main className="setup-shell">
       <div className="setup-card">
-        <a className="legal-back" href="/">
-          Back to Manoa
-        </a>
+        <ManoaWordmark className="legal-back compact" href="/" />
         <p className="legal-eyebrow">Setup</p>
         <h1 className="setup-title">
           {calendarConnected ? 'Calendar connected.' : 'One more step and Manoa is ready.'}

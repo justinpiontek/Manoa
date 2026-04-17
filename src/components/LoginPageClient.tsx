@@ -1,5 +1,6 @@
 'use client'
 
+import ManoaWordmark from '@/src/components/ManoaWordmark'
 import { getSupabaseBrowser } from '@/src/lib/supabase/browser'
 import { useMemo, useState } from 'react'
 
@@ -135,9 +136,7 @@ export default function LoginPageClient({
   return (
     <main className="auth-shell">
       <div className="auth-card">
-        <a className="legal-back" href="/">
-          Back to Manoa
-        </a>
+        <ManoaWordmark className="legal-back compact" href="/" />
         <p className="legal-eyebrow">Log in</p>
         <h1 className="auth-title">Open your Manoa dashboard.</h1>
         <p className="auth-lede">

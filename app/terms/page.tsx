@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import ManoaWordmark from '@/src/components/ManoaWordmark'
 
 export const metadata: Metadata = {
   title: 'Terms and Conditions | Manoa',
@@ -9,9 +10,7 @@ export default function TermsPage() {
   return (
     <main className="legal-shell">
       <div className="legal-card">
-        <a className="legal-back" href="/">
-          Back to Manoa
-        </a>
+        <ManoaWordmark className="legal-back compact" href="/" />
         <p className="legal-eyebrow">Terms and Conditions</p>
         <h1 className="legal-title">Terms and Conditions</h1>
         <p className="legal-updated">Last updated: April 8, 2026</p>

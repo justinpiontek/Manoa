@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import ManoaWordmark from '@/src/components/ManoaWordmark'
 import { useCases } from '@/src/lib/useCases'
 
 export const metadata: Metadata = {
@@ -11,9 +12,7 @@ export default function UseCasesPage() {
   return (
     <main className="use-case-shell">
       <div className="use-case-card">
-        <a className="legal-back" href="/">
-          Back to Manoa
-        </a>
+        <ManoaWordmark className="legal-back compact" href="/" />
 
         <p className="use-case-eyebrow">Use cases</p>
         <h1 className="use-case-title">Ways people can use Manoa right now.</h1>

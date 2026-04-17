@@ -4,6 +4,7 @@ import { formatPhoneForDisplay } from '@/src/lib/phone'
 import { listConfiguredCalendarAccounts } from '@/src/lib/calendar/google'
 import { getDashboardProfile, getDashboardProfileByEmail } from '@/src/lib/profiles'
 import { createSupabaseServerClient } from '@/src/lib/supabase/server'
+import ManoaWordmark from '@/src/components/ManoaWordmark'
 import CalendarSettingsForm from '@/src/components/CalendarSettingsForm'
 import DisconnectCalendarAccountForm from '@/src/components/DisconnectCalendarAccountForm'
 import DefaultDurationForm from '@/src/components/DefaultDurationForm'
@@ -99,9 +100,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     return (
       <main className="dashboard-shell">
         <div className="dashboard-card">
-          <a className="legal-back" href="/">
-            Back to Manoa
-          </a>
+          <ManoaWordmark className="legal-back compact" href="/" />
           <p className="legal-eyebrow">Dashboard</p>
           <h1 className="dashboard-title">We need your account link.</h1>
           <p className="dashboard-lede">
@@ -145,9 +144,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     <main className="dashboard-shell">
       <div className="dashboard-card">
         <div className="dashboard-topbar">
-          <a className="legal-back" href="/">
-            Back to Manoa
-          </a>
+          <ManoaWordmark className="legal-back compact" href="/" />
           <div className="dashboard-topbar-actions">
             <a className="nav-link" href={`${appUrl()}/dashboard${profileId ? `?profile_id=${profile.id}` : ''}`}>
               Refresh

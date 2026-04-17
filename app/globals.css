@@ -97,6 +97,22 @@ button {
   gap: 12px;
 }
 
+.manoa-wordmark {
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+}
+
+.manoa-wordmark-image {
+  display: block;
+  width: auto;
+  height: 42px;
+}
+
+.manoa-wordmark.compact .manoa-wordmark-image {
+  height: 34px;
+}
+
 .mark {
   display: grid;
   width: 40px;
@@ -2056,6 +2072,14 @@ footer {
 
   .brand {
     gap: 10px;
+  }
+
+  .manoa-wordmark-image {
+    height: 36px;
+  }
+
+  .manoa-wordmark.compact .manoa-wordmark-image {
+    height: 31px;
   }
 
   .mark {

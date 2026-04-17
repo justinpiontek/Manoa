@@ -1,3 +1,4 @@
+import ManoaWordmark from '@/src/components/ManoaWordmark'
 import { appUrl } from '@/src/lib/env'
 import type { UseCaseBenefit, UseCaseFaq, UseCaseLink, UseCaseStep } from '@/src/lib/useCases'
 
@@ -106,9 +107,7 @@ export default function UseCasePage({
       />
       <div className="use-case-card">
         <div className="use-case-topbar">
-          <a className="legal-back" href="/">
-            Back to Manoa
-          </a>
+          <ManoaWordmark className="legal-back compact" href="/" />
           <a className="nav-link secondary" href="/use-cases">
             All use cases
           </a>

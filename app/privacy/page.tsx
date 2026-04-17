@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import ManoaWordmark from '@/src/components/ManoaWordmark'
 
 export const metadata: Metadata = {
   title: 'Privacy Policy | Manoa',
@@ -9,9 +10,7 @@ export default function PrivacyPage() {
   return (
     <main className="legal-shell">
       <div className="legal-card">
-        <a className="legal-back" href="/">
-          Back to Manoa
-        </a>
+        <ManoaWordmark className="legal-back compact" href="/" />
         <p className="legal-eyebrow">Privacy Policy</p>
         <h1 className="legal-title">Privacy Policy</h1>
         <p className="legal-updated">Last updated: April 8, 2026</p>
@@ -62,6 +61,7 @@ export default function PrivacyPage() {
             consent will not be shared with third parties for their own
             marketing or promotional purposes.
           </p>
+          <p>Message frequency may vary. Message and data rates may apply.</p>
         </section>
 
         <section className="legal-section">

@@ -1,5 +1,6 @@
 'use client'
 
+import ManoaWordmark from '@/src/components/ManoaWordmark'
 import { useEffect, useRef, useState } from 'react'
 
 type DemoEvent = {
@@ -856,12 +857,7 @@ export default function ManoaSignupPage() {
         }}
       />
       <header className="topbar">
-        <a className="brand" href="#" aria-label="Manoa home">
-          <span className="mark" aria-hidden="true">
-            M
-          </span>
-          <span className="brand-name">Manoa</span>
-        </a>
+        <ManoaWordmark className="brand" href="/" priority />
         <div className="top-actions">
           <a className="top-link" href="#how-it-works">
             How it works
@@ -1005,12 +1001,12 @@ export default function ManoaSignupPage() {
                 required
               />
               <span>
-                I agree to receive <strong>service-related text messages</strong> from Manoa,
-                including scheduling, reminder, and daily agenda messages. <strong>Message
-                frequency varies.</strong> <strong>Msg &amp; data rates may apply.</strong> Reply{' '}
-                <strong>HELP</strong> for help or <strong>STOP</strong> to opt out. See{' '}
-                <a href="/privacy">Privacy Policy</a> and{' '}
-                <a href="/terms">Terms and Conditions</a>.
+                I agree to receive <strong>recurring service-related SMS messages</strong> from{' '}
+                <strong>Manoa</strong>, including scheduling, reminders, and account
+                notifications. <strong>Message frequency varies.</strong>{' '}
+                <strong>Msg &amp; data rates may apply.</strong> Reply <strong>STOP</strong> to
+                opt out and <strong>HELP</strong> for help. See{' '}
+                <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms</a>.
               </span>
             </label>
             <button className="button" type="submit">
