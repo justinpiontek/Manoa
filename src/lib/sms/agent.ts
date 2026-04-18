@@ -100,6 +100,7 @@ type PendingPayload = {
     exactTime: { hour: number; minute: number } | null
     durationMinutes: number
     recurrence: RecurrenceSpec | null
+    location?: string | null
   }
 }
 
@@ -193,12 +194,14 @@ function recurrenceLine(options: ScheduleOption[]) {
 }
 
 function bookingText(option: ScheduleOption) {
+  const location = option.location?.trim()
+  const locationLine = location ? `\nLocation: ${location}.` : ''
   const summary = recurrenceSummary(option.recurrence, option.start)
   if (summary) {
-    return `Booked ${option.title} starting ${option.dayLabel} at ${option.timeLabel}.\n${summary}`
+    return `Booked ${option.title} starting ${option.dayLabel} at ${option.timeLabel}.${locationLine}\n${summary}`
   }
 
-  return `Booked ${option.title} for ${option.dayLabel} at ${option.timeLabel}.`
+  return `Booked ${option.title} for ${option.dayLabel} at ${option.timeLabel}.${locationLine}`
 }
 
 function normalizeEmail(value: string | null | undefined) {
@@ -397,6 +400,10 @@ function eventDurationMinutes(event: EventSummary) {
 }
 
 function isRecurringEvent(event: EventSummary) {
+  if (event.provider === 'apple') {
+    return Boolean(event.recurrence?.length || event.originalStart)
+  }
+
   return Boolean(event.recurringEventId || event.recurrence?.length)
 }
 
@@ -1599,6 +1606,7 @@ async function handleChoice({
       calendarId: pickedCalendar.calendarId,
       durationMinutes: scheduleRequest.durationMinutes,
       recurrence: scheduleRequest.recurrence,
+      location: scheduleRequest.location || null,
     })
 
     if (!options.length) {
@@ -1710,6 +1718,7 @@ async function handleChoice({
       exactTime: null,
       calendarHint: event.calendarName,
       durationMinutes: eventDurationMinutes(event),
+      location: event.location || null,
     })
 
     if (!options.length) {
@@ -1743,6 +1752,7 @@ async function handleChoice({
           exactTime: pending.payload.exactTime || null,
           calendarHint: target.calendarName,
           durationMinutes: eventDurationMinutes(target),
+          location: target.location || null,
         })
 
         if (!options.length) {
@@ -1787,6 +1797,7 @@ async function handleChoice({
           calendarHint: series.seriesTarget.calendarName,
           durationMinutes: eventDurationMinutes(series.seriesTarget),
           recurrence: series.recurrence,
+          location: series.seriesTarget.location || null,
         })
 
         if (!options.length) {
@@ -1885,6 +1896,7 @@ async function handleChoice({
         exactTime: pending.payload.exactTime || null,
         calendarHint: 'Personal',
         durationMinutes: eventDurationMinutes(target),
+        location: target.location || null,
       })
 
       if (!options.length) {
@@ -1916,6 +1928,7 @@ async function handleChoice({
         exactTime: pending.payload.exactTime || null,
         calendarHint: target.calendarName,
         durationMinutes: eventDurationMinutes(target),
+        location: target.location || null,
       })
       await clearPendingAction(pending.id)
       return buildOrganizerRescheduleDraft(target, options.slice(0, 3))
@@ -1963,6 +1976,24 @@ async function handleChoice({
 
     if (pending.payload.stage === 'scope') {
       const sendUpdates = pending.payload.authority === 'owned_meeting' ? 'all' : 'none'
+
+      if (!isRecurringEvent(target)) {
+        if (choice === 1 || choice === 2) {
+          await deleteCalendarEvent(profile.id, target.id, target.calendarId, sendUpdates)
+          await clearPendingRemindersForEvent(profile.id, target.id)
+          await clearPendingAction(pending.id)
+          return pending.payload.authority === 'owned_meeting'
+            ? `Canceled ${target.title} and sent the update.`
+            : `Canceled ${target.title}.`
+        }
+
+        if (choice === 3) {
+          await clearPendingAction(pending.id)
+          return `Okay. I left ${target.title} on your calendar.`
+        }
+
+        return 'Reply with 1, 2, or 3.'
+      }
 
       if (choice === 1) {
         await deleteCalendarEvent(profile.id, target.id, target.calendarId, sendUpdates)
@@ -2344,6 +2375,7 @@ export async function handleIncomingSms({
         calendarId: pickedCalendar.calendarId,
         durationMinutes: scheduleRequest.durationMinutes,
         recurrence: scheduleRequest.recurrence,
+        location: scheduleRequest.location || null,
       })
 
       if (!options.length) {
@@ -2443,6 +2475,7 @@ export async function handleIncomingSms({
             exactTime: scheduleIntent.exactTime,
             durationMinutes: scheduleDurationMinutes,
             recurrence: scheduleIntent.recurrence,
+            location: scheduleIntent.location,
           },
         },
       })
@@ -2505,6 +2538,7 @@ export async function handleIncomingSms({
           calendarHint: chosenCalendar.calendarLabel || scheduleIntent.calendarHint,
           durationMinutes: scheduleDurationMinutes,
           recurrence: scheduleIntent.recurrence,
+          location: scheduleIntent.location,
         })
 
         const requestedOption: ScheduleOption = {
@@ -2518,6 +2552,7 @@ export async function handleIncomingSms({
           timeLabel: formatSmsTime(requestedStart, profile.timezone),
           timeZone: profile.timezone,
           recurrence: null,
+          location: scheduleIntent.location,
         }
 
         const options = [requestedOption, ...alternatives].slice(0, 3)
@@ -2549,6 +2584,7 @@ export async function handleIncomingSms({
       calendarHint: chosenCalendar?.calendarLabel || scheduleIntent.calendarHint,
       durationMinutes: scheduleDurationMinutes,
       recurrence: scheduleIntent.recurrence,
+      location: scheduleIntent.location,
     })
 
     if (!options.length) {
@@ -2658,6 +2694,7 @@ export async function handleIncomingSms({
       exactTime: intent.exactTime,
       calendarHint: target.calendarName,
       durationMinutes: eventDurationMinutes(target),
+      location: target.location || null,
     })
 
     if (!options.length) {

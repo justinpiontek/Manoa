@@ -1,4 +1,4 @@
-import { nextDateForWeekday, startOfDay } from '../calendar/dates'
+import { dateFromTimeZoneParts, dateTimePartsInTimeZone, nextDateForWeekday, startOfDay } from '../calendar/dates'
 import type { RecurrenceSpec } from '../calendar/recurrence'
 
 export type ParsedSmsIntent =
@@ -12,6 +12,7 @@ export type ParsedSmsIntent =
       calendarHint: string
       durationMinutes: number | null
       recurrence: RecurrenceSpec | null
+      location: string | null
     }
   | {
       type: 'reschedule'
@@ -59,6 +60,43 @@ const recurringWeeklyPattern = /\b(weekly|every week|each week|biweekly|every 2 
 const recurringWeekdayPattern =
   /\b(?:every|each)(?:\s+other)?\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/
 const recurringMonthlyPattern = /\b(monthly|every month|each month)\b/
+const monthNames: Record<string, number> = {
+  jan: 1,
+  january: 1,
+  feb: 2,
+  february: 2,
+  mar: 3,
+  march: 3,
+  apr: 4,
+  april: 4,
+  may: 5,
+  jun: 6,
+  june: 6,
+  jul: 7,
+  july: 7,
+  aug: 8,
+  august: 8,
+  sep: 9,
+  sept: 9,
+  september: 9,
+  oct: 10,
+  october: 10,
+  nov: 11,
+  november: 11,
+  dec: 12,
+  december: 12,
+}
+const monthNameSource =
+  'jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?'
+const monthNameDatePattern = new RegExp(
+  `\\b(${monthNameSource})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?\\b`,
+  'i',
+)
+const dateMonthNamePattern = new RegExp(
+  `\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:of\\s+)?(${monthNameSource})\\.?\\b(?:,?\\s+(\\d{4}))?`,
+  'i',
+)
+const numericDatePattern = /\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/
 
 function hasWholeWord(text: string, word: string) {
   return new RegExp(`\\b${word}\\b`, 'i').test(text)
@@ -191,8 +229,176 @@ function parseRecurrence(text: string): RecurrenceSpec | null {
   return null
 }
 
+function normalizeExplicitYear(rawYear: string | undefined, currentYear: number) {
+  if (!rawYear) return { year: currentYear, explicit: false }
+  const year = Number(rawYear)
+  if (rawYear.length === 2) {
+    return { year: year + 2000, explicit: true }
+  }
+  return { year, explicit: true }
+}
+
+function buildExplicitDate({
+  month,
+  day,
+  rawYear,
+  timeZone,
+}: {
+  month: number
+  day: number
+  rawYear?: string
+  timeZone?: string
+}) {
+  if (!Number.isInteger(month) || !Number.isInteger(day) || month < 1 || month > 12 || day < 1 || day > 31) {
+    return null
+  }
+
+  const today = startOfDay(0, timeZone)
+  const todayParts = dateTimePartsInTimeZone(today, timeZone)
+  const { year: initialYear, explicit } = normalizeExplicitYear(rawYear, todayParts.year)
+
+  const create = (year: number) =>
+    dateFromTimeZoneParts(
+      {
+        year,
+        month,
+        day,
+        hour: 0,
+        minute: 0,
+        second: 0,
+      },
+      timeZone,
+    )
+
+  let candidate = create(initialYear)
+  let parts = dateTimePartsInTimeZone(candidate, timeZone)
+
+  if (parts.year !== initialYear || parts.month !== month || parts.day !== day) {
+    return null
+  }
+
+  if (!explicit && candidate < today) {
+    candidate = create(initialYear + 1)
+    parts = dateTimePartsInTimeZone(candidate, timeZone)
+    if (parts.year !== initialYear + 1 || parts.month !== month || parts.day !== day) {
+      return null
+    }
+  }
+
+  return candidate
+}
+
+export function parseExplicitDate(text: string, timeZone?: string) {
+  const lower = text.toLowerCase()
+  const monthNameMatch = lower.match(monthNameDatePattern)
+  if (monthNameMatch) {
+    const month = monthNames[monthNameMatch[1].replace(/\.$/, '')]
+    return buildExplicitDate({
+      month,
+      day: Number(monthNameMatch[2]),
+      rawYear: monthNameMatch[3],
+      timeZone,
+    })
+  }
+
+  const dateMonthNameMatch = lower.match(dateMonthNamePattern)
+  if (dateMonthNameMatch) {
+    const month = monthNames[dateMonthNameMatch[2].replace(/\.$/, '')]
+    return buildExplicitDate({
+      month,
+      day: Number(dateMonthNameMatch[1]),
+      rawYear: dateMonthNameMatch[3],
+      timeZone,
+    })
+  }
+
+  const numericDateMatch = lower.match(numericDatePattern)
+  if (numericDateMatch) {
+    return buildExplicitDate({
+      month: Number(numericDateMatch[1]),
+      day: Number(numericDateMatch[2]),
+      rawYear: numericDateMatch[3],
+      timeZone,
+    })
+  }
+
+  return null
+}
+
+function findLocationStop(rest: string) {
+  const stopPatterns = [
+    /\s+(?:today|tomorrow|tmrw|tomororws?)\b/i,
+    /\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/i,
+    /\s+next\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/i,
+    new RegExp(`\\s+(?:${monthNameSource})\\.?\\s+\\d{1,2}`, 'i'),
+    new RegExp(`\\s+\\d{1,2}(?:st|nd|rd|th)?\\s+(?:of\\s+)?(?:${monthNameSource})\\.?`, 'i'),
+    /\s+\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b/i,
+    /\s+at\s+(?:1[0-2]|0?[1-9])(?::[0-5]\d)?\s*(?:a\.?m\.?|p\.?m\.?)\b/i,
+    /\s+at\s+(?:noon|midnight|lunchtime)\b/i,
+    /\s+for\s+\d+\s*(?:minute|min|hour|hr)s?\b/i,
+    /\s+on\s+[a-z0-9][a-z0-9 '&-]{1,40}\s+calendar\b/i,
+    /\s+for\s+[a-z0-9][a-z0-9 '&-]{1,40}\s+calendar\b/i,
+    /\s+with\s+/i,
+  ]
+
+  return stopPatterns.reduce((earliest, pattern) => {
+    const match = rest.match(pattern)
+    if (!match || match.index === undefined) return earliest
+    return Math.min(earliest, match.index)
+  }, rest.length)
+}
+
+function cleanLocation(value: string) {
+  return value
+    .replace(/\s+/g, ' ')
+    .replace(/^[,.:;\s]+|[,.:;\s]+$/g, '')
+    .replace(/\b(?:please|thanks|thank you)$/i, '')
+    .trim()
+}
+
+function isLikelyLocation(value: string, timeZone?: string) {
+  const lower = value.toLowerCase()
+  if (!value || value.length < 2 || value.length > 80) return false
+  if (parseSmsTime(lower) || parseLooseTimeHint(lower) || parseExplicitDate(lower, timeZone)) return false
+  if (/^(?:today|tomorrow|tmrw|sunday|monday|tuesday|wednesday|thursday|friday|saturday)$/i.test(lower)) return false
+  if (/^\d+\s*(?:minute|min|hour|hr)s?$/i.test(lower)) return false
+  if (/^(?:me|you|it|that|this|calendar)$/i.test(lower)) return false
+  return true
+}
+
+export function parseScheduleLocation(text: string, timeZone?: string) {
+  const markerPattern = /\b(?:at|near|in)\s+/gi
+  const markers = Array.from(text.matchAll(markerPattern))
+
+  for (let index = markers.length - 1; index >= 0; index -= 1) {
+    const marker = markers[index]
+    if (marker.index === undefined) continue
+
+    const markerStart = marker.index
+    const valueStart = markerStart + marker[0].length
+    const rest = text.slice(valueStart)
+    const stop = findLocationStop(rest)
+    const location = cleanLocation(rest.slice(0, stop))
+
+    if (!isLikelyLocation(location, timeZone)) continue
+
+    return {
+      location,
+      textWithoutLocation: `${text.slice(0, markerStart)} ${text.slice(valueStart + stop)}`.replace(/\s+/g, ' ').trim(),
+    }
+  }
+
+  return {
+    location: null,
+    textWithoutLocation: text,
+  }
+}
+
 function parseBaseDate(text: string, timeZone?: string) {
   const lower = text.toLowerCase()
+  const explicitDate = parseExplicitDate(text, timeZone)
+  if (explicitDate) return explicitDate
+
   if (/\btoday\b|\bthis (morning|afternoon|evening)\b|\btonight\b/.test(lower)) {
     return startOfDay(0, timeZone)
   }
@@ -225,6 +431,9 @@ function parseCalendarHint(text: string) {
 function stripSchedulingNoise(text: string) {
   const cleaned = text
     .toLowerCase()
+    .replace(monthNameDatePattern, ' ')
+    .replace(dateMonthNamePattern, ' ')
+    .replace(numericDatePattern, ' ')
     .replace(/\b(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)\b/g, ' ')
     .replace(/\b(noon|midnight|morning|afternoon|evening|tonight|lunchtime)\b/g, ' ')
     .replace(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday|today|tomorrow|tmrw|next)\b/g, ' ')
@@ -280,6 +489,7 @@ export function parseSmsIntent(body: string, timeZone?: string): ParsedSmsIntent
 
   const looksLikeSchedule =
     hasSchedulingWord(lower) ||
+    Boolean(parseExplicitDate(lower, timeZone)) ||
     Boolean(parseSmsTime(lower)) ||
     Boolean(parseLooseTimeHint(lower)) ||
     Boolean(parseRecurrence(lower)) ||
@@ -287,14 +497,17 @@ export function parseSmsIntent(body: string, timeZone?: string): ParsedSmsIntent
       /\b(with|for|around|after|before|from|until)\b/.test(lower))
 
   if (looksLikeSchedule) {
+    const locationContext = parseScheduleLocation(text, timeZone)
+
     return {
       type: 'schedule',
-      title: stripSchedulingNoise(text),
+      title: stripSchedulingNoise(locationContext.textWithoutLocation),
       baseDate: parseBaseDate(text, timeZone),
       exactTime: parseSmsTime(text) || parseLooseTimeHint(text),
       calendarHint: parseCalendarHint(text),
       durationMinutes: parseDuration(text),
       recurrence: parseRecurrence(text),
+      location: locationContext.location,
     }
   }
 

@@ -1,5 +1,5 @@
 import { addMinutes, setTime, startOfDay } from './calendar/dates'
-import { parseSmsIntent, type ParsedSmsIntent } from './sms/parser'
+import { parseScheduleLocation, parseSmsIntent, type ParsedSmsIntent } from './sms/parser'
 
 export type DemoMessage = {
   role: 'user' | 'manoa'
@@ -13,6 +13,7 @@ export type DemoOption = {
   dayLabel: string
   timeLabel: string
   start: string
+  location?: string | null
 }
 
 export type DemoEvent = {
@@ -21,6 +22,7 @@ export type DemoEvent = {
   calendar: string
   start: string
   kind: 'owned' | 'pending_invite' | 'external_appointment'
+  location?: string | null
   officeNumber?: string
 }
 
@@ -308,7 +310,8 @@ function titleCase(value: string) {
 }
 
 function inferScheduleTitle(rawText: string) {
-  const lower = normalizeText(rawText)
+  const locationContext = parseScheduleLocation(rawText)
+  const lower = normalizeText(locationContext.textWithoutLocation)
   const personMatch = rawText.match(/\bwith\s+([a-zA-Z]+)(?:\b|$)/i)
   const meetingWord = schedulingWords.find((word) => lower.includes(word))
 
@@ -351,7 +354,9 @@ function callNote(title: string, options: DemoOption[]) {
 }
 
 function buildScheduleOptions(rawText: string, baseDate: Date, exactTime: { hour: number; minute: number } | null) {
-  const title = inferScheduleTitle(rawText)
+  const parsed = parseSmsIntent(rawText)
+  const title = parsed.type === 'schedule' ? titleCase(parsed.title) : inferScheduleTitle(rawText)
+  const location = parsed.type === 'schedule' ? parsed.location : parseScheduleLocation(rawText).location
   const calendarName = extractCalendar(rawText)
   const window = inferWindow(rawText)
 
@@ -393,6 +398,7 @@ function buildScheduleOptions(rawText: string, baseDate: Date, exactTime: { hour
       dayLabel: shortDayLabel(start),
       timeLabel: timeLabel(start.toISOString()),
       start: start.toISOString(),
+      location,
     }
   })
 }
@@ -801,6 +807,7 @@ function applyChoice(state: DemoState, choice: number): DemoState {
     calendar: picked.calendarName,
     start: picked.start,
     kind: 'owned',
+    location: picked.location || null,
   }
 
   return {
@@ -810,6 +817,7 @@ function applyChoice(state: DemoState, choice: number): DemoState {
         role: 'manoa',
         lines: [
           `Booked ${picked.title} for ${picked.dayLabel} at ${picked.timeLabel}.`,
+          ...(picked.location ? [`Location: ${picked.location}.`] : []),
           "I'll remind you before it starts.",
         ],
       },

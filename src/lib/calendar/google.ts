@@ -79,6 +79,7 @@ export type ScheduleOption = {
   title: string
   start: string
   end: string
+  location?: string | null
   provider: CalendarProvider
   calendarId: string
   calendarName: string
@@ -106,6 +107,7 @@ export type EventSummary = {
   recurrence?: string[] | null
   recurringEventId?: string | null
   originalStart?: string | null
+  providerEventUid?: string | null
 }
 
 type GoogleCalendarDescriptor = {
@@ -404,15 +406,58 @@ function isAppleCalendarAccessError(error: unknown) {
   return /apple calendar request failed:\s*(403|404)\b/i.test(message)
 }
 
+function normalizedAppleCollectionName(value: string | null | undefined) {
+  return normalizeCalendarText(cleanCalendarDisplayText(value))
+}
+
 function isLikelyAppleReminderName(value: string | null | undefined) {
-  return /\b(reminder|to-do|todo)\b/i.test(cleanCalendarDisplayText(value))
+  const normalized = normalizedAppleCollectionName(value)
+  if (!normalized) return false
+
+  const exactReminderNames = new Set([
+    'reminder',
+    'reminders',
+    'reminder to do s',
+    'reminders to do s',
+    'to do',
+    'to dos',
+    'todo',
+    'todos',
+    'tasks',
+    'task list',
+    'notifications',
+    'notification',
+    'groceries',
+    'grocery list',
+    'shopping',
+    'shopping list',
+    'xmas cookie ingredients',
+    'christmas cookie ingredients',
+  ])
+
+  if (exactReminderNames.has(normalized)) return true
+
+  return /\b(reminder|to do|todo|task|tasks|checklist|errands|ingredients)\b/.test(normalized)
+}
+
+function appleSupportedCalendarComponentNames(value: string) {
+  return [...value.matchAll(/\bname\s*=\s*["']?([A-Z-]+)["']?/gi)].map((match) =>
+    match[1].toUpperCase(),
+  )
+}
+
+function appleCollectionSupportsEvents(supportedComponents: string) {
+  const componentNames = appleSupportedCalendarComponentNames(supportedComponents)
+  if (!componentNames.length) return true
+  return componentNames.includes('VEVENT')
 }
 
 function isLikelyAppleReminderConnection(connection: CalendarConnection) {
   return (
     connection.provider === 'apple' &&
     (isLikelyAppleReminderName(connection.calendar_label) ||
-      isLikelyAppleReminderName(connection.calendar_name))
+      isLikelyAppleReminderName(connection.calendar_name) ||
+      isLikelyAppleReminderName(connection.calendar_id))
   )
 }
 
@@ -661,7 +706,7 @@ function parseAppleCalendarData(
   let attendeeCount = 0
   let selfResponseStatus: string | null = null
   const recurrence: string[] = []
-  let recurringEventId: string | null = null
+  let providerEventUid: string | null = null
   let originalStart: string | null = null
 
   const normalizedAccountEmail = (connection.account_email || '').trim().toLowerCase()
@@ -687,8 +732,10 @@ function parseAppleCalendarData(
         selfResponseStatus = property.params.PARTSTAT?.toLowerCase() || null
       }
     }
-    if (property.name === 'UID') recurringEventId = property.value || recurringEventId
+    if (property.name === 'UID') providerEventUid = property.value || providerEventUid
   }
+
+  const recurringEventId = recurrence.length || originalStart ? eventHref : null
 
   return {
     id: eventHref,
@@ -707,6 +754,7 @@ function parseAppleCalendarData(
     recurrence: recurrence.length ? recurrence : null,
     recurringEventId,
     originalStart,
+    providerEventUid,
   } satisfies EventSummary
 }
 
@@ -733,6 +781,10 @@ function buildAppleCalendarEventBody({
   if (option.recurrence) {
     const rule = recurrenceRule(option.recurrence, option.start)
     if (rule) lines.push(rule)
+  }
+
+  if (option.location?.trim()) {
+    lines.push(`LOCATION:${escapeIcsText(option.location.trim())}`)
   }
 
   lines.push('END:VEVENT', 'END:VCALENDAR')
@@ -800,7 +852,7 @@ async function discoverAppleCalendars(email: string, appSpecificPassword: string
       if (resolvedUrl.replace(/\/+$/, '') === homeUrl.replace(/\/+$/, '')) return null
 
       const supportedComponents = appleProp(responseBlock, 'supported-calendar-component-set') || ''
-      if (supportedComponents && !/name\s*=\s*"VEVENT"/i.test(supportedComponents)) return null
+      if (!appleCollectionSupportsEvents(supportedComponents)) return null
 
       const privilegeSet = appleProp(responseBlock, 'current-user-privilege-set') || ''
       const canEdit = /write/i.test(privilegeSet) || /all/i.test(privilegeSet) || privilegeSet === ''
@@ -921,7 +973,7 @@ async function createAppleCalendarEvent(connection: CalendarConnection, option: 
 
 async function updateAppleCalendarEvent(connection: CalendarConnection, eventId: string, option: ScheduleOption) {
   const existing = await getAppleEventForConnection(connection, eventId)
-  const uid = existing?.recurringEventId || new URL(eventId).pathname.split('/').pop()?.replace(/\.ics$/i, '') || crypto.randomUUID()
+  const uid = existing?.providerEventUid || new URL(eventId).pathname.split('/').pop()?.replace(/\.ics$/i, '') || crypto.randomUUID()
   const response = await fetch(sanitizeAppleHref(eventId, connection.calendar_id), {
     method: 'PUT',
     headers: {
@@ -2305,6 +2357,7 @@ export async function findScheduleOptions({
   calendarId,
   durationMinutes = 30,
   recurrence = null,
+  location = null,
   timeZone,
 }: {
   profileId: string
@@ -2315,6 +2368,7 @@ export async function findScheduleOptions({
   calendarId?: string
   durationMinutes?: number
   recurrence?: RecurrenceSpec | null
+  location?: string | null
   timeZone?: string
 }) {
   const resolvedTimeZone = timeZone || (await getProfileTimeZone(profileId))
@@ -2360,6 +2414,7 @@ export async function findScheduleOptions({
       title,
       start: candidate.start.toISOString(),
       end: candidate.end.toISOString(),
+      location,
       provider: targetConnection.provider,
       calendarId: targetConnection.calendar_id,
       calendarName: displayCalendarName(targetConnection),
@@ -2404,6 +2459,11 @@ export async function createCalendarEvent(
           },
           type: 'required',
         })),
+        location: option.location?.trim()
+          ? {
+              displayName: option.location.trim(),
+            }
+          : undefined,
         recurrence,
       },
     })
@@ -2422,6 +2482,7 @@ export async function createCalendarEvent(
       end: {
         dateTime: option.end,
       },
+      location: option.location?.trim() || undefined,
       attendees: option.attendees?.map((invitee) => ({
         email: invitee.email,
         displayName: invitee.displayName || undefined,
@@ -2462,6 +2523,11 @@ export async function updateCalendarEvent(
           dateTime: normalizeOutlookGraphDateTime(option.end),
           timeZone: 'UTC',
         },
+        location: option.location?.trim()
+          ? {
+              displayName: option.location.trim(),
+            }
+          : undefined,
         recurrence,
       },
     })
@@ -2481,6 +2547,7 @@ export async function updateCalendarEvent(
       end: {
         dateTime: option.end,
       },
+      location: option.location?.trim() || undefined,
       recurrence: recurrence ? [recurrence] : undefined,
     },
   })

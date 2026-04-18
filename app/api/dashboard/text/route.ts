@@ -17,6 +17,10 @@ function friendlyDashboardTextError(error: unknown) {
     return 'Apple did not accept that iCloud connection anymore. Reconnect Apple Calendar with a fresh app-specific password.'
   }
 
+  if (/apple calendar (?:request|delete|update|create) failed:\s*400\b/i.test(message)) {
+    return 'Apple rejected that calendar change. Try sending the cancel or schedule request again; if it keeps happening, reconnect Apple Calendar with a fresh app-specific password.'
+  }
+
   return message
 }
 
