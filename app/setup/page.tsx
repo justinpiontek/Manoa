@@ -90,9 +90,9 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
                 <a className="button setup-action" href={`/api/calendar/google/start?profile_id=${profileId}`}>
                   {calendarConnected ? 'Connect or reconnect Google' : 'Connect Google Calendar'}
                 </a>
-                <a className="button setup-action secondary-button" href={`/api/calendar/outlook/start?profile_id=${profileId}`}>
-                  {calendarConnected ? 'Connect or reconnect Outlook' : 'Connect Outlook Calendar'}
-                </a>
+                <span className="button setup-action secondary-button is-disabled" aria-disabled="true">
+                  Outlook coming soon
+                </span>
                 <a className="button setup-action secondary-button" href={appleConnectHref}>
                   Connect Apple Calendar
                 </a>

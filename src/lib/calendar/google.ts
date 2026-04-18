@@ -256,7 +256,11 @@ function isSystemCalendar(calendar: GoogleCalendarDescriptor) {
 }
 
 function displayCalendarName(connection: CalendarConnection) {
-  return connection.calendar_label?.trim() || connection.calendar_name || 'Google Calendar'
+  return (
+    cleanCalendarDisplayText(connection.calendar_label) ||
+    cleanCalendarDisplayText(connection.calendar_name) ||
+    `${providerLabel(connection.provider)} Calendar`
+  )
 }
 
 async function getProfileTimeZone(profileId: string) {
@@ -386,6 +390,18 @@ function providerLabel(provider: CalendarProvider) {
 
 function isDefined<T>(value: T | null | undefined): value is T {
   return value != null
+}
+
+function cleanCalendarDisplayText(value: string | null | undefined) {
+  return (value || '')
+    .replace(/\s*[⚠⚠️]+\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function isAppleCalendarAccessError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || '')
+  return /apple calendar request failed:\s*(403|404)\b/i.test(message)
 }
 
 function normalizeOutlookGraphDateTime(value: Date | string) {
@@ -813,21 +829,31 @@ async function listAppleEventsForConnection({
   timeMin: Date
   timeMax: Date
 }) {
-  const response = await appleDavRequest({
-    url: connection.calendar_id,
-    email: connection.account_email || connection.account_id,
-    appSpecificPassword: connection.access_token,
-    method: 'REPORT',
-    depth: '1',
-    body:
-      '<?xml version="1.0" encoding="utf-8"?>' +
-      '<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">' +
-      '<d:prop><d:getetag /><c:calendar-data /></d:prop>' +
-      `<c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VEVENT"><c:time-range start="${basicUtcTimestamp(
-        timeMin,
-      )}" end="${basicUtcTimestamp(timeMax)}" /></c:comp-filter></c:comp-filter></c:filter>` +
-      '</c:calendar-query>',
-  })
+  let response: Awaited<ReturnType<typeof appleDavRequest>>
+
+  try {
+    response = await appleDavRequest({
+      url: connection.calendar_id,
+      email: connection.account_email || connection.account_id,
+      appSpecificPassword: connection.access_token,
+      method: 'REPORT',
+      depth: '1',
+      body:
+        '<?xml version="1.0" encoding="utf-8"?>' +
+        '<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">' +
+        '<d:prop><d:getetag /><c:calendar-data /></d:prop>' +
+        `<c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VEVENT"><c:time-range start="${basicUtcTimestamp(
+          timeMin,
+        )}" end="${basicUtcTimestamp(timeMax)}" /></c:comp-filter></c:comp-filter></c:filter>` +
+        '</c:calendar-query>',
+    })
+  } catch (error) {
+    if (isAppleCalendarAccessError(error)) {
+      return []
+    }
+
+    throw error
+  }
 
   return allXmlBlocks(response.text, 'response')
     .map<EventSummary | null>((responseBlock) => {
@@ -1643,7 +1669,7 @@ function configuredAccountsFromConnections(connections: CalendarConnection[]) {
           accountEmail: connection.account_email,
           calendarId: connection.calendar_id,
           provider: connection.provider,
-          sourceName: connection.calendar_name,
+          sourceName: cleanCalendarDisplayText(connection.calendar_name) || connection.calendar_name,
           label: displayCalendarName(connection),
           includeInConflicts: connection.include_in_conflicts,
           allowNewEvents: connection.allow_new_events,

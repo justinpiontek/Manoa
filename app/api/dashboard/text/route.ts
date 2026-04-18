@@ -6,6 +6,20 @@ import { createSupabaseRouteHandlerClient } from '@/src/lib/supabase/server'
 
 export const runtime = 'nodejs'
 
+function friendlyDashboardTextError(error: unknown) {
+  const message = error instanceof Error ? error.message : 'Something went wrong sending that text.'
+
+  if (/apple calendar request failed:\s*403\b/i.test(message)) {
+    return 'One of your Apple calendars is blocking access right now. I skipped the broken Apple calendar path for future reads, but if this keeps happening, reconnect Apple or remove the problem calendar from Manoa.'
+  }
+
+  if (/apple calendar request failed:\s*401\b/i.test(message)) {
+    return 'Apple did not accept that iCloud connection anymore. Reconnect Apple Calendar with a fresh app-specific password.'
+  }
+
+  return message
+}
+
 export async function POST(request: NextRequest) {
   const cookiesToSet: Array<{
     name: string
@@ -55,7 +69,6 @@ export async function POST(request: NextRequest) {
 
     return response
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Something went wrong sending that text.'
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json({ error: friendlyDashboardTextError(error) }, { status: 500 })
   }
 }

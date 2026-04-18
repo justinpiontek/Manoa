@@ -281,9 +281,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             <a className="button dashboard-button" href={`/api/calendar/google/start?profile_id=${profile.id}`}>
               {googleAccounts.length ? (canAddGoogleAccount ? 'Add Google account' : 'Reconnect Google') : 'Connect Google'}
             </a>
-            <a className="button dashboard-button secondary-button" href={`/api/calendar/outlook/start?profile_id=${profile.id}`}>
-              {outlookAccounts.length ? (canAddOutlookAccount ? 'Add Outlook account' : 'Reconnect Outlook') : 'Connect Outlook'}
-            </a>
+            <span className="button dashboard-button secondary-button is-disabled" aria-disabled="true">
+              Outlook coming soon
+            </span>
             <a className="button dashboard-button secondary-button" href={appleConnectHref}>
               {appleAccounts.length ? 'Reconnect Apple' : 'Connect Apple'}
             </a>
@@ -302,18 +302,22 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                       </p>
                     </div>
                     <div className="calendar-account-actions">
-                      <a
-                        className="nav-link"
-                        href={
-                          account.provider === 'outlook'
-                            ? `/api/calendar/outlook/start?profile_id=${profile.id}&account_id=${account.accountId}`
-                            : account.provider === 'apple'
+                      {account.provider === 'outlook' ? (
+                        <span className="nav-link is-disabled" aria-disabled="true">
+                          Coming soon
+                        </span>
+                      ) : (
+                        <a
+                          className="nav-link"
+                          href={
+                            account.provider === 'apple'
                               ? `/setup/apple-calendar?profile_id=${profile.id}&account_id=${account.accountId}`
-                            : `/api/calendar/google/start?profile_id=${profile.id}&account_id=${account.accountId}`
-                        }
-                      >
-                        Reconnect
-                      </a>
+                              : `/api/calendar/google/start?profile_id=${profile.id}&account_id=${account.accountId}`
+                          }
+                        >
+                          Reconnect
+                        </a>
+                      )}
                       <DisconnectCalendarAccountForm
                         profileId={profile.id}
                         provider={account.provider}
