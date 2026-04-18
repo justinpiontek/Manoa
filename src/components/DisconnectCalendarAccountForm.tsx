@@ -4,7 +4,7 @@ import { useState } from 'react'
 
 type DisconnectCalendarAccountFormProps = {
   profileId: string
-  provider: 'google' | 'outlook'
+  provider: 'google' | 'outlook' | 'apple'
   accountId: string
 }
 

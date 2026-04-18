@@ -1,4 +1,5 @@
 import ManoaWordmark from '@/src/components/ManoaWordmark'
+import AppleCalendarConnectForm from '@/src/components/AppleCalendarConnectForm'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -25,7 +26,18 @@ const appleSteps = [
   },
 ]
 
-export default function AppleCalendarSetupPage() {
+type AppleCalendarSetupPageProps = {
+  searchParams: Promise<{
+    profile_id?: string
+    account_id?: string
+  }>
+}
+
+export default async function AppleCalendarSetupPage({ searchParams }: AppleCalendarSetupPageProps) {
+  const params = await searchParams
+  const profileId = params.profile_id || ''
+  const reconnectAccountId = params.account_id || ''
+
   return (
     <main className="setup-shell">
       <div className="setup-card">
@@ -33,8 +45,8 @@ export default function AppleCalendarSetupPage() {
         <p className="legal-eyebrow">Apple Calendar</p>
         <h1 className="setup-title">Prepare iCloud Calendar for Manoa.</h1>
         <p className="setup-lede">
-          Apple&apos;s calendar connection is the longer manual path. The good news is you can prep
-          it now: two-factor authentication first, then an app-specific password for iCloud.
+          Apple&apos;s calendar connection is still the longer manual path, but it can now be connected
+          inside Manoa with your iCloud email and an app-specific password.
         </p>
 
         <div className="status-row" aria-label="Apple setup progress">
@@ -46,10 +58,41 @@ export default function AppleCalendarSetupPage() {
             <strong>App-specific password</strong>
             <span>Required</span>
           </div>
-          <div className="status-pill pending">
+          <div className={`status-pill ${profileId ? 'ready' : 'pending'}`}>
             <strong>Apple sync in Manoa</strong>
-            <span>Guide ready</span>
+            <span>{profileId ? 'Ready to connect' : 'Open from dashboard'}</span>
           </div>
+        </div>
+
+        <div className="dashboard-support-grid apple-connect-grid">
+          <article className="dashboard-support-card">
+            <p className="dashboard-label">Connect now</p>
+            <h3>Apple Calendar in Manoa</h3>
+            <p>
+              Paste your iCloud email and the app-specific password Apple generated for Manoa. We&apos;ll
+              discover the calendars in that Apple account and bring them into your dashboard.
+            </p>
+            {profileId ? (
+              <AppleCalendarConnectForm
+                profileId={profileId}
+                reconnectAccountId={reconnectAccountId || null}
+              />
+            ) : (
+              <p className="setup-note">
+                Open this page from your dashboard so Manoa knows which account should receive the Apple
+                calendars.
+              </p>
+            )}
+          </article>
+
+          <article className="dashboard-support-card">
+            <p className="dashboard-label">What Apple still requires</p>
+            <h3>Two short prep steps</h3>
+            <ul className="dashboard-example-list">
+              <li>Turn on two-factor authentication for the Apple Account.</li>
+              <li>Create an app-specific password for Manoa.</li>
+            </ul>
+          </article>
         </div>
 
         <div className="setup-grid">
@@ -93,7 +136,10 @@ export default function AppleCalendarSetupPage() {
         </div>
 
         <div className="setup-footer">
-          <a className="button dashboard-link-button" href="/dashboard">
+          <a
+            className="button dashboard-link-button"
+            href={profileId ? `/dashboard?profile_id=${profileId}` : '/dashboard'}
+          >
             Back to dashboard
           </a>
           <a className="nav-link" href="/">

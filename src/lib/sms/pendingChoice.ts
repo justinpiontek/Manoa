@@ -1,3 +1,4 @@
+import { addDays, dateTimePartsInTimeZone, sameCalendarDay, startOfDay } from '../calendar/dates'
 import { parseSmsTime } from './parser'
 
 type PendingOption = {
@@ -66,40 +67,38 @@ function parseDayHint(text: string) {
 
 function dayKey(dateLike?: string) {
   if (!dateLike) return null
+  const weekdayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
   const date = new Date(dateLike)
   if (Number.isNaN(date.getTime())) return null
-  return date.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase()
+  return weekdayNames[dateTimePartsInTimeZone(date, undefined).weekday] || null
 }
 
-function relativeDayKey(dateLike?: string) {
+function relativeDayKey(dateLike?: string, timeZone?: string) {
   if (!dateLike) return null
   const date = new Date(dateLike)
   if (Number.isNaN(date.getTime())) return null
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const tomorrow = new Date(today)
-  tomorrow.setDate(tomorrow.getDate() + 1)
-  const candidate = new Date(date)
-  candidate.setHours(0, 0, 0, 0)
+  const today = startOfDay(0, timeZone)
+  const tomorrow = addDays(today, 1, timeZone)
 
-  if (candidate.getTime() === today.getTime()) return 'today'
-  if (candidate.getTime() === tomorrow.getTime()) return 'tomorrow'
+  if (sameCalendarDay(date, today, timeZone)) return 'today'
+  if (sameCalendarDay(date, tomorrow, timeZone)) return 'tomorrow'
   return null
 }
 
-function matchesTime(text: string, dateLike?: string) {
+function matchesTime(text: string, dateLike?: string, timeZone?: string) {
   const parsed = parseSmsTime(text)
   if (!parsed || !dateLike) return false
 
   const date = new Date(dateLike)
-  return date.getHours() === parsed.hour && date.getMinutes() === parsed.minute
+  const parts = dateTimePartsInTimeZone(date, timeZone)
+  return parts.hour === parsed.hour && parts.minute === parsed.minute
 }
 
-function matchesTimeOfDay(text: string, dateLike?: string) {
+function matchesTimeOfDay(text: string, dateLike?: string, timeZone?: string) {
   if (!dateLike) return false
   const lower = text.toLowerCase()
   const date = new Date(dateLike)
-  const hour = date.getHours()
+  const hour = dateTimePartsInTimeZone(date, timeZone).hour
 
   if (/\bmorning\b/.test(lower)) return hour >= 6 && hour < 12
   if (/\bafternoon\b/.test(lower)) return hour >= 12 && hour < 17
@@ -107,30 +106,34 @@ function matchesTimeOfDay(text: string, dateLike?: string) {
   return false
 }
 
-function matchesDay(text: string, dateLike?: string) {
+function matchesDay(text: string, dateLike?: string, timeZone?: string) {
   const dayHint = parseDayHint(text)
   if (!dayHint || !dateLike) return false
-  return dayHint === dayKey(dateLike) || dayHint === relativeDayKey(dateLike)
+  const weekdayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+  const date = new Date(dateLike)
+  const weekday = weekdayNames[dateTimePartsInTimeZone(date, timeZone).weekday] || null
+  return dayHint === weekday || dayHint === relativeDayKey(dateLike, timeZone)
 }
 
 function uniqueIndex(indexes: number[]) {
   return indexes.length === 1 ? indexes[0] : null
 }
 
-function resolveOptionChoice(text: string, options: PendingOption[]) {
+function resolveOptionChoice(text: string, options: PendingOption[], timeZone?: string) {
   const ordinal = parseOrdinalChoice(text, options.length)
   if (ordinal) return ordinal
 
   const lower = text.toLowerCase()
   const timeMatches = options
-    .map((option, index) => (matchesTime(text, option.start) ? index + 1 : null))
+    .map((option, index) => (matchesTime(text, option.start, timeZone) ? index + 1 : null))
     .filter((value): value is number => value !== null)
   const uniqueTimeMatch = uniqueIndex(timeMatches)
   if (uniqueTimeMatch) return uniqueTimeMatch
 
   const dayAndTimeMatches = options
     .map((option, index) =>
-      matchesDay(text, option.start) && (matchesTime(text, option.start) || matchesTimeOfDay(text, option.start))
+      matchesDay(text, option.start, timeZone) &&
+      (matchesTime(text, option.start, timeZone) || matchesTimeOfDay(text, option.start, timeZone))
         ? index + 1
         : null,
     )
@@ -150,13 +153,13 @@ function resolveOptionChoice(text: string, options: PendingOption[]) {
   return null
 }
 
-function resolveEventChoice(text: string, events: PendingEvent[]) {
+function resolveEventChoice(text: string, events: PendingEvent[], timeZone?: string) {
   const ordinal = parseOrdinalChoice(text, events.length)
   if (ordinal) return ordinal
 
   const lower = text.toLowerCase()
   const timeMatches = events
-    .map((event, index) => (matchesTime(text, event.start) ? index + 1 : null))
+    .map((event, index) => (matchesTime(text, event.start, timeZone) ? index + 1 : null))
     .filter((value): value is number => value !== null)
   const uniqueTimeMatch = uniqueIndex(timeMatches)
   if (uniqueTimeMatch) return uniqueTimeMatch
@@ -199,7 +202,7 @@ function resolveInvitedActionChoice(text: string, kind: string) {
   return null
 }
 
-export function resolvePendingChoice(text: string, pending: PendingLike | null) {
+export function resolvePendingChoice(text: string, pending: PendingLike | null, timeZone?: string) {
   if (!pending) return null
 
   if (
@@ -208,11 +211,11 @@ export function resolvePendingChoice(text: string, pending: PendingLike | null) 
     pending.kind === 'invited_reschedule_hold' ||
     pending.kind === 'external_call_prep'
   ) {
-    return resolveOptionChoice(text, pending.payload.options || [])
+    return resolveOptionChoice(text, pending.payload.options || [], timeZone)
   }
 
   if (pending.kind === 'select_reschedule_target') {
-    return resolveEventChoice(text, pending.payload.events || [])
+    return resolveEventChoice(text, pending.payload.events || [], timeZone)
   }
 
   if (pending.kind === 'invited_reschedule_action' || pending.kind === 'invited_cancel_action') {

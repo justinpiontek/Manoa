@@ -2,11 +2,13 @@ import { parseGoogleRecurrence, recurrenceRule, recurrenceSummary, type Recurren
 import type { Invitee } from '../sms/invitees'
 import { google, type calendar_v3 } from 'googleapis'
 import type { Credentials } from 'google-auth-library'
-import { appUrl, requiredEnv } from '../env'
+import { appUrl, defaultTimezone, requiredEnv } from '../env'
 import { supabaseAdmin } from '../supabaseAdmin'
 import { decryptCalendarToken, encryptCalendarToken } from './tokenEncryption'
 import {
   addMinutes,
+  dateFromTimeZoneParts,
+  dateTimePartsInTimeZone,
   endOfDay,
   formatSmsDate,
   formatSmsTime,
@@ -15,7 +17,7 @@ import {
   startOfDay,
 } from './dates'
 
-export type CalendarProvider = 'google' | 'outlook'
+export type CalendarProvider = 'google' | 'outlook' | 'apple'
 
 export type CalendarConnection = {
   id: string
@@ -82,6 +84,7 @@ export type ScheduleOption = {
   calendarName: string
   dayLabel: string
   timeLabel: string
+  timeZone?: string
   attendees?: Invitee[]
   recurrence?: RecurrenceSpec | null
 }
@@ -131,6 +134,14 @@ type OutlookCalendarDescriptor = {
 type OutlookDateTime = {
   dateTime?: string | null
   timeZone?: string | null
+}
+
+type AppleCalendarDescriptor = {
+  id: string
+  name: string
+  canEdit: boolean
+  isDefaultCalendar: boolean
+  ownerEmail: string | null
 }
 
 export function googleOAuthClient() {
@@ -248,12 +259,23 @@ function displayCalendarName(connection: CalendarConnection) {
   return connection.calendar_label?.trim() || connection.calendar_name || 'Google Calendar'
 }
 
+async function getProfileTimeZone(profileId: string) {
+  const { data } = await supabaseAdmin
+    .from('profiles')
+    .select('timezone')
+    .eq('id', profileId)
+    .maybeSingle<{ timezone: string | null }>()
+
+  return data?.timezone?.trim() || defaultTimezone()
+}
+
 function mapGoogleEvent(
   event: calendar_v3.Schema$Event,
   connection: Pick<
     CalendarConnection,
     'calendar_id' | 'calendar_name' | 'calendar_label' | 'account_email'
   >,
+  timeZone = defaultTimezone(),
 ) {
   const normalizedAccountEmail = (connection.account_email || '').trim().toLowerCase()
   const selfAttendee =
@@ -268,7 +290,7 @@ function mapGoogleEvent(
     provider: 'google',
     calendarId: connection.calendar_id,
     calendarName: connection.calendar_label?.trim() || connection.calendar_name || 'Google Calendar',
-    timeLabel: event.start?.dateTime ? formatSmsTime(new Date(event.start.dateTime)) : 'All day',
+    timeLabel: event.start?.dateTime ? formatSmsTime(new Date(event.start.dateTime), timeZone) : 'All day',
     location: event.location || '',
     description: event.description || '',
     organizerEmail: event.organizer?.email || '',
@@ -320,6 +342,7 @@ function mapOutlookEvent(
     originalStart?: string | null
   },
   connection: Pick<CalendarConnection, 'calendar_id' | 'calendar_name' | 'calendar_label'>,
+  timeZone = defaultTimezone(),
 ) {
   const start = outlookDateTimeToIso(event.start)
   const recurrence = parseOutlookRecurrence(event.recurrence, start)
@@ -332,7 +355,7 @@ function mapOutlookEvent(
     provider: 'outlook',
     calendarId: connection.calendar_id,
     calendarName: connection.calendar_label?.trim() || connection.calendar_name || 'Outlook Calendar',
-    timeLabel: start ? formatSmsTime(new Date(start)) : 'All day',
+    timeLabel: start ? formatSmsTime(new Date(start), timeZone) : 'All day',
     location: event.location?.displayName || '',
     description: event.bodyPreview || '',
     organizerEmail: event.organizer?.emailAddress?.address || '',
@@ -356,7 +379,13 @@ function googleClientFromTokens(tokens: Credentials) {
 }
 
 function providerLabel(provider: CalendarProvider) {
-  return provider === 'outlook' ? 'Outlook' : 'Google'
+  if (provider === 'outlook') return 'Outlook'
+  if (provider === 'apple') return 'Apple'
+  return 'Google'
+}
+
+function isDefined<T>(value: T | null | undefined): value is T {
+  return value != null
 }
 
 function normalizeOutlookGraphDateTime(value: Date | string) {
@@ -400,6 +429,486 @@ async function graphJson<T>(
   }
 
   return (await response.json()) as T
+}
+
+const appleCalDavBase = 'https://caldav.icloud.com'
+
+function appleAuthHeader(email: string, appSpecificPassword: string) {
+  return `Basic ${Buffer.from(`${email}:${appSpecificPassword}`).toString('base64')}`
+}
+
+function xmlEscape(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+}
+
+function xmlUnescape(value: string) {
+  return value
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&')
+}
+
+function stripXmlTagPrefix(value: string) {
+  return value.replace(/^[a-z0-9_-]+:/i, '')
+}
+
+function firstXmlBlock(xml: string, localName: string) {
+  const match = xml.match(new RegExp(`<[^>]*:?${localName}\\b[^>]*>([\\s\\S]*?)<\\/[^>]*:?${localName}>`, 'i'))
+  return match?.[1] || null
+}
+
+function allXmlBlocks(xml: string, localName: string) {
+  return [...xml.matchAll(new RegExp(`<[^>]*:?${localName}\\b[^>]*>([\\s\\S]*?)<\\/[^>]*:?${localName}>`, 'gi'))].map(
+    (match) => match[1],
+  )
+}
+
+function firstXmlText(xml: string, localName: string) {
+  const match = xml.match(new RegExp(`<[^>]*:?${localName}\\b[^>]*>([\\s\\S]*?)<\\/[^>]*:?${localName}>`, 'i'))
+  return match ? xmlUnescape(match[1].trim()) : null
+}
+
+function sanitizeAppleHref(href: string, baseUrl: string) {
+  return new URL(href, baseUrl).toString()
+}
+
+async function appleDavRequest({
+  url,
+  email,
+  appSpecificPassword,
+  method = 'PROPFIND',
+  depth,
+  body,
+  contentType = 'application/xml; charset=utf-8',
+}: {
+  url: string
+  email: string
+  appSpecificPassword: string
+  method?: string
+  depth?: string
+  body?: string
+  contentType?: string
+}) {
+  const response = await fetch(url, {
+    method,
+    headers: {
+      Authorization: appleAuthHeader(email, appSpecificPassword),
+      ...(depth ? { Depth: depth } : {}),
+      ...(body ? { 'Content-Type': contentType } : {}),
+    },
+    body,
+    cache: 'no-store',
+    redirect: 'follow',
+  })
+
+  if (!response.ok && response.status !== 207) {
+    const errorBody = await response.text()
+    throw new Error(`Apple Calendar request failed: ${response.status} ${errorBody || response.statusText}`)
+  }
+
+  return {
+    text: await response.text(),
+    url: response.url,
+    status: response.status,
+  }
+}
+
+function appleProp(statXml: string, localName: string) {
+  const propstatBlocks = allXmlBlocks(statXml, 'propstat')
+  for (const block of propstatBlocks) {
+    const status = firstXmlText(block, 'status') || ''
+    if (!status.includes(' 200 ')) continue
+    const propBlock = firstXmlBlock(block, 'prop')
+    if (!propBlock) continue
+    const value = firstXmlBlock(propBlock, localName)
+    if (value !== null) return value
+  }
+  return null
+}
+
+function unfoldIcs(value: string) {
+  return value.replace(/\r?\n[ \t]/g, '')
+}
+
+function escapeIcsText(value: string) {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/\n/g, '\\n')
+    .replace(/,/g, '\\,')
+    .replace(/;/g, '\\;')
+}
+
+function unescapeIcsText(value: string) {
+  return value
+    .replace(/\\n/g, '\n')
+    .replace(/\\,/g, ',')
+    .replace(/\\;/g, ';')
+    .replace(/\\\\/g, '\\')
+}
+
+function parseIcsDateValue(value: string, params: Record<string, string>) {
+  if (/^\d{8}$/.test(value)) {
+    return `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`
+  }
+
+  const basic = value.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z?)$/)
+  if (!basic) return ''
+
+  const [, year, month, day, hour, minute, second, zulu] = basic
+  if (zulu === 'Z') {
+    return new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}Z`).toISOString()
+  }
+
+  const tzid = params.TZID
+  if (tzid) {
+    return dateFromTimeZoneParts(
+      {
+        year: Number(year),
+        month: Number(month),
+        day: Number(day),
+        hour: Number(hour),
+        minute: Number(minute),
+        second: Number(second),
+      },
+      tzid,
+    ).toISOString()
+  }
+
+  return new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}`).toISOString()
+}
+
+function basicUtcTimestamp(value: Date | string) {
+  const date = value instanceof Date ? value : new Date(value)
+  return date
+    .toISOString()
+    .replace(/[-:]/g, '')
+    .replace(/\.\d{3}Z$/, 'Z')
+}
+
+function parseIcsProperty(rawLine: string) {
+  const separatorIndex = rawLine.indexOf(':')
+  if (separatorIndex === -1) return null
+
+  const left = rawLine.slice(0, separatorIndex)
+  const value = rawLine.slice(separatorIndex + 1)
+  const [namePart, ...paramParts] = left.split(';')
+  const params = Object.fromEntries(
+    paramParts.map((part) => {
+      const [key, paramValue = ''] = part.split('=')
+      return [key.toUpperCase(), paramValue]
+    }),
+  )
+
+  return {
+    name: namePart.toUpperCase(),
+    params,
+    value,
+  }
+}
+
+function parseAppleCalendarData(
+  calendarData: string,
+  connection: Pick<CalendarConnection, 'calendar_id' | 'calendar_name' | 'calendar_label' | 'account_email'>,
+  eventHref: string,
+  timeZone = defaultTimezone(),
+): EventSummary | null {
+  const unfolded = unfoldIcs(calendarData)
+  const eventBlock = unfolded.match(/BEGIN:VEVENT\r?\n([\s\S]*?)\r?\nEND:VEVENT/i)?.[1]
+  if (!eventBlock) return null
+
+  const lines = eventBlock.split(/\r?\n/)
+  let title = 'Untitled event'
+  let start = ''
+  let end = ''
+  let location = ''
+  let description = ''
+  let organizerEmail = ''
+  let attendeeCount = 0
+  let selfResponseStatus: string | null = null
+  const recurrence: string[] = []
+  let recurringEventId: string | null = null
+  let originalStart: string | null = null
+
+  const normalizedAccountEmail = (connection.account_email || '').trim().toLowerCase()
+
+  for (const line of lines) {
+    const property = parseIcsProperty(line)
+    if (!property) continue
+
+    if (property.name === 'SUMMARY') title = unescapeIcsText(property.value) || title
+    if (property.name === 'DTSTART') start = parseIcsDateValue(property.value, property.params)
+    if (property.name === 'DTEND') end = parseIcsDateValue(property.value, property.params)
+    if (property.name === 'LOCATION') location = unescapeIcsText(property.value)
+    if (property.name === 'DESCRIPTION') description = unescapeIcsText(property.value)
+    if (property.name === 'RRULE') recurrence.push(`RRULE:${property.value}`)
+    if (property.name === 'RECURRENCE-ID') originalStart = parseIcsDateValue(property.value, property.params)
+    if (property.name === 'ORGANIZER') {
+      organizerEmail = property.value.replace(/^mailto:/i, '')
+    }
+    if (property.name === 'ATTENDEE') {
+      attendeeCount += 1
+      const attendeeEmail = property.value.replace(/^mailto:/i, '').trim().toLowerCase()
+      if (attendeeEmail === normalizedAccountEmail) {
+        selfResponseStatus = property.params.PARTSTAT?.toLowerCase() || null
+      }
+    }
+    if (property.name === 'UID') recurringEventId = property.value || recurringEventId
+  }
+
+  return {
+    id: eventHref,
+    title,
+    start,
+    end,
+    provider: 'apple' as const,
+    calendarId: connection.calendar_id,
+    calendarName: connection.calendar_label?.trim() || connection.calendar_name || 'Apple Calendar',
+    timeLabel: start && !/^\d{4}-\d{2}-\d{2}$/.test(start) ? formatSmsTime(new Date(start), timeZone) : 'All day',
+    location,
+    description,
+    organizerEmail,
+    attendeeCount,
+    selfResponseStatus,
+    recurrence: recurrence.length ? recurrence : null,
+    recurringEventId,
+    originalStart,
+  } satisfies EventSummary
+}
+
+function buildAppleCalendarEventBody({
+  option,
+  uid,
+}: {
+  option: ScheduleOption
+  uid: string
+}) {
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Manoa//Calendar//EN',
+    'CALSCALE:GREGORIAN',
+    'BEGIN:VEVENT',
+    `UID:${uid}`,
+    `DTSTAMP:${basicUtcTimestamp(new Date())}`,
+    `DTSTART:${basicUtcTimestamp(option.start)}`,
+    `DTEND:${basicUtcTimestamp(option.end)}`,
+    `SUMMARY:${escapeIcsText(option.title)}`,
+  ]
+
+  if (option.recurrence) {
+    const rule = recurrenceRule(option.recurrence, option.start)
+    if (rule) lines.push(rule)
+  }
+
+  lines.push('END:VEVENT', 'END:VCALENDAR')
+  return lines.join('\r\n')
+}
+
+async function discoverAppleCalendars(email: string, appSpecificPassword: string) {
+  const rootResponse = await appleDavRequest({
+    url: `${appleCalDavBase}/`,
+    email,
+    appSpecificPassword,
+    depth: '0',
+    body:
+      '<?xml version="1.0" encoding="utf-8"?>' +
+      '<d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">' +
+      '<d:prop><d:current-user-principal /></d:prop>' +
+      '</d:propfind>',
+  })
+
+  const rootResponseBlock = allXmlBlocks(rootResponse.text, 'response')[0] || rootResponse.text
+  const principalHref = firstXmlText(appleProp(rootResponseBlock, 'current-user-principal') || '', 'href')
+  if (!principalHref) {
+    throw new Error('Apple Calendar did not return a principal for this account.')
+  }
+
+  const principalUrl = sanitizeAppleHref(principalHref, rootResponse.url)
+  const principalResponse = await appleDavRequest({
+    url: principalUrl,
+    email,
+    appSpecificPassword,
+    depth: '0',
+    body:
+      '<?xml version="1.0" encoding="utf-8"?>' +
+      '<d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">' +
+      '<d:prop><c:calendar-home-set /><d:displayname /></d:prop>' +
+      '</d:propfind>',
+  })
+
+  const principalBlock = allXmlBlocks(principalResponse.text, 'response')[0] || principalResponse.text
+  const homeHref = firstXmlText(appleProp(principalBlock, 'calendar-home-set') || '', 'href')
+  if (!homeHref) {
+    throw new Error('Apple Calendar did not return a calendar home for this account.')
+  }
+
+  const homeUrl = sanitizeAppleHref(homeHref, principalResponse.url)
+  const calendarsResponse = await appleDavRequest({
+    url: homeUrl,
+    email,
+    appSpecificPassword,
+    depth: '1',
+    body:
+      '<?xml version="1.0" encoding="utf-8"?>' +
+      '<d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">' +
+      '<d:prop><d:displayname /><d:resourcetype /><d:current-user-privilege-set /></d:prop>' +
+      '</d:propfind>',
+  })
+
+  const calendars = allXmlBlocks(calendarsResponse.text, 'response')
+    .map<AppleCalendarDescriptor | null>((responseBlock) => {
+      const href = firstXmlText(responseBlock, 'href')
+      const resourcetype = appleProp(responseBlock, 'resourcetype') || ''
+      if (!href || !/calendar/i.test(resourcetype)) return null
+
+      const resolvedUrl = sanitizeAppleHref(href, calendarsResponse.url)
+      if (resolvedUrl.replace(/\/+$/, '') === homeUrl.replace(/\/+$/, '')) return null
+
+      const privilegeSet = appleProp(responseBlock, 'current-user-privilege-set') || ''
+      const canEdit = /write/i.test(privilegeSet) || /all/i.test(privilegeSet) || privilegeSet === ''
+      const name = firstXmlText(responseBlock, 'displayname') || resolvedUrl.split('/').filter(Boolean).pop() || 'Apple Calendar'
+
+      return {
+        id: resolvedUrl,
+        name,
+        canEdit,
+        isDefaultCalendar: false,
+        ownerEmail: email,
+      }
+    })
+    .filter(isDefined)
+
+  if (!calendars.length) {
+    throw new Error('Apple Calendar did not return any calendars for this account.')
+  }
+
+  const [firstCalendar, ...remainingCalendars] = calendars
+
+  return {
+    accountId: email.trim().toLowerCase(),
+    accountEmail: email.trim().toLowerCase(),
+    calendars: [
+      {
+        ...firstCalendar,
+        isDefaultCalendar: true,
+      },
+      ...remainingCalendars,
+    ],
+  }
+}
+
+async function listAppleEventsForConnection({
+  connection,
+  timeMin,
+  timeMax,
+}: {
+  connection: CalendarConnection
+  timeMin: Date
+  timeMax: Date
+}) {
+  const response = await appleDavRequest({
+    url: connection.calendar_id,
+    email: connection.account_email || connection.account_id,
+    appSpecificPassword: connection.access_token,
+    method: 'REPORT',
+    depth: '1',
+    body:
+      '<?xml version="1.0" encoding="utf-8"?>' +
+      '<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">' +
+      '<d:prop><d:getetag /><c:calendar-data /></d:prop>' +
+      `<c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VEVENT"><c:time-range start="${basicUtcTimestamp(
+        timeMin,
+      )}" end="${basicUtcTimestamp(timeMax)}" /></c:comp-filter></c:comp-filter></c:filter>` +
+      '</c:calendar-query>',
+  })
+
+  return allXmlBlocks(response.text, 'response')
+    .map<EventSummary | null>((responseBlock) => {
+      const href = firstXmlText(responseBlock, 'href')
+      const calendarData = appleProp(responseBlock, 'calendar-data')
+      if (!href || !calendarData) return null
+      return parseAppleCalendarData(
+        calendarData,
+        connection,
+        sanitizeAppleHref(href, response.url),
+      )
+    })
+    .filter(isDefined)
+}
+
+async function getAppleEventForConnection(connection: CalendarConnection, eventId: string) {
+  const url = sanitizeAppleHref(eventId, connection.calendar_id)
+  const response = await appleDavRequest({
+    url,
+    email: connection.account_email || connection.account_id,
+    appSpecificPassword: connection.access_token,
+    method: 'GET',
+    contentType: 'text/calendar; charset=utf-8',
+  })
+
+  return parseAppleCalendarData(response.text, connection, url)
+}
+
+async function createAppleCalendarEvent(connection: CalendarConnection, option: ScheduleOption) {
+  const uid = crypto.randomUUID()
+  const eventUrl = sanitizeAppleHref(`${uid}.ics`, connection.calendar_id.endsWith('/') ? connection.calendar_id : `${connection.calendar_id}/`)
+  const response = await fetch(eventUrl, {
+    method: 'PUT',
+    headers: {
+      Authorization: appleAuthHeader(connection.account_email || connection.account_id, connection.access_token),
+      'Content-Type': 'text/calendar; charset=utf-8',
+      'If-None-Match': '*',
+    },
+    body: buildAppleCalendarEventBody({ option, uid }),
+  })
+
+  if (!response.ok) {
+    const body = await response.text()
+    throw new Error(`Apple Calendar create failed: ${response.status} ${body || response.statusText}`)
+  }
+
+  return { id: eventUrl }
+}
+
+async function updateAppleCalendarEvent(connection: CalendarConnection, eventId: string, option: ScheduleOption) {
+  const existing = await getAppleEventForConnection(connection, eventId)
+  const uid = existing?.recurringEventId || new URL(eventId).pathname.split('/').pop()?.replace(/\.ics$/i, '') || crypto.randomUUID()
+  const response = await fetch(sanitizeAppleHref(eventId, connection.calendar_id), {
+    method: 'PUT',
+    headers: {
+      Authorization: appleAuthHeader(connection.account_email || connection.account_id, connection.access_token),
+      'Content-Type': 'text/calendar; charset=utf-8',
+    },
+    body: buildAppleCalendarEventBody({ option, uid }),
+  })
+
+  if (!response.ok) {
+    const body = await response.text()
+    throw new Error(`Apple Calendar update failed: ${response.status} ${body || response.statusText}`)
+  }
+
+  return { id: sanitizeAppleHref(eventId, connection.calendar_id) }
+}
+
+async function deleteAppleCalendarEvent(connection: CalendarConnection, eventId: string) {
+  const response = await fetch(sanitizeAppleHref(eventId, connection.calendar_id), {
+    method: 'DELETE',
+    headers: {
+      Authorization: appleAuthHeader(connection.account_email || connection.account_id, connection.access_token),
+    },
+  })
+
+  if (!response.ok && response.status !== 404) {
+    const body = await response.text()
+    throw new Error(`Apple Calendar delete failed: ${response.status} ${body || response.statusText}`)
+  }
 }
 
 function parseOutlookRecurrence(
@@ -828,6 +1337,10 @@ async function getOutlookConnections(profileId: string) {
   return getCalendarConnections(profileId, 'outlook')
 }
 
+async function getAppleConnections(profileId: string) {
+  return getCalendarConnections(profileId, 'apple')
+}
+
 async function calendarForConnection(connection: CalendarConnection) {
   if (connection.provider === 'google') {
     const auth = googleOAuthClient()
@@ -840,6 +1353,13 @@ async function calendarForConnection(connection: CalendarConnection) {
     return {
       provider: 'google' as const,
       calendar: google.calendar({ version: 'v3', auth }),
+      connection,
+    }
+  }
+
+  if (connection.provider === 'apple') {
+    return {
+      provider: 'apple' as const,
       connection,
     }
   }
@@ -1019,6 +1539,87 @@ export async function storeOutlookConnection(
   }
 }
 
+export async function storeAppleConnection(
+  profileId: string,
+  {
+    email,
+    appSpecificPassword,
+  }: {
+    email: string
+    appSpecificPassword: string
+  },
+  options?: { reconnectAccountId?: string | null },
+) {
+  const normalizedEmail = email.trim().toLowerCase()
+  const normalizedPassword = appSpecificPassword.trim()
+  if (!normalizedEmail || !normalizedPassword) {
+    throw new Error('Apple email and app-specific password are both required.')
+  }
+
+  const accountData = await discoverAppleCalendars(normalizedEmail, normalizedPassword)
+  const existingConnections = await getAppleConnections(profileId)
+  const existingAccountIds = uniqueAccountIds(existingConnections)
+  const accountId = accountData.accountId
+
+  if (!existingAccountIds.includes(accountId) && existingAccountIds.length >= 1) {
+    throw new Error('Manoa supports 1 Apple account right now.')
+  }
+
+  const existingByCalendarId = new Map(
+    existingConnections
+      .filter((connection) => connection.account_id === accountId)
+      .map((connection) => [connection.calendar_id, connection]),
+  )
+
+  await supabaseAdmin
+    .from('calendar_connections')
+    .update({
+      status: 'inactive',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('profile_id', profileId)
+    .eq('provider', 'apple')
+    .eq('account_id', options?.reconnectAccountId || accountId)
+
+  const rows = accountData.calendars.map((descriptor) => {
+    const existing = existingByCalendarId.get(descriptor.id)
+    const writable = descriptor.canEdit
+
+    return {
+      profile_id: profileId,
+      provider: 'apple' as const,
+      account_id: accountId,
+      account_email: accountData.accountEmail,
+      calendar_id: descriptor.id,
+      calendar_name: descriptor.name,
+      calendar_label:
+        existing?.calendar_label?.trim() ||
+        (descriptor.isDefaultCalendar && !existingAccountIds.length ? 'Personal' : descriptor.name),
+      access_token: encryptCalendarToken(normalizedPassword) || '',
+      refresh_token: null,
+      expires_at: null,
+      access_role: existing?.access_role || (writable ? 'owner' : 'reader'),
+      is_primary: descriptor.isDefaultCalendar,
+      include_in_conflicts: existing?.include_in_conflicts ?? true,
+      allow_new_events: existing?.allow_new_events ?? writable,
+      status: 'active',
+      updated_at: new Date().toISOString(),
+    }
+  })
+
+  const { error } = await supabaseAdmin.from('calendar_connections').upsert(rows, {
+    onConflict: 'profile_id,provider,calendar_id',
+  })
+
+  if (error) throw error
+
+  return {
+    accountId,
+    accountEmail: accountData.accountEmail,
+    calendarCount: rows.length,
+  }
+}
+
 function configuredAccountsFromConnections(connections: CalendarConnection[]) {
   const accounts = groupConnectionsByAccount(connections)
 
@@ -1081,6 +1682,11 @@ export async function listConfiguredOutlookCalendars(profileId: string) {
   return configuredAccountsFromConnections(connections)
 }
 
+export async function listConfiguredAppleCalendars(profileId: string) {
+  const connections = visibleConfiguredCalendars(await getAppleConnections(profileId))
+  return configuredAccountsFromConnections(connections)
+}
+
 export async function updateConfiguredGoogleCalendar({
   profileId,
   connectionId,
@@ -1125,6 +1731,28 @@ export async function updateConfiguredGoogleCalendar({
     .eq('profile_id', profileId)
 
   if (error) throw error
+}
+
+export async function updateConfiguredCalendar({
+  profileId,
+  connectionId,
+  calendarLabel,
+  includeInConflicts,
+  allowNewEvents,
+}: {
+  profileId: string
+  connectionId: string
+  calendarLabel: string
+  includeInConflicts: boolean
+  allowNewEvents: boolean
+}) {
+  return updateConfiguredGoogleCalendar({
+    profileId,
+    connectionId,
+    calendarLabel,
+    includeInConflicts,
+    allowNewEvents,
+  })
 }
 
 export async function removeConfiguredCalendar({
@@ -1224,7 +1852,7 @@ export async function resolveCalendarPlacement(
   profileId: string,
   calendarHint?: string,
 ): Promise<CalendarPlacementResolution> {
-  const connections = visibleConfiguredCalendars(await getGoogleConnections(profileId))
+  const connections = visibleConfiguredCalendars(await getCalendarConnections(profileId))
   const writableConnections = connections.filter((connection) => connection.allow_new_events)
   const bookingConnections = writableConnections.length
     ? writableConnections
@@ -1287,11 +1915,13 @@ async function listOutlookEventsForConnection({
   timeMin,
   timeMax,
   maxResults,
+  timeZone,
 }: {
   connection: CalendarConnection
   timeMin: Date
   timeMax: Date
   maxResults: number
+  timeZone?: string
 }) {
   const accessToken = await ensureOutlookAccessToken(connection)
   const params = new URLSearchParams()
@@ -1324,7 +1954,7 @@ async function listOutlookEventsForConnection({
     accessToken,
   })
 
-  return (response.value || []).map((event) => mapOutlookEvent(event, connection))
+  return (response.value || []).map((event) => mapOutlookEvent(event, connection, timeZone))
 }
 
 async function listEventsBetween({
@@ -1332,12 +1962,15 @@ async function listEventsBetween({
   timeMin,
   timeMax,
   maxResults = 20,
+  timeZone,
 }: {
   profileId: string
   timeMin: Date
   timeMax: Date
   maxResults?: number
+  timeZone?: string
 }) {
+  const resolvedTimeZone = timeZone || (await getProfileTimeZone(profileId))
   const connections = visibleConfiguredCalendars(await getCalendarConnections(profileId))
   if (!connections.length) return []
 
@@ -1352,6 +1985,21 @@ async function listEventsBetween({
               timeMin,
               timeMax,
               maxResults,
+              timeZone: resolvedTimeZone,
+            }),
+          ),
+        )
+
+        return accountEventLists.flat()
+      }
+
+      if (accountConnections[0].provider === 'apple') {
+        const accountEventLists = await Promise.all(
+          accountConnections.map((connection) =>
+            listAppleEventsForConnection({
+              connection,
+              timeMin,
+              timeMax,
             }),
           ),
         )
@@ -1373,7 +2021,9 @@ async function listEventsBetween({
             maxResults,
           })
 
-          return (response.data.items || []).map((event) => mapGoogleEvent(event, connection))
+          return (response.data.items || []).map((event) =>
+            mapGoogleEvent(event, connection, resolvedTimeZone),
+          )
         }),
       )
 
@@ -1387,13 +2037,15 @@ async function listEventsBetween({
     .slice(0, maxResults)
 }
 
-export async function listAgenda(profileId: string, day: 'today' | 'tomorrow') {
+export async function listAgenda(profileId: string, day: 'today' | 'tomorrow', timeZone?: string) {
   const offset = day === 'tomorrow' ? 1 : 0
+  const resolvedTimeZone = timeZone || (await getProfileTimeZone(profileId))
   return listEventsBetween({
     profileId,
-    timeMin: startOfDay(offset),
-    timeMax: endOfDay(offset),
+    timeMin: startOfDay(offset, resolvedTimeZone),
+    timeMax: endOfDay(offset, resolvedTimeZone),
     maxResults: 8,
+    timeZone: resolvedTimeZone,
   })
 }
 
@@ -1402,21 +2054,30 @@ export async function listUpcomingEvents({
   windowMinutes,
   startAt = new Date(),
   maxResults = 20,
+  timeZone,
 }: {
   profileId: string
   windowMinutes: number
   startAt?: Date
   maxResults?: number
+  timeZone?: string
 }) {
   return listEventsBetween({
     profileId,
     timeMin: startAt,
     timeMax: addMinutes(startAt, windowMinutes),
     maxResults,
+    timeZone,
   })
 }
 
-export async function getCalendarEvent(profileId: string, eventId: string, calendarId?: string) {
+export async function getCalendarEvent(
+  profileId: string,
+  eventId: string,
+  calendarId?: string,
+  timeZone?: string,
+) {
+  const resolvedTimeZone = timeZone || (await getProfileTimeZone(profileId))
   const connections = await getCalendarConnections(profileId)
   if (!connections.length) return null
 
@@ -1446,7 +2107,16 @@ export async function getCalendarEvent(profileId: string, eventId: string, calen
           accessToken,
         })
 
-        return mapOutlookEvent(response, connection)
+        return mapOutlookEvent(response, connection, resolvedTimeZone)
+      } catch (error) {
+        if (String(error).includes('404')) continue
+        throw error
+      }
+    }
+
+    if (connection.provider === 'apple') {
+      try {
+        return await getAppleEventForConnection(connection, eventId)
       } catch (error) {
         if (String(error).includes('404')) continue
         throw error
@@ -1462,7 +2132,7 @@ export async function getCalendarEvent(profileId: string, eventId: string, calen
         eventId,
       })
 
-      return mapGoogleEvent(response.data, connection)
+      return mapGoogleEvent(response.data, connection, resolvedTimeZone)
     } catch (error) {
       const status =
         (error as { code?: number; response?: { status?: number } }).code ||
@@ -1494,6 +2164,23 @@ async function busyBlocks(
               timeMin,
               timeMax,
               maxResults: 100,
+            }),
+          ),
+        )
+
+        return eventLists.flat().flatMap((event) => {
+          if (!event.start || !event.end) return []
+          return [{ start: new Date(event.start), end: new Date(event.end) }]
+        })
+      }
+
+      if (accountConnections[0].provider === 'apple') {
+        const eventLists = await Promise.all(
+          accountConnections.map((connection) =>
+            listAppleEventsForConnection({
+              connection,
+              timeMin,
+              timeMax,
             }),
           ),
         )
@@ -1572,6 +2259,7 @@ export async function findScheduleOptions({
   calendarId,
   durationMinutes = 30,
   recurrence = null,
+  timeZone,
 }: {
   profileId: string
   title: string
@@ -1581,7 +2269,9 @@ export async function findScheduleOptions({
   calendarId?: string
   durationMinutes?: number
   recurrence?: RecurrenceSpec | null
+  timeZone?: string
 }) {
+  const resolvedTimeZone = timeZone || (await getProfileTimeZone(profileId))
   const connections = visibleConfiguredCalendars(await getCalendarConnections(profileId))
   if (!connections.length) return []
 
@@ -1599,14 +2289,14 @@ export async function findScheduleOptions({
 
   const candidateStarts = exactTime
     ? [
-        setTime(baseDate, exactTime),
-        addMinutes(setTime(baseDate, exactTime), 60),
-        addMinutes(setTime(baseDate, exactTime), 120),
+        setTime(baseDate, exactTime, resolvedTimeZone),
+        addMinutes(setTime(baseDate, exactTime, resolvedTimeZone), 60),
+        addMinutes(setTime(baseDate, exactTime, resolvedTimeZone), 120),
       ]
     : [
-        setTime(baseDate, { hour: 9, minute: 0 }),
-        setTime(baseDate, { hour: 11, minute: 0 }),
-        setTime(baseDate, { hour: 14, minute: 30 }),
+        setTime(baseDate, { hour: 9, minute: 0 }, resolvedTimeZone),
+        setTime(baseDate, { hour: 11, minute: 0 }, resolvedTimeZone),
+        setTime(baseDate, { hour: 14, minute: 30 }, resolvedTimeZone),
       ]
 
   const timeMin = candidateStarts[0]
@@ -1627,8 +2317,9 @@ export async function findScheduleOptions({
       provider: targetConnection.provider,
       calendarId: targetConnection.calendar_id,
       calendarName: displayCalendarName(targetConnection),
-      dayLabel: formatSmsDate(candidate.start),
-      timeLabel: formatSmsTime(candidate.start),
+      dayLabel: formatSmsDate(candidate.start, resolvedTimeZone),
+      timeLabel: formatSmsTime(candidate.start, resolvedTimeZone),
+      timeZone: resolvedTimeZone,
       recurrence,
     }))
 }
@@ -1642,6 +2333,9 @@ export async function createCalendarEvent(
     provider: option.provider,
   })
   if (!client) throw new Error('Calendar is not connected.')
+  if (client.provider === 'apple') {
+    return createAppleCalendarEvent(client.connection, option)
+  }
   if (client.provider === 'outlook') {
     const recurrence = outlookRecurrenceBody(option.recurrence, option.start)
     return graphJson(`/me/calendars/${encodeURIComponent(option.calendarId || client.connection.calendar_id)}/events`, {
@@ -1704,6 +2398,9 @@ export async function updateCalendarEvent(
     provider: option.provider,
   })
   if (!client) throw new Error('Calendar is not connected.')
+  if (client.provider === 'apple') {
+    return updateAppleCalendarEvent(client.connection, eventId, option)
+  }
   if (client.provider === 'outlook') {
     const recurrence = outlookRecurrenceBody(option.recurrence, option.start)
     return graphJson(`/me/calendars/${encodeURIComponent(option.calendarId || client.connection.calendar_id)}/events/${encodeURIComponent(eventId)}`, {
@@ -1753,6 +2450,10 @@ export async function deleteCalendarEvent(
 ): Promise<void> {
   const client = await calendarForProfile(profileId, { calendarId })
   if (!client) throw new Error('Calendar is not connected.')
+  if (client.provider === 'apple') {
+    await deleteAppleCalendarEvent(client.connection, eventId)
+    return
+  }
   if (client.provider === 'outlook') {
     await graphJson(`/me/calendars/${encodeURIComponent(calendarId || client.connection.calendar_id)}/events/${encodeURIComponent(eventId)}`, {
       accessToken: client.accessToken,

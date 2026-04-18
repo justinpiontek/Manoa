@@ -1,7 +1,7 @@
 import { stripe } from '@/src/lib/stripeClient'
 import { appUrl } from '@/src/lib/env'
 import { formatPhoneForDisplay } from '@/src/lib/phone'
-import { listConfiguredCalendarAccounts } from '@/src/lib/calendar/google'
+import { listConfiguredCalendarAccounts, type CalendarProvider } from '@/src/lib/calendar/google'
 import { getDashboardProfile, getDashboardProfileByEmail } from '@/src/lib/profiles'
 import { listSmsThreadEntries, toSmsThreadMessages } from '@/src/lib/sms/thread'
 import { createSupabaseServerClient } from '@/src/lib/supabase/server'
@@ -30,8 +30,10 @@ type DashboardPageProps = {
   }>
 }
 
-function providerLabel(provider: 'google' | 'outlook') {
-  return provider === 'outlook' ? 'Outlook' : 'Google'
+function providerLabel(provider: CalendarProvider) {
+  if (provider === 'outlook') return 'Outlook'
+  if (provider === 'apple') return 'Apple'
+  return 'Google'
 }
 
 function statusLine({
@@ -52,13 +54,21 @@ function calendarErrorMessage(code: string | undefined, detail?: string) {
 
   switch (code) {
     case 'account_limit':
-      return `Manoa thinks you've already hit the 2 Google account limit. That usually means an older Google connection is still being counted.${extra}`
+      return `Manoa hit the current account limit for that calendar provider.${extra}`
     case 'no_calendars':
-      return `Google connected, but it didn't return any writable calendars for this account.${extra}`
+      return `That calendar account connected, but it did not return any usable calendars for Manoa yet.${extra}`
     case 'insufficient_scopes':
       return `Google approved the sign-in, but Manoa still needs one more calendar permission to finish adding that account. Reconnect once after the latest deploy and it should ask for the missing access.${extra}`
+    case 'apple_auth':
+      return `Apple did not accept that iCloud email and app-specific password.${extra}`
+    case 'apple_connect':
+      return `Apple Calendar could not be connected yet.${extra}`
+    case 'mailbox_missing':
+      return `Microsoft signed you in, but that Outlook account does not seem to have a usable mailbox/calendar behind it yet.${extra}`
+    case 'permissions':
+      return `Microsoft signed you in, but the calendar permission step did not fully go through.${extra}`
     case 'duplicate':
-      return `This Google account looks like it has a calendar Manoa already knows about, and the save step collided.${extra}`
+      return `That calendar account looks like it has a calendar Manoa already knows about, and the save step collided.${extra}`
     case 'db_constraint':
       return `The database save rules for calendars are still out of sync with the app.${extra}`
     case 'migration_missing':
@@ -134,8 +144,13 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   const googleAccounts = calendarAccounts.filter((account) => account.provider === 'google')
   const outlookAccounts = calendarAccounts.filter((account) => account.provider === 'outlook')
+  const appleAccounts = calendarAccounts.filter((account) => account.provider === 'apple')
   const canAddGoogleAccount = googleAccounts.length < 2
   const canAddOutlookAccount = outlookAccounts.length < 2
+  const canAddAppleAccount = appleAccounts.length < 1
+  const appleConnectHref = canAddAppleAccount
+    ? `/setup/apple-calendar?profile_id=${profile.id}`
+    : `/setup/apple-calendar?profile_id=${profile.id}&account_id=${appleAccounts[0]?.accountId || ''}`
   const totalConnectedAccounts = calendarAccounts.length
   const readyToText = Boolean(manoaNumber && profile.calendarConnected)
   const firstTextExample = totalConnectedAccounts > 1
@@ -145,7 +160,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const calendarStageHeading = totalConnectedAccounts ? 'Teach Manoa what each calendar means.' : 'Connect your calendar.'
   const calendarStageCopy = totalConnectedAccounts
     ? 'Manoa checks every calendar you mark for conflicts. For new events, it uses the calendar name you text and asks instead of guessing when more than one destination could fit.'
-    : 'Connect Google or Outlook first so Manoa can check availability, route events to the right calendar, and book by text. Apple Calendar has a separate iCloud setup guide for now.'
+    : 'Connect Google, Outlook, or Apple Calendar first so Manoa can check availability, route events to the right calendar, and book by text.'
   const textingStageCopy = readyToText
     ? `Text from ${displayUserPhone} so Manoa recognizes you right away, or use the live console here.`
     : 'Your texting number will show here as soon as approval finishes. Until then, use the live console here with your real account.'
@@ -269,8 +284,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             <a className="button dashboard-button secondary-button" href={`/api/calendar/outlook/start?profile_id=${profile.id}`}>
               {outlookAccounts.length ? (canAddOutlookAccount ? 'Add Outlook account' : 'Reconnect Outlook') : 'Connect Outlook'}
             </a>
-            <a className="button dashboard-button secondary-button" href="/setup/apple-calendar">
-              Apple Calendar guide
+            <a className="button dashboard-button secondary-button" href={appleConnectHref}>
+              {appleAccounts.length ? 'Reconnect Apple' : 'Connect Apple'}
             </a>
           </div>
 
@@ -292,6 +307,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                         href={
                           account.provider === 'outlook'
                             ? `/api/calendar/outlook/start?profile_id=${profile.id}&account_id=${account.accountId}`
+                            : account.provider === 'apple'
+                              ? `/setup/apple-calendar?profile_id=${profile.id}&account_id=${account.accountId}`
                             : `/api/calendar/google/start?profile_id=${profile.id}&account_id=${account.accountId}`
                         }
                       >

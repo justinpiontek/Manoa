@@ -191,15 +191,17 @@ function parseRecurrence(text: string): RecurrenceSpec | null {
   return null
 }
 
-function parseBaseDate(text: string) {
+function parseBaseDate(text: string, timeZone?: string) {
   const lower = text.toLowerCase()
-  if (/\btoday\b|\bthis (morning|afternoon|evening)\b|\btonight\b/.test(lower)) return startOfDay(0)
-  if (/\btomorrow'?s?\b|\btmrw\b|\btomororws?\b/.test(lower)) return startOfDay(1)
+  if (/\btoday\b|\bthis (morning|afternoon|evening)\b|\btonight\b/.test(lower)) {
+    return startOfDay(0, timeZone)
+  }
+  if (/\btomorrow'?s?\b|\btmrw\b|\btomororws?\b/.test(lower)) return startOfDay(1, timeZone)
 
   const dayMatch = lower.match(/\b(?:next\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/)
-  if (dayMatch) return nextDateForWeekday(weekdays[dayMatch[1]])
+  if (dayMatch) return nextDateForWeekday(weekdays[dayMatch[1]], timeZone)
 
-  return startOfDay(1)
+  return startOfDay(1, timeZone)
 }
 
 function parseCalendarHint(text: string) {
@@ -238,7 +240,7 @@ function stripSchedulingNoise(text: string) {
   return cleaned || 'meeting'
 }
 
-export function parseSmsIntent(body: string): ParsedSmsIntent {
+export function parseSmsIntent(body: string, timeZone?: string): ParsedSmsIntent {
   const text = body.trim()
   const lower = text.toLowerCase()
 
@@ -270,7 +272,7 @@ export function parseSmsIntent(body: string): ParsedSmsIntent {
     return {
       type: 'reschedule',
       query: stripSchedulingNoise(text),
-      baseDate: parseBaseDate(text),
+      baseDate: parseBaseDate(text, timeZone),
       exactTime: parseSmsTime(text) || parseLooseTimeHint(text),
       calendarHint: parseCalendarHint(text),
     }
@@ -288,7 +290,7 @@ export function parseSmsIntent(body: string): ParsedSmsIntent {
     return {
       type: 'schedule',
       title: stripSchedulingNoise(text),
-      baseDate: parseBaseDate(text),
+      baseDate: parseBaseDate(text, timeZone),
       exactTime: parseSmsTime(text) || parseLooseTimeHint(text),
       calendarHint: parseCalendarHint(text),
       durationMinutes: parseDuration(text),

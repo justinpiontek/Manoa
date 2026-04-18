@@ -56,11 +56,15 @@ function parseExactTime(value: string | null) {
   }
 }
 
-function parseBaseDate(day: AiIntentPayload['day'], weekday: AiIntentPayload['weekday']) {
-  if (day === 'today') return startOfDay(0)
-  if (day === 'tomorrow') return startOfDay(1)
-  if (weekday) return nextDateForWeekday(weekdayNumbers[weekday])
-  return startOfDay(1)
+function parseBaseDate(
+  day: AiIntentPayload['day'],
+  weekday: AiIntentPayload['weekday'],
+  timeZone: string,
+) {
+  if (day === 'today') return startOfDay(0, timeZone)
+  if (day === 'tomorrow') return startOfDay(1, timeZone)
+  if (weekday) return nextDateForWeekday(weekdayNumbers[weekday], timeZone)
+  return startOfDay(1, timeZone)
 }
 
 function parseRecurrence(payload: AiIntentPayload): RecurrenceSpec | null {
@@ -102,7 +106,7 @@ function parseTopLevelOutputText(response: unknown) {
   return null
 }
 
-function toParsedSmsIntent(payload: AiIntentPayload): ParsedSmsIntent {
+function toParsedSmsIntent(payload: AiIntentPayload, timeZone: string): ParsedSmsIntent {
   switch (payload.intent_type) {
     case 'choice':
       return payload.choice ? { type: 'choice', choice: payload.choice } : { type: 'unknown' }
@@ -114,7 +118,7 @@ function toParsedSmsIntent(payload: AiIntentPayload): ParsedSmsIntent {
       return {
         type: 'schedule',
         title: payload.title?.trim() || 'meeting',
-        baseDate: parseBaseDate(payload.day, payload.weekday),
+        baseDate: parseBaseDate(payload.day, payload.weekday, timeZone),
         exactTime: parseExactTime(payload.exact_time_24h),
         calendarHint: payload.calendar_hint || 'Calendar',
         durationMinutes: payload.duration_minutes,
@@ -125,7 +129,7 @@ function toParsedSmsIntent(payload: AiIntentPayload): ParsedSmsIntent {
       return {
         type: 'reschedule',
         query: payload.query?.trim() || payload.title?.trim() || 'meeting',
-        baseDate: parseBaseDate(payload.day, payload.weekday),
+        baseDate: parseBaseDate(payload.day, payload.weekday, timeZone),
         exactTime: parseExactTime(payload.exact_time_24h),
         calendarHint: payload.calendar_hint || 'Calendar',
       }
@@ -141,7 +145,10 @@ function toParsedSmsIntent(payload: AiIntentPayload): ParsedSmsIntent {
   }
 }
 
-export async function parseSmsIntentWithAIResult(body: string): Promise<AiParseResult> {
+export async function parseSmsIntentWithAIResult(
+  body: string,
+  timeZone = defaultTimezone(),
+): Promise<AiParseResult> {
   if (!hasAiSmsUnderstanding()) {
     return {
       intent: null,
@@ -168,12 +175,13 @@ export async function parseSmsIntentWithAIResult(body: string): Promise<AiParseR
             role: 'system',
             content:
               `You extract structured intent for Manoa, an SMS calendar assistant.\n` +
-              `Current timezone: ${defaultTimezone()}.\n` +
+              `Current timezone: ${timeZone}.\n` +
               `Current local date: ${new Date().toLocaleDateString('en-US', {
                 weekday: 'long',
                 year: 'numeric',
                 month: 'long',
                 day: 'numeric',
+                timeZone,
               })}.\n` +
               `Return only structured data.\n` +
               `Rules:\n` +
@@ -311,9 +319,9 @@ export async function parseSmsIntentWithAIResult(body: string): Promise<AiParseR
 
     const parsed = JSON.parse(outputText) as AiIntentPayload
     return {
-      intent: toParsedSmsIntent(parsed),
-      understoodBy: 'AI',
-    }
+        intent: toParsedSmsIntent(parsed, timeZone),
+        understoodBy: 'AI',
+      }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown AI parsing error.'
     return {
@@ -326,7 +334,10 @@ export async function parseSmsIntentWithAIResult(body: string): Promise<AiParseR
   }
 }
 
-export async function parseSmsIntentWithAI(body: string): Promise<ParsedSmsIntent | null> {
-  const result = await parseSmsIntentWithAIResult(body)
+export async function parseSmsIntentWithAI(
+  body: string,
+  timeZone = defaultTimezone(),
+): Promise<ParsedSmsIntent | null> {
+  const result = await parseSmsIntentWithAIResult(body, timeZone)
   return result.intent
 }

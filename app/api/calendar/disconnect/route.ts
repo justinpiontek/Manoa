@@ -3,7 +3,7 @@ import { appUrl } from '@/src/lib/env'
 import { disconnectCalendarAccount, type CalendarProvider } from '@/src/lib/calendar/google'
 
 function isProvider(value: string): value is CalendarProvider {
-  return value === 'google' || value === 'outlook'
+  return value === 'google' || value === 'outlook' || value === 'apple'
 }
 
 export async function POST(request: NextRequest) {

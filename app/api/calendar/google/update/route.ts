@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { appUrl } from '@/src/lib/env'
-import { updateConfiguredGoogleCalendar } from '@/src/lib/calendar/google'
+import { updateConfiguredCalendar } from '@/src/lib/calendar/google'
 
 export async function POST(request: NextRequest) {
   const formData = await request.formData()
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     return new Response('Missing profile or calendar connection.', { status: 400 })
   }
 
-  await updateConfiguredGoogleCalendar({
+  await updateConfiguredCalendar({
     profileId,
     connectionId,
     calendarLabel,

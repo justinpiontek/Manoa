@@ -33,6 +33,7 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
 
   const manoaNumber = process.env.TWILIO_FROM_NUMBER?.trim() || ''
   const displayNumber = manoaNumber ? formatPhoneForDisplay(manoaNumber) : ''
+  const appleConnectHref = profileId ? `/setup/apple-calendar?profile_id=${profileId}` : '/setup/apple-calendar'
 
   return (
     <main className="setup-shell">
@@ -45,7 +46,7 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
         <p className="setup-lede">
           {calendarConnected
             ? 'Your calendar is connected. Manoa can now check your availability, offer open times, and book events after you confirm by text.'
-            : 'After you subscribe, connect Google or Outlook so Manoa can see availability and book events for you by text. Apple Calendar uses a separate iCloud setup guide for now.'}
+            : 'After you subscribe, connect Google, Outlook, or Apple Calendar so Manoa can see availability and book events for you by text.'}
         </p>
 
         <div className="status-row" aria-label="Setup status">
@@ -81,8 +82,8 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
             <h2>Calendar connection</h2>
             <p>
               Connect Google or Outlook so Manoa can find open times, book events, send daily agendas,
-              and keep reminders accurate. Apple Calendar is the longer manual path, so it has its
-              own guide.
+              and keep reminders accurate. Apple Calendar still uses the longer manual iCloud path,
+              but it can be connected here too.
             </p>
             {profileId ? (
               <div className="dashboard-hero-actions">
@@ -92,8 +93,8 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
                 <a className="button setup-action secondary-button" href={`/api/calendar/outlook/start?profile_id=${profileId}`}>
                   {calendarConnected ? 'Connect or reconnect Outlook' : 'Connect Outlook Calendar'}
                 </a>
-                <a className="button setup-action secondary-button" href="/setup/apple-calendar">
-                  Apple Calendar guide
+                <a className="button setup-action secondary-button" href={appleConnectHref}>
+                  Connect Apple Calendar
                 </a>
               </div>
             ) : (
