@@ -87,6 +87,7 @@ function parseBaseDate(
   if (day === 'today') return startOfDay(0, timeZone)
   if (day === 'tomorrow') return startOfDay(1, timeZone)
   if (weekday) return nextDateForWeekday(weekdayNumbers[weekday], timeZone)
+  if (/\bthis week\b/i.test(originalText)) return startOfDay(0, timeZone)
   return startOfDay(1, timeZone)
 }
 

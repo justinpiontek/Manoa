@@ -61,6 +61,8 @@ const externalAppointmentKeywords = [
   'clinic',
   'salon',
   'haircut',
+  'hair cut',
+  'hair appointment',
   'barber',
   'repair',
   'service',
@@ -157,6 +159,18 @@ function normalizeText(value: string) {
   return value.trim().toLowerCase()
 }
 
+function isSingleScheduleConfirmation(text: string) {
+  return /^(?:yes|yep|yeah|y|ok|okay|sure|sounds good|perfect|confirm|confirmed|book it|book|do it|go ahead|please do|looks good)(?:\s+please)?[.!]*$/i.test(
+    text.trim(),
+  )
+}
+
+function isSingleScheduleDecline(text: string) {
+  return /^(?:no|nope|nah|n|cancel|leave it|do not|don't|dont|not now|never mind|nevermind)[.!]*$/i.test(
+    text.trim(),
+  )
+}
+
 function detectLooseAgendaIntent(value: string): 'today' | 'tomorrow' | null {
   const lower = normalizeText(value)
   const asksWhat =
@@ -246,6 +260,18 @@ function scheduleOptionsReply(options: DemoOption[]) {
     role: 'manoa' as const,
     lines: ['I found these times:', ...optionLines(options), replyLine],
     options,
+  }
+}
+
+function exactAvailableReply(option: DemoOption) {
+  return {
+    role: 'manoa' as const,
+    lines: [
+      `I confirmed ${option.dayLabel} at ${option.timeLabel} is available on ${option.calendarName}.`,
+      ...(option.location ? [`Location: ${option.location}.`] : []),
+      'Book it? Reply YES to book or NO to leave it.',
+    ],
+    options: [option],
   }
 }
 
@@ -341,7 +367,7 @@ function looksLikeExternalAppointment(text: string) {
 
 function externalAvailabilityWeekdays(text: string) {
   const lower = normalizeText(text)
-  if (/\b(haircut|barber|salon)\b/.test(lower)) {
+  if (/\b(haircut|barber|salon)\b|\bhair\s+cut\b|\bhair appointment\b/.test(lower)) {
     return new Set([1, 2, 3, 4, 5, 6])
   }
 
@@ -429,6 +455,7 @@ function buildCallPrepOptions(baseDate: Date, appointmentTitle: string) {
         start: start.toISOString(),
       }
     })
+    .filter((option) => new Date(option.start).getTime() > Date.now() + 5 * 60_000)
     .filter((option) => allowedWeekdays.has(new Date(option.start).getDay()))
     .slice(0, 3)
 }
@@ -514,6 +541,12 @@ function scheduleReply(
         ...appendMessage(state, alternativeMessage),
         pendingAction: { kind: 'schedule' as const, options: options.slice(1) },
       }
+    }
+
+    const message = exactAvailableReply(options[0])
+    return {
+      ...appendMessage(state, message),
+      pendingAction: { kind: 'schedule' as const, options: [options[0]] },
     }
   }
 
@@ -836,6 +869,19 @@ export function applyDemoTextForIntent(
   if (!trimmed) return state
 
   const withUserMessage = appendMessage(state, { role: 'user', lines: [trimmed] })
+  if (state.pendingAction?.kind === 'schedule' && state.pendingAction.options.length === 1) {
+    if (isSingleScheduleConfirmation(trimmed)) {
+      return applyChoice(withUserMessage, 1)
+    }
+
+    if (isSingleScheduleDecline(trimmed)) {
+      return appendMessage({ ...withUserMessage, pendingAction: null }, {
+        role: 'manoa',
+        lines: ['Okay. I left it off your calendar.'],
+      })
+    }
+  }
+
   const looseAgenda = detectLooseAgendaIntent(trimmed)
   if (looseAgenda) {
     return appendMessage(

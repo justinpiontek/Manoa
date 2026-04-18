@@ -54,6 +54,19 @@ function parseOrdinalChoice(text: string, itemCount: number) {
   return null
 }
 
+function parseSingleOptionConfirmation(text: string) {
+  const lower = text.trim().toLowerCase()
+  if (
+    /^(?:yes|yep|yeah|y|ok|okay|sure|sounds good|perfect|confirm|confirmed|book it|book|do it|go ahead|please do|looks good)(?:\s+please)?[.!]*$/.test(
+      lower,
+    )
+  ) {
+    return 1
+  }
+
+  return null
+}
+
 function parseDayHint(text: string) {
   const lower = text.toLowerCase()
   if (/\btoday\b/.test(lower)) return 'today'
@@ -120,6 +133,11 @@ function uniqueIndex(indexes: number[]) {
 }
 
 function resolveOptionChoice(text: string, options: PendingOption[], timeZone?: string) {
+  if (options.length === 1) {
+    const confirmation = parseSingleOptionConfirmation(text)
+    if (confirmation) return confirmation
+  }
+
   const ordinal = parseOrdinalChoice(text, options.length)
   if (ordinal) return ordinal
 

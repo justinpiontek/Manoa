@@ -204,6 +204,37 @@ function bookingText(option: ScheduleOption) {
   return `Booked ${option.title} for ${option.dayLabel} at ${option.timeLabel}.${locationLine}`
 }
 
+function exactAvailabilityReply({
+  option,
+  attendees,
+  unresolvedInvitees,
+}: {
+  option: ScheduleOption
+  attendees: Invitee[]
+  unresolvedInvitees: string[]
+}) {
+  const lines = [
+    `I confirmed ${option.dayLabel} at ${option.timeLabel} is available on ${option.calendarName}.`,
+  ]
+
+  if (option.location?.trim()) {
+    lines.push(`Location: ${option.location.trim()}.`)
+  }
+
+  if (attendees.length) {
+    lines.push(`Ready to invite: ${inviteeSummary(attendees)}.`)
+  }
+
+  if (unresolvedInvitees.length) {
+    lines.push(`I still need email${unresolvedInvitees.length > 1 ? 's' : ''} for ${unresolvedInviteeSummary(
+      unresolvedInvitees,
+    )}.`)
+  }
+
+  lines.push('Book it? Reply YES to book or NO to leave it.')
+  return lines.join('\n')
+}
+
 function normalizeEmail(value: string | null | undefined) {
   return (value || '').trim().toLowerCase()
 }
@@ -263,6 +294,146 @@ function pendingInviteScheduleReply({
   }
 
   return lines.join('\n')
+}
+
+function requestedExactScheduleOption({
+  title,
+  baseDate,
+  exactTime,
+  durationMinutes,
+  chosenCalendar,
+  timeZone,
+  location,
+}: {
+  title: string
+  baseDate: Date
+  exactTime: { hour: number; minute: number }
+  durationMinutes: number
+  chosenCalendar: CalendarPlacementOption
+  timeZone: string
+  location?: string | null
+}) {
+  const requestedStart = setTime(baseDate, exactTime, timeZone)
+  const requestedEnd = addMinutes(requestedStart, durationMinutes)
+
+  return {
+    option: {
+      title,
+      start: requestedStart.toISOString(),
+      end: requestedEnd.toISOString(),
+      provider: chosenCalendar.provider,
+      calendarId: chosenCalendar.calendarId,
+      calendarName: chosenCalendar.calendarLabel,
+      dayLabel: formatSmsDate(requestedStart, timeZone),
+      timeLabel: formatSmsTime(requestedStart, timeZone),
+      timeZone,
+      recurrence: null,
+      location,
+    } satisfies ScheduleOption,
+    requestedStart,
+    requestedEnd,
+  }
+}
+
+async function maybeConfirmExactScheduleTime({
+  profile,
+  smsFrom,
+  title,
+  baseDate,
+  exactTime,
+  durationMinutes,
+  chosenCalendar,
+  calendarHint,
+  recurrence,
+  location,
+  attendees,
+  unresolvedInvitees,
+}: {
+  profile: SmsProfile
+  smsFrom: string
+  title: string
+  baseDate: Date
+  exactTime: { hour: number; minute: number } | null
+  durationMinutes: number
+  chosenCalendar: CalendarPlacementOption
+  calendarHint?: string
+  recurrence?: RecurrenceSpec | null
+  location?: string | null
+  attendees: Invitee[]
+  unresolvedInvitees: string[]
+}) {
+  if (!exactTime || recurrence) return null
+
+  const { option: requestedOption, requestedStart, requestedEnd } = requestedExactScheduleOption({
+    title,
+    baseDate,
+    exactTime,
+    durationMinutes,
+    chosenCalendar,
+    timeZone: profile.timezone,
+    location,
+  })
+
+  const overlappingEvents = (await listUpcomingEvents({
+    profileId: profile.id,
+    startAt: requestedStart,
+    windowMinutes: durationMinutes,
+    maxResults: 12,
+    timeZone: profile.timezone,
+  })).filter((event) => overlapsOption(event, requestedStart, requestedEnd))
+
+  const pendingInviteConflict = overlappingEvents.find((event) =>
+    isPendingInviteConflict(event, profile.email),
+  )
+  const hardConflict = overlappingEvents.find(
+    (event) => !isPendingInviteConflict(event, profile.email),
+  )
+
+  if (pendingInviteConflict && !hardConflict) {
+    const alternatives = await findScheduleOptions({
+      profileId: profile.id,
+      title,
+      baseDate,
+      exactTime,
+      calendarId: chosenCalendar.calendarId,
+      calendarHint: chosenCalendar.calendarLabel || calendarHint,
+      durationMinutes,
+      recurrence,
+      location,
+    })
+
+    const options = [requestedOption, ...alternatives].slice(0, 3)
+
+    await storeScheduleOptionsPending({
+      profileId: profile.id,
+      smsFrom,
+      options,
+      attendees,
+      unresolvedInvitees,
+    })
+
+    return pendingInviteScheduleReply({
+      conflict: pendingInviteConflict,
+      requestedOption,
+      alternatives: alternatives.slice(0, 2),
+    })
+  }
+
+  if (hardConflict) return null
+
+  await storeScheduleOptionsPending({
+    profileId: profile.id,
+    smsFrom,
+    options: [requestedOption],
+    attendees,
+    unresolvedInvitees,
+  })
+
+  return exactAvailabilityReply({
+    option: requestedOption,
+    attendees,
+    unresolvedInvitees,
+  })
 }
 
 function sortAgendaEvents(events: EventSummary[]) {
@@ -335,14 +506,24 @@ function isShortAcknowledgement(text: string) {
   )
 }
 
+function isSingleScheduleDecline(text: string) {
+  return /^(?:no|nope|nah|n|cancel|leave it|do not|don't|dont|not now|never mind|nevermind)[.!]*$/i.test(
+    text.trim(),
+  )
+}
+
 function reminderForPending(pending: PendingAction) {
   switch (pending.kind) {
     case 'schedule':
+      if ((pending.payload.options || []).length === 1) {
+        return 'Reply YES to book it, or NO to leave it.'
+      }
+      return 'Reply with the option you want, like 1, 2, or 3.'
     case 'invited_reschedule_hold':
     case 'external_call_prep':
       return 'Reply with the option you want, like 1, 2, or 3.'
     case 'choose_calendar':
-      return 'Reply with the calendar name you want, or 1, 2, or 3.'
+      return 'Reply with the calendar name or number you want.'
     case 'reschedule':
       if (pending.payload.stage === 'scope') {
         return actionChoiceList([
@@ -459,7 +640,7 @@ function looksExternalScheduleRequest(title: string) {
 
 function externalAvailabilityWeekdays(title: string) {
   const lower = title.toLowerCase()
-  if (/\b(haircut|barber|salon)\b/.test(lower)) {
+  if (/\b(haircut|barber|salon)\b|\bhair\s+cut\b|\bhair appointment\b/.test(lower)) {
     return new Set([1, 2, 3, 4, 5, 6])
   }
 
@@ -1581,7 +1762,7 @@ async function handleChoice({
   if (pending.kind === 'choose_calendar') {
     const pickedCalendar = choose(pending.payload.calendarChoices, choice)
     const scheduleRequest = pending.payload.scheduleRequest
-    if (!pickedCalendar || !scheduleRequest) return 'Reply with the calendar you want, like 1, 2, or 3.'
+    if (!pickedCalendar || !scheduleRequest) return 'Reply with the calendar name or number you want.'
 
     if (looksExternalScheduleRequest(scheduleRequest.title)) {
       return prepareExternalScheduleCallPrep({
@@ -1597,6 +1778,22 @@ async function handleChoice({
 
     const attendees = pending.payload.attendees || []
     const unresolvedInvitees = pending.payload.unresolvedInvitees || []
+
+    const exactReply = await maybeConfirmExactScheduleTime({
+      profile,
+      smsFrom,
+      title: scheduleRequest.title,
+      baseDate: new Date(scheduleRequest.baseDate),
+      exactTime: scheduleRequest.exactTime,
+      durationMinutes: scheduleRequest.durationMinutes,
+      chosenCalendar: pickedCalendar,
+      recurrence: scheduleRequest.recurrence,
+      location: scheduleRequest.location || null,
+      attendees,
+      unresolvedInvitees,
+    })
+
+    if (exactReply) return exactReply
 
     const options = await findScheduleOptions({
       profileId: profile.id,
@@ -2367,6 +2564,25 @@ export async function handleIncomingSms({
       const attendees = pending.payload.attendees || []
       const unresolvedInvitees = pending.payload.unresolvedInvitees || []
 
+      const exactReply = await maybeConfirmExactScheduleTime({
+        profile,
+        smsFrom: from,
+        title: scheduleRequest.title,
+        baseDate: new Date(scheduleRequest.baseDate),
+        exactTime: scheduleRequest.exactTime,
+        durationMinutes: scheduleRequest.durationMinutes,
+        chosenCalendar: pickedCalendar,
+        recurrence: scheduleRequest.recurrence,
+        location: scheduleRequest.location || null,
+        attendees,
+        unresolvedInvitees,
+      })
+
+      if (exactReply) {
+        await logSms({ profileId: profile.id, from, body: exactReply, direction: 'outbound' })
+        return exactReply
+      }
+
       const options = await findScheduleOptions({
         profileId: profile.id,
         title: scheduleRequest.title,
@@ -2397,6 +2613,31 @@ export async function handleIncomingSms({
         recurrence: scheduleRequest.recurrence,
         attendees,
         unresolvedInvitees,
+      })
+      await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+      return reply
+    }
+  }
+
+  if (
+    pending?.kind === 'schedule' &&
+    (pending.payload.options || []).length === 1 &&
+    isSingleScheduleDecline(body)
+  ) {
+    await clearPendingAction(pending.id)
+    const reply = 'Okay. I left it off your calendar.'
+    await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+    return reply
+  }
+
+  if (pending?.kind === 'schedule' && (pending.payload.options || []).length === 1) {
+    const confirmedChoice = resolvePendingChoice(body, pending, profile.timezone)
+    if (confirmedChoice === 1) {
+      const reply = await handleChoice({
+        profile,
+        smsFrom: from,
+        choice: 1,
+        pending,
       })
       await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
       return reply
@@ -2482,8 +2723,8 @@ export async function handleIncomingSms({
 
       const reply =
         placement.matches.length === 0 && !placement.genericHint
-          ? `I couldn't tell which calendar "${scheduleIntent.calendarHint}" means.\nWhich calendar should I use?\n${calendarChoiceList(calendarChoices)}\nReply with the name or 1, 2, or 3.`
-          : `Which calendar should I put that on?\n${calendarChoiceList(calendarChoices)}\nReply with the name or 1, 2, or 3.`
+          ? `I couldn't tell which calendar "${scheduleIntent.calendarHint}" means.\nWhich calendar should I use?\n${calendarChoiceList(calendarChoices)}\nReply with the name or number.`
+          : `Which calendar should I put that on?\n${calendarChoiceList(calendarChoices)}\nReply with the name or number.`
       await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
       return reply
     }
@@ -2507,69 +2748,22 @@ export async function handleIncomingSms({
     }
 
     if (scheduleIntent.exactTime && !scheduleIntent.recurrence && chosenCalendar) {
-      const requestedStart = setTime(
-        scheduleIntent.baseDate,
-        scheduleIntent.exactTime,
-        profile.timezone,
-      )
-      const requestedEnd = addMinutes(requestedStart, scheduleDurationMinutes)
-      const overlappingEvents = (await listUpcomingEvents({
-        profileId: profile.id,
-        startAt: requestedStart,
-        windowMinutes: scheduleDurationMinutes,
-        maxResults: 12,
-        timeZone: profile.timezone,
-      })).filter((event) => overlapsOption(event, requestedStart, requestedEnd))
+      const reply = await maybeConfirmExactScheduleTime({
+        profile,
+        smsFrom: from,
+        title: scheduleIntent.title,
+        baseDate: scheduleIntent.baseDate,
+        exactTime: scheduleIntent.exactTime,
+        durationMinutes: scheduleDurationMinutes,
+        chosenCalendar,
+        calendarHint: scheduleIntent.calendarHint,
+        recurrence: scheduleIntent.recurrence,
+        location: scheduleIntent.location,
+        attendees: inviteeContext.invitees,
+        unresolvedInvitees: inviteeContext.unresolvedNames,
+      })
 
-      const pendingInviteConflict = overlappingEvents.find((event) =>
-        isPendingInviteConflict(event, profile.email),
-      )
-      const hardConflict = overlappingEvents.find(
-        (event) => !isPendingInviteConflict(event, profile.email),
-      )
-
-      if (pendingInviteConflict && !hardConflict) {
-        const alternatives = await findScheduleOptions({
-          profileId: profile.id,
-          title: scheduleIntent.title,
-          baseDate: scheduleIntent.baseDate,
-          exactTime: scheduleIntent.exactTime,
-          calendarId: chosenCalendar.calendarId,
-          calendarHint: chosenCalendar.calendarLabel || scheduleIntent.calendarHint,
-          durationMinutes: scheduleDurationMinutes,
-          recurrence: scheduleIntent.recurrence,
-          location: scheduleIntent.location,
-        })
-
-        const requestedOption: ScheduleOption = {
-          title: scheduleIntent.title,
-          start: requestedStart.toISOString(),
-          end: requestedEnd.toISOString(),
-          provider: chosenCalendar.provider,
-          calendarId: chosenCalendar.calendarId,
-          calendarName: chosenCalendar.calendarLabel,
-          dayLabel: formatSmsDate(requestedStart, profile.timezone),
-          timeLabel: formatSmsTime(requestedStart, profile.timezone),
-          timeZone: profile.timezone,
-          recurrence: null,
-          location: scheduleIntent.location,
-        }
-
-        const options = [requestedOption, ...alternatives].slice(0, 3)
-
-        await storeScheduleOptionsPending({
-          profileId: profile.id,
-          smsFrom: from,
-          options,
-          attendees: inviteeContext.invitees,
-          unresolvedInvitees: inviteeContext.unresolvedNames,
-        })
-
-        const reply = pendingInviteScheduleReply({
-          conflict: pendingInviteConflict,
-          requestedOption,
-          alternatives: alternatives.slice(0, 2),
-        })
+      if (reply) {
         await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
         return reply
       }

@@ -20,6 +20,8 @@ const externalAppointmentKeywords = [
   'clinic',
   'salon',
   'haircut',
+  'hair cut',
+  'hair appointment',
   'barber',
   'repair',
   'service',

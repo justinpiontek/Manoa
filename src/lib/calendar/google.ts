@@ -2398,12 +2398,17 @@ export async function findScheduleOptions({
         setTime(baseDate, { hour: 11, minute: 0 }, resolvedTimeZone),
         setTime(baseDate, { hour: 14, minute: 30 }, resolvedTimeZone),
       ]
+  const futureCandidateStarts = candidateStarts.filter((start) => {
+    return start.getTime() > Date.now() + 5 * 60_000
+  })
 
-  const timeMin = candidateStarts[0]
-  const timeMax = addMinutes(candidateStarts[candidateStarts.length - 1], durationMinutes)
+  if (!futureCandidateStarts.length) return []
+
+  const timeMin = futureCandidateStarts[0]
+  const timeMax = addMinutes(futureCandidateStarts[futureCandidateStarts.length - 1], durationMinutes)
   const busy = await busyBlocks(connections, timeMin, timeMax)
 
-  return candidateStarts
+  return futureCandidateStarts
     .map((start) => ({
       start,
       end: addMinutes(start, durationMinutes),

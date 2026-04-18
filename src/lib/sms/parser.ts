@@ -406,6 +406,7 @@ function parseBaseDate(text: string, timeZone?: string) {
 
   const dayMatch = lower.match(/\b(?:next\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/)
   if (dayMatch) return nextDateForWeekday(weekdays[dayMatch[1]], timeZone)
+  if (/\bthis week\b/.test(lower)) return startOfDay(0, timeZone)
 
   return startOfDay(1, timeZone)
 }
