@@ -139,6 +139,25 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const firstTextExample = totalConnectedAccounts > 1
     ? 'Schedule lunch Tuesday on Personal'
     : "What's on my calendar tomorrow?"
+  const connectedAccountLabel = `${totalConnectedAccounts} connected account${totalConnectedAccounts === 1 ? '' : 's'}`
+  const calendarStageHeading = totalConnectedAccounts ? 'Teach Manoa what each calendar means.' : 'Connect your calendar.'
+  const calendarStageCopy = totalConnectedAccounts
+    ? 'Manoa checks every calendar you mark for conflicts. For new events, it uses the calendar name you text and asks instead of guessing when more than one destination could fit.'
+    : 'Connect Google or Outlook first so Manoa can check availability, route events to the right calendar, and book by text.'
+  const textingStageCopy = readyToText
+    ? `Text from ${displayUserPhone} so Manoa recognizes you right away.`
+    : 'Your texting number will show here as soon as approval finishes.'
+  const quickExamples = totalConnectedAccounts > 1
+    ? [
+        'Schedule lunch Tuesday on Personal',
+        "What's on my calendar tomorrow?",
+        'Reschedule dentist',
+      ]
+    : [
+        'Need a meeting with Beth this week',
+        "What's on my calendar tomorrow?",
+        'Reschedule dentist',
+      ]
 
   return (
     <main className="dashboard-shell">
@@ -158,8 +177,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         </div>
 
         <p className="legal-eyebrow">Dashboard</p>
-        <h1 className="dashboard-title">You&apos;re ready to text Manoa.</h1>
-        <p className="dashboard-lede">Everything is set up. Send your first text to get started.</p>
+        <h1 className="dashboard-title">Your Manoa dashboard.</h1>
+        <p className="dashboard-lede">
+          Connect your calendar, then send your first text. The rest should feel as simple as the homepage.
+        </p>
         <p className="dashboard-status-line">{statusLine({
           calendarConnected: profile.calendarConnected,
           manoaNumber,
@@ -226,123 +247,28 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </div>
         ) : null}
 
-        <section className="dashboard-hero-panel">
-          <div className="dashboard-hero-copy">
-            <p className="dashboard-kicker">Text this number</p>
-            <h2>{displayNumber || 'Manoa number is still being finalized.'}</h2>
-            <p>
-              Text from <strong>{displayUserPhone}</strong> so Manoa recognizes you right away.
-            </p>
-
-            <div className="dashboard-example-card">
-              <span className="dashboard-example-label">First text to send</span>
-              <strong>{firstTextExample}</strong>
+        <section className="dashboard-stage dashboard-stage-connect">
+          <div className="dashboard-stage-head">
+            <div>
+              <p className="dashboard-stage-label">Step 1</p>
+              <h2>{calendarStageHeading}</h2>
+              <p>{calendarStageCopy}</p>
             </div>
+            <span className="dashboard-stage-status">
+              {totalConnectedAccounts ? connectedAccountLabel : 'Not connected yet'}
+            </span>
           </div>
 
-          <div className="dashboard-hero-side">
-            <div className="dashboard-hero-actions">
-              {manoaNumber ? <a className="button dashboard-button" href={`sms:${manoaNumber}`}>Text Manoa now</a> : null}
-              <a className="button dashboard-button secondary-button" href="/api/contact-card">
-                Save Manoa contact
-              </a>
-              <a className="button dashboard-button secondary-button" href={`/api/billing-portal?profile_id=${profile.id}`}>
-                Manage billing
-              </a>
-            </div>
-
-            <div className="dashboard-hero-meta">
-              <div>
-                <span>Signed in</span>
-                <strong>{profile.email}</strong>
-              </div>
-              <div>
-                <span>Your phone</span>
-                <strong>{displayUserPhone}</strong>
-              </div>
-              <div>
-                <span>Calendars ready</span>
-                <strong>{totalConnectedAccounts || 0}</strong>
-              </div>
-            </div>
-
-            <p className="dashboard-note">
-              {manoaNumber
-                ? 'Manoa only books after you confirm by text.'
-                : 'Your number will appear here as soon as texting approval finishes.'}
-            </p>
+          <div className="dashboard-stage-actions">
+            <a className="button dashboard-button" href={`/api/calendar/google/start?profile_id=${profile.id}`}>
+              {googleAccounts.length ? (canAddGoogleAccount ? 'Add Google account' : 'Reconnect Google') : 'Connect Google'}
+            </a>
+            <a className="button dashboard-button secondary-button" href={`/api/calendar/outlook/start?profile_id=${profile.id}`}>
+              {outlookAccounts.length ? (canAddOutlookAccount ? 'Add Outlook account' : 'Reconnect Outlook') : 'Connect Outlook'}
+            </a>
           </div>
-        </section>
 
-        <div className="dashboard-grid">
-          <article className="dashboard-section">
-            <p className="dashboard-label">Calendar</p>
-            <h3>{profile.calendarConnected ? 'Calendar connected' : 'Calendar still missing'}</h3>
-            <p>
-              {profile.calendarConnected
-                ? `Manoa can check availability, book events, and keep reminders accurate across ${totalConnectedAccounts || 1} connected account${totalConnectedAccounts === 1 ? '' : 's'}.`
-                : 'Connect Google or Outlook so Manoa can find open times and book by text.'}
-            </p>
-            <div className="dashboard-hero-actions">
-              <a className="button dashboard-button" href={`/api/calendar/google/start?profile_id=${profile.id}`}>
-                {googleAccounts.length ? 'Connect or reconnect Google' : 'Connect Google Calendar'}
-              </a>
-              <a className="button dashboard-button secondary-button" href={`/api/calendar/outlook/start?profile_id=${profile.id}`}>
-                {outlookAccounts.length ? 'Connect or reconnect Outlook' : 'Connect Outlook Calendar'}
-              </a>
-            </div>
-          </article>
-
-          <article className="dashboard-section">
-            <p className="dashboard-label">Scheduling defaults</p>
-            <h3>How long new events should be</h3>
-            <p>
-              When your text does not include a duration, Manoa will use this as the default length.
-            </p>
-            <DefaultDurationForm
-              profileId={profile.id}
-              defaultDurationMinutes={profile.default_event_duration_minutes}
-            />
-          </article>
-
-          <article className="dashboard-section">
-            <p className="dashboard-label">Start texting</p>
-            <h3>{readyToText ? 'Start with one of these' : 'What you will text soon'}</h3>
-            <ul className="dashboard-example-list">
-              <li>9am meeting Tuesday on work calendar</li>
-              <li>What&apos;s on my calendar tomorrow?</li>
-              <li>Reschedule dentist</li>
-            </ul>
-            <p>Save Manoa in your contacts so this feels like texting a real assistant.</p>
-          </article>
-        </div>
-
-        {calendarAccounts.length ? (
-          <section className="dashboard-calendar-manager">
-            <div className="dashboard-calendar-manager-top">
-              <div>
-                <p className="dashboard-label">Calendar routing</p>
-                <h2>Teach Manoa what each calendar means.</h2>
-                <p>
-                  Manoa checks every calendar you mark for conflicts. For new events, it uses the
-                  calendar name you text, and if more than one destination could fit, it asks
-                  instead of guessing.
-                </p>
-              </div>
-              <div className="dashboard-hero-actions">
-                {canAddGoogleAccount ? (
-                  <a className="button dashboard-button" href={`/api/calendar/google/start?profile_id=${profile.id}`}>
-                    Connect another Google account
-                  </a>
-                ) : null}
-                {canAddOutlookAccount ? (
-                  <a className="button dashboard-button secondary-button" href={`/api/calendar/outlook/start?profile_id=${profile.id}`}>
-                    Connect Outlook account
-                  </a>
-                ) : null}
-              </div>
-            </div>
-
+          {calendarAccounts.length ? (
             <div className="calendar-account-stack">
               {calendarAccounts.map((account) => (
                 <article key={account.accountId} className="calendar-account-card">
@@ -363,7 +289,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                             : `/api/calendar/google/start?profile_id=${profile.id}&account_id=${account.accountId}`
                         }
                       >
-                        Reconnect account
+                        Reconnect
                       </a>
                       <DisconnectCalendarAccountForm
                         profileId={profile.id}
@@ -392,8 +318,75 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                 </article>
               ))}
             </div>
-          </section>
-        ) : null}
+          ) : (
+            <div className="dashboard-empty-state">
+              <strong>No calendar connected yet.</strong>
+              <p>Start with Google or Outlook above, then come right back here to name calendars and choose how Manoa should use them.</p>
+            </div>
+          )}
+        </section>
+
+        <section className="dashboard-stage dashboard-stage-text">
+          <div className="dashboard-stage-head">
+            <div>
+              <p className="dashboard-stage-label">Step 2</p>
+              <h2>Text Manoa.</h2>
+              <p>{textingStageCopy}</p>
+            </div>
+          </div>
+
+          <div className="dashboard-number-card">
+            <span className="dashboard-number-label">Your Manoa number</span>
+            <strong>{displayNumber || 'Still being finalized'}</strong>
+          </div>
+
+          <div className="dashboard-example-card">
+            <span className="dashboard-example-label">First text to send</span>
+            <strong>{firstTextExample}</strong>
+          </div>
+
+          <div className="dashboard-stage-actions">
+            {manoaNumber ? (
+              <a className="button dashboard-button" href={`sms:${manoaNumber}`}>
+                Text Manoa now
+              </a>
+            ) : null}
+            {manoaNumber ? (
+              <a className="button dashboard-button secondary-button" href="/api/contact-card">
+                Save Manoa contact
+              </a>
+            ) : null}
+            <a className="button dashboard-button secondary-button" href={`/api/billing-portal?profile_id=${profile.id}`}>
+              Manage billing
+            </a>
+          </div>
+
+          <p className="dashboard-stage-footnote">
+            Signed in as <strong>{profile.email}</strong> from <strong>{displayUserPhone}</strong>.
+          </p>
+        </section>
+
+        <div className="dashboard-support-grid">
+          <article className="dashboard-support-card">
+            <p className="dashboard-label">Scheduling defaults</p>
+            <h3>Default new-event length</h3>
+            <p>When your text does not include a duration, Manoa uses this length.</p>
+            <DefaultDurationForm
+              profileId={profile.id}
+              defaultDurationMinutes={profile.default_event_duration_minutes}
+            />
+          </article>
+
+          <article className="dashboard-support-card">
+            <p className="dashboard-label">Try one of these</p>
+            <h3>Good first texts</h3>
+            <ul className="dashboard-example-list">
+              {quickExamples.map((example) => (
+                <li key={example}>{example}</li>
+              ))}
+            </ul>
+          </article>
+        </div>
 
         <div className="dashboard-footer">
           <a className="nav-link" href="/">

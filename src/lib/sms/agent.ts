@@ -411,6 +411,69 @@ function looksExternalScheduleRequest(title: string) {
   } as EventSummary)
 }
 
+function externalAvailabilityWeekdays(title: string) {
+  const lower = title.toLowerCase()
+  if (/\b(haircut|barber|salon)\b/.test(lower)) {
+    return new Set([1, 2, 3, 4, 5, 6])
+  }
+
+  return new Set([1, 2, 3, 4, 5])
+}
+
+function sortScheduleOptions(options: ScheduleOption[]) {
+  return [...options].sort((left, right) => {
+    return new Date(left.start).getTime() - new Date(right.start).getTime()
+  })
+}
+
+async function findExternalCallPrepOptions({
+  profileId,
+  optionTitle,
+  availabilityTitle,
+  baseDate,
+  exactTime,
+  calendarId,
+  calendarHint,
+}: {
+  profileId: string
+  optionTitle: string
+  availabilityTitle: string
+  baseDate: Date
+  exactTime: { hour: number; minute: number } | null
+  calendarId?: string
+  calendarHint?: string
+}) {
+  const allowedWeekdays = externalAvailabilityWeekdays(availabilityTitle)
+  const collected: ScheduleOption[] = []
+
+  for (let offset = 0; offset < 14 && collected.length < 3; offset += 1) {
+    const candidateBaseDate = new Date(baseDate)
+    candidateBaseDate.setHours(0, 0, 0, 0)
+    candidateBaseDate.setDate(candidateBaseDate.getDate() + offset)
+
+    if (!allowedWeekdays.has(candidateBaseDate.getDay())) {
+      continue
+    }
+
+    const dayOptions = await findScheduleOptions({
+      profileId,
+      title: optionTitle,
+      baseDate: candidateBaseDate,
+      exactTime,
+      calendarId,
+      calendarHint,
+      durationMinutes: 20,
+    })
+
+    const firstAllowedOption = sortScheduleOptions(dayOptions).find((option) =>
+      allowedWeekdays.has(new Date(option.start).getDay()),
+    )
+    if (firstAllowedOption) collected.push(firstAllowedOption)
+  }
+
+  return sortScheduleOptions(collected).slice(0, 3)
+}
+
 function tokenizeText(value: string) {
   return value
     .toLowerCase()
@@ -973,13 +1036,13 @@ async function prepareExternalCallPrep({
     }))
 
   const businessName = inferredContact?.label || target.title
-  const options = await findScheduleOptions({
+  const options = await findExternalCallPrepOptions({
     profileId: profile.id,
-    title: `Call ${businessName} to reschedule`,
+    optionTitle: `Call ${businessName} to reschedule`,
+    availabilityTitle: target.title,
     baseDate,
     exactTime,
     calendarHint: 'Personal',
-    durationMinutes: 20,
   })
 
   if (!options.length) {
@@ -1038,14 +1101,14 @@ async function prepareExternalScheduleCallPrep({
   })
 
   const businessName = inferredContact?.label || title
-  const options = await findScheduleOptions({
+  const options = await findExternalCallPrepOptions({
     profileId: profile.id,
-    title: `Call ${businessName} to book`,
+    optionTitle: `Call ${businessName} to book`,
+    availabilityTitle: title,
     baseDate,
     exactTime,
     calendarId: chosenCalendar?.calendarId,
     calendarHint: chosenCalendar?.calendarLabel || 'Personal',
-    durationMinutes: 20,
   })
 
   if (!options.length) {

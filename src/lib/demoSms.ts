@@ -336,6 +336,15 @@ function looksLikeExternalAppointment(text: string) {
   return externalAppointmentKeywords.some((keyword) => lower.includes(keyword))
 }
 
+function externalAvailabilityWeekdays(text: string) {
+  const lower = normalizeText(text)
+  if (/\b(haircut|barber|salon)\b/.test(lower)) {
+    return new Set([1, 2, 3, 4, 5, 6])
+  }
+
+  return new Set([1, 2, 3, 4, 5])
+}
+
 function callNote(title: string, options: DemoOption[]) {
   const times = options.map((option) => `${option.dayLabel} at ${option.timeLabel}`).join(', ')
   return `Need to move ${title}. Best times: ${times}.`
@@ -388,26 +397,34 @@ function buildScheduleOptions(rawText: string, baseDate: Date, exactTime: { hour
   })
 }
 
-function buildCallPrepOptions(baseDate: Date) {
+function buildCallPrepOptions(baseDate: Date, appointmentTitle: string) {
   const templates = [
     { dayOffset: 0, hour: 11, minute: 0 },
     { dayOffset: 1, hour: 12, minute: 30 },
     { dayOffset: 2, hour: 9, minute: 45 },
+    { dayOffset: 3, hour: 11, minute: 15 },
+    { dayOffset: 4, hour: 10, minute: 30 },
+    { dayOffset: 5, hour: 13, minute: 0 },
+    { dayOffset: 6, hour: 9, minute: 30 },
   ]
+  const allowedWeekdays = externalAvailabilityWeekdays(appointmentTitle)
 
-  return templates.map((template) => {
-    const date = new Date(baseDate)
-    date.setDate(date.getDate() + template.dayOffset)
-    const start = setTime(date, { hour: template.hour, minute: template.minute })
+  return templates
+    .map((template) => {
+      const date = new Date(baseDate)
+      date.setDate(date.getDate() + template.dayOffset)
+      const start = setTime(date, { hour: template.hour, minute: template.minute })
 
-    return {
-      title: 'Call office to reschedule',
-      calendarName: 'Personal',
-      dayLabel: shortDayLabel(start),
-      timeLabel: timeLabel(start.toISOString()),
-      start: start.toISOString(),
-    }
-  })
+      return {
+        title: 'Call office to reschedule',
+        calendarName: 'Personal',
+        dayLabel: shortDayLabel(start),
+        timeLabel: timeLabel(start.toISOString()),
+        start: start.toISOString(),
+      }
+    })
+    .filter((option) => allowedWeekdays.has(new Date(option.start).getDay()))
+    .slice(0, 3)
 }
 
 function sameTimeConflict(event: DemoEvent, start: Date) {
@@ -427,8 +444,8 @@ function scheduleReply(state: DemoState, rawText: string): DemoState {
   }
 
   if (looksLikeExternalAppointment(rawText)) {
-    const options = buildCallPrepOptions(intent.baseDate)
     const title = inferScheduleTitle(rawText)
+    const options = buildCallPrepOptions(intent.baseDate, title)
     const note = `Call the office to confirm ${title}. Best times: ${options
       .map((option) => `${option.dayLabel} at ${option.timeLabel}`)
       .join(', ')}.`
@@ -587,7 +604,7 @@ function rescheduleReply(state: DemoState, rawText: string): DemoState {
   }
 
   if (target.kind === 'external_appointment' || looksLikeExternalAppointment(target.title)) {
-    const options = buildCallPrepOptions(intent.baseDate)
+    const options = buildCallPrepOptions(intent.baseDate, target.title)
     const note = callNote(target.title, options)
     const message: DemoMessage = {
       role: 'manoa',
