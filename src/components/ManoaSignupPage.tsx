@@ -58,7 +58,7 @@ const homepageFaqs = [
   {
     question: 'What calendars work with Manoa?',
     answer:
-      'Right now Manoa supports Google Calendar and Outlook. You connect them after checkout in the setup flow.',
+      'Right now Manoa connects directly to Google Calendar and Outlook. Apple Calendar is being added through a guided iCloud setup path.',
   },
   {
     question: 'Will Manoa change things without me knowing?',
@@ -130,6 +130,7 @@ export default function ManoaSignupPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [demoState, setDemoState] = useState(() => createDemoState())
   const [demoInput, setDemoInput] = useState(DEMO_STARTER_INPUT)
+  const [demoPending, setDemoPending] = useState(false)
   const [statusNotice, setStatusNotice] = useState<{
     tone: 'success' | 'warning'
     text: string
@@ -180,8 +181,38 @@ export default function ManoaSignupPage() {
     }
   }, [])
 
-  function handleDemoText(text: string) {
-    setDemoState((current) => applyDemoText(current, text))
+  async function handleDemoText(text: string) {
+    const trimmed = text.trim()
+    if (!trimmed || demoPending) return
+
+    setDemoPending(true)
+
+    try {
+      const response = await fetch('/api/demo/text', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          body: trimmed,
+          state: demoState,
+        }),
+      })
+
+      const payload = (await response.json().catch(() => null)) as
+        | { state?: ReturnType<typeof createDemoState> }
+        | null
+
+      if (!response.ok || !payload?.state) {
+        throw new Error('Demo route failed.')
+      }
+
+      setDemoState(payload.state)
+    } catch {
+      setDemoState((current) => applyDemoText(current, trimmed))
+    } finally {
+      setDemoPending(false)
+    }
   }
 
   function resetDemo() {
@@ -291,7 +322,7 @@ export default function ManoaSignupPage() {
             </button>
           </div>
 
-          <div className="demo-panel">
+          <div className="demo-panel" aria-busy={demoPending}>
             <div className="phone-preview" aria-label="SMS preview">
               <div className="phone-header">
                 <span>Manoa</span>
@@ -313,7 +344,10 @@ export default function ManoaSignupPage() {
                             key={`${option.start}-${option.calendarName}-${optionIndex}`}
                             type="button"
                             className="demo-choice"
-                            onClick={() => handleDemoText(String(optionIndex + 1))}
+                            disabled={demoPending}
+                            onClick={() => {
+                              void handleDemoText(String(optionIndex + 1))
+                            }}
                           >
                             {optionIndex + 1}. {option.dayLabel} at {option.timeLabel} on{' '}
                             {option.calendarName}
@@ -327,9 +361,9 @@ export default function ManoaSignupPage() {
             </div>
             <form
               className="demo-form"
-              onSubmit={(event) => {
+              onSubmit={async (event) => {
                 event.preventDefault()
-                handleDemoText(demoInput)
+                await handleDemoText(demoInput)
                 setDemoInput('')
               }}
             >
@@ -339,9 +373,10 @@ export default function ManoaSignupPage() {
                 autoComplete="off"
                 placeholder="Need a meeting with Beth this week"
                 aria-label="Text Manoa demo"
+                disabled={demoPending}
               />
-              <button className="button" type="submit">
-                Send
+              <button className="button" type="submit" disabled={demoPending}>
+                {demoPending ? 'Sending...' : 'Send'}
               </button>
             </form>
           </div>

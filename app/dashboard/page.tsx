@@ -3,11 +3,13 @@ import { appUrl } from '@/src/lib/env'
 import { formatPhoneForDisplay } from '@/src/lib/phone'
 import { listConfiguredCalendarAccounts } from '@/src/lib/calendar/google'
 import { getDashboardProfile, getDashboardProfileByEmail } from '@/src/lib/profiles'
+import { listSmsThreadEntries, toSmsThreadMessages } from '@/src/lib/sms/thread'
 import { createSupabaseServerClient } from '@/src/lib/supabase/server'
 import ManoaWordmark from '@/src/components/ManoaWordmark'
 import CalendarSettingsForm from '@/src/components/CalendarSettingsForm'
 import DisconnectCalendarAccountForm from '@/src/components/DisconnectCalendarAccountForm'
 import DefaultDurationForm from '@/src/components/DefaultDurationForm'
+import DashboardTextConsole from '@/src/components/DashboardTextConsole'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -143,10 +145,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const calendarStageHeading = totalConnectedAccounts ? 'Teach Manoa what each calendar means.' : 'Connect your calendar.'
   const calendarStageCopy = totalConnectedAccounts
     ? 'Manoa checks every calendar you mark for conflicts. For new events, it uses the calendar name you text and asks instead of guessing when more than one destination could fit.'
-    : 'Connect Google or Outlook first so Manoa can check availability, route events to the right calendar, and book by text.'
+    : 'Connect Google or Outlook first so Manoa can check availability, route events to the right calendar, and book by text. Apple Calendar has a separate iCloud setup guide for now.'
   const textingStageCopy = readyToText
-    ? `Text from ${displayUserPhone} so Manoa recognizes you right away.`
-    : 'Your texting number will show here as soon as approval finishes.'
+    ? `Text from ${displayUserPhone} so Manoa recognizes you right away, or use the live console here.`
+    : 'Your texting number will show here as soon as approval finishes. Until then, use the live console here with your real account.'
   const quickExamples = totalConnectedAccounts > 1
     ? [
         'Schedule lunch Tuesday on Personal',
@@ -158,6 +160,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         "What's on my calendar tomorrow?",
         'Reschedule dentist',
       ]
+  const initialThreadMessages = toSmsThreadMessages(await listSmsThreadEntries(profile.id))
 
   return (
     <main className="dashboard-shell">
@@ -266,6 +269,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             <a className="button dashboard-button secondary-button" href={`/api/calendar/outlook/start?profile_id=${profile.id}`}>
               {outlookAccounts.length ? (canAddOutlookAccount ? 'Add Outlook account' : 'Reconnect Outlook') : 'Connect Outlook'}
             </a>
+            <a className="button dashboard-button secondary-button" href="/setup/apple-calendar">
+              Apple Calendar guide
+            </a>
           </div>
 
           {calendarAccounts.length ? (
@@ -344,6 +350,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             <span className="dashboard-example-label">First text to send</span>
             <strong>{firstTextExample}</strong>
           </div>
+
+          <DashboardTextConsole
+            initialMessages={initialThreadMessages}
+            starterPrompts={quickExamples}
+          />
 
           <div className="dashboard-stage-actions">
             {manoaNumber ? (

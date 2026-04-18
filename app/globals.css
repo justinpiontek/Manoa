@@ -1904,6 +1904,71 @@ footer {
   line-height: 1.6;
 }
 
+.dashboard-live-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.dashboard-live-phone {
+  max-width: none;
+}
+
+.dashboard-live-thread {
+  min-height: 300px;
+}
+
+.dashboard-live-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #d5def1;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 18px;
+}
+
+.dashboard-live-panel h3 {
+  margin: 0;
+  font-size: 1.12rem;
+}
+
+.dashboard-live-panel p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.dashboard-live-prompts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.dashboard-live-form {
+  margin-top: 2px;
+}
+
+.dashboard-live-empty {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.dashboard-live-empty strong {
+  color: var(--ink);
+}
+
+.dashboard-live-empty p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.dashboard-live-error {
+  color: #9a3b3b !important;
+  font-weight: 700;
+}
+
 .dashboard-empty-state {
   border: 1px dashed #d5def1;
   border-radius: 8px;
@@ -2339,6 +2404,7 @@ footer {
   .use-case-hub-grid,
   .status-row,
   .setup-grid,
+  .dashboard-live-grid,
   .dashboard-support-grid,
   .lab-grid,
   .signup form,

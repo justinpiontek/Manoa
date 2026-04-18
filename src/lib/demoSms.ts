@@ -1,5 +1,5 @@
 import { addMinutes, setTime, startOfDay } from './calendar/dates'
-import { parseSmsIntent } from './sms/parser'
+import { parseSmsIntent, type ParsedSmsIntent } from './sms/parser'
 
 export type DemoMessage = {
   role: 'user' | 'manoa'
@@ -434,8 +434,12 @@ function sameTimeConflict(event: DemoEvent, start: Date) {
   return eventStart < requestedEnd && eventEnd > start
 }
 
-function scheduleReply(state: DemoState, rawText: string): DemoState {
-  const intent = parseSmsIntent(rawText)
+function scheduleReply(
+  state: DemoState,
+  rawText: string,
+  parsedIntent?: ParsedSmsIntent,
+): DemoState {
+  const intent = parsedIntent ?? parseSmsIntent(rawText)
   if (intent.type !== 'schedule') {
     return appendMessage(state, {
       role: 'manoa',
@@ -566,8 +570,12 @@ function buildTargetSelectionOptions(events: DemoEvent[]) {
     }))
 }
 
-function rescheduleReply(state: DemoState, rawText: string): DemoState {
-  const intent = parseSmsIntent(rawText)
+function rescheduleReply(
+  state: DemoState,
+  rawText: string,
+  parsedIntent?: ParsedSmsIntent,
+): DemoState {
+  const intent = parsedIntent ?? parseSmsIntent(rawText)
   if (intent.type !== 'reschedule') {
     return appendMessage(state, {
       role: 'manoa',
@@ -658,8 +666,12 @@ function rescheduleReply(state: DemoState, rawText: string): DemoState {
   }
 }
 
-function cancelReply(state: DemoState, rawText: string): DemoState {
-  const intent = parseSmsIntent(rawText)
+function cancelReply(
+  state: DemoState,
+  rawText: string,
+  parsedIntent?: ParsedSmsIntent,
+): DemoState {
+  const intent = parsedIntent ?? parseSmsIntent(rawText)
   if (intent.type !== 'cancel') return state
 
   const target = findMatchingEvent(state.events, intent.query, null)
@@ -807,7 +819,11 @@ function applyChoice(state: DemoState, choice: number): DemoState {
   }
 }
 
-export function applyDemoText(state: DemoState, text: string): DemoState {
+export function applyDemoTextForIntent(
+  state: DemoState,
+  text: string,
+  intent: ParsedSmsIntent,
+): DemoState {
   const trimmed = text.trim()
   if (!trimmed) return state
 
@@ -820,8 +836,6 @@ export function applyDemoText(state: DemoState, text: string): DemoState {
     )
   }
 
-  const intent = parseSmsIntent(trimmed)
-
   if (intent.type === 'choice') {
     return applyChoice(withUserMessage, intent.choice)
   }
@@ -831,15 +845,15 @@ export function applyDemoText(state: DemoState, text: string): DemoState {
   }
 
   if (intent.type === 'schedule') {
-    return scheduleReply({ ...withUserMessage, pendingAction: null }, trimmed)
+    return scheduleReply({ ...withUserMessage, pendingAction: null }, trimmed, intent)
   }
 
   if (intent.type === 'reschedule') {
-    return rescheduleReply({ ...withUserMessage, pendingAction: null }, trimmed)
+    return rescheduleReply({ ...withUserMessage, pendingAction: null }, trimmed, intent)
   }
 
   if (intent.type === 'cancel') {
-    return cancelReply({ ...withUserMessage, pendingAction: null }, trimmed)
+    return cancelReply({ ...withUserMessage, pendingAction: null }, trimmed, intent)
   }
 
   return appendMessage({ ...withUserMessage, pendingAction: null }, {
@@ -851,4 +865,8 @@ export function applyDemoText(state: DemoState, text: string): DemoState {
       '3. Reschedule dentist',
     ],
   })
+}
+
+export function applyDemoText(state: DemoState, text: string): DemoState {
+  return applyDemoTextForIntent(state, text, parseSmsIntent(text))
 }

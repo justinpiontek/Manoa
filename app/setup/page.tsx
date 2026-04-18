@@ -45,7 +45,7 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
         <p className="setup-lede">
           {calendarConnected
             ? 'Your calendar is connected. Manoa can now check your availability, offer open times, and book events after you confirm by text.'
-            : 'After you subscribe, connect Google or Outlook so Manoa can see availability and book events for you by text.'}
+            : 'After you subscribe, connect Google or Outlook so Manoa can see availability and book events for you by text. Apple Calendar uses a separate iCloud setup guide for now.'}
         </p>
 
         <div className="status-row" aria-label="Setup status">
@@ -81,7 +81,8 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
             <h2>Calendar connection</h2>
             <p>
               Connect Google or Outlook so Manoa can find open times, book events, send daily agendas,
-              and keep reminders accurate.
+              and keep reminders accurate. Apple Calendar is the longer manual path, so it has its
+              own guide.
             </p>
             {profileId ? (
               <div className="dashboard-hero-actions">
@@ -90,6 +91,9 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
                 </a>
                 <a className="button setup-action secondary-button" href={`/api/calendar/outlook/start?profile_id=${profileId}`}>
                   {calendarConnected ? 'Connect or reconnect Outlook' : 'Connect Outlook Calendar'}
+                </a>
+                <a className="button setup-action secondary-button" href="/setup/apple-calendar">
+                  Apple Calendar guide
                 </a>
               </div>
             ) : (
