@@ -9,20 +9,22 @@ export const metadata: Metadata = {
 
 const appleSteps = [
   {
-    title: 'Turn on two-factor authentication',
-    body: 'On your iPhone, open Settings, tap your Apple Account, then open Sign-In & Security and make sure Two-Factor Authentication is on.',
+    title: 'Open Apple Account',
+    body: 'Go to appleaccount.apple.com and sign in with the Apple Account that owns the calendars you want Manoa to use.',
+    href: 'https://appleaccount.apple.com',
+    cta: 'Open Apple Account',
   },
   {
-    title: 'Confirm a trusted device or phone number exists',
-    body: 'Apple needs at least one trusted device or phone number before it will let third-party apps use app-specific passwords.',
+    title: 'Check two-factor authentication',
+    body: 'Open Sign-In & Security and make sure Two-Factor Authentication is turned on. Apple requires this before app-specific passwords work.',
   },
   {
-    title: 'Generate an app-specific password',
-    body: 'At appleaccount.apple.com, sign in to your Apple Account, open Sign-In & Security, then generate an app-specific password for Manoa.',
+    title: 'Create an app-specific password',
+    body: 'In Sign-In & Security, choose App-Specific Passwords, create one named Manoa, then copy the generated password.',
   },
   {
-    title: 'Keep your iCloud email and app-specific password ready',
-    body: 'That pair is what Apple-style calendar syncing usually uses. It is more manual than Google or Outlook, which is why this path takes longer.',
+    title: 'Paste it into Manoa',
+    body: 'Come back here, enter your iCloud email and the app-specific password, then connect Apple Calendar.',
   },
 ]
 
@@ -43,10 +45,11 @@ export default async function AppleCalendarSetupPage({ searchParams }: AppleCale
       <div className="setup-card">
         <ManoaWordmark className="legal-back compact" href="/" />
         <p className="legal-eyebrow">Apple Calendar</p>
-        <h1 className="setup-title">Prepare iCloud Calendar for Manoa.</h1>
+        <h1 className="setup-title">Connect Apple Calendar.</h1>
         <p className="setup-lede">
-          Apple&apos;s calendar connection is still the longer manual path, but it can now be connected
-          inside Manoa with your iCloud email and an app-specific password.
+          Apple uses the manual iCloud path. It takes a few more steps than Google, but the flow is:
+          create an Apple app-specific password, paste it here, then Manoa will import your Apple
+          calendars. One Apple account is supported right now.
         </p>
 
         <div className="status-row" aria-label="Apple setup progress">
@@ -64,13 +67,28 @@ export default async function AppleCalendarSetupPage({ searchParams }: AppleCale
           </div>
         </div>
 
+        <div className="setup-grid apple-step-grid">
+          {appleSteps.map((step, index) => (
+            <article key={step.title} className="setup-step">
+              <span className="step-number">{index + 1}</span>
+              <h2>{step.title}</h2>
+              <p>{step.body}</p>
+              {'href' in step && step.href ? (
+                <a className="nav-link apple-step-link" href={step.href} target="_blank" rel="noreferrer">
+                  {step.cta}
+                </a>
+              ) : null}
+            </article>
+          ))}
+        </div>
+
         <div className="dashboard-support-grid apple-connect-grid">
-          <article className="dashboard-support-card">
-            <p className="dashboard-label">Connect now</p>
-            <h3>Apple Calendar in Manoa</h3>
+          <article className="dashboard-support-card apple-connect-card">
+            <p className="dashboard-label">Final step</p>
+            <h3>Paste the password here</h3>
             <p>
-              Paste your iCloud email and the app-specific password Apple generated for Manoa. We&apos;ll
-              discover the calendars in that Apple account and bring them into your dashboard.
+              Use your iCloud email and the app-specific password Apple generated for Manoa. Do not
+              paste your normal Apple password.
             </p>
             {profileId ? (
               <AppleCalendarConnectForm
@@ -86,28 +104,20 @@ export default async function AppleCalendarSetupPage({ searchParams }: AppleCale
           </article>
 
           <article className="dashboard-support-card">
-            <p className="dashboard-label">What Apple still requires</p>
-            <h3>Two short prep steps</h3>
+            <p className="dashboard-label">Before you connect</p>
+            <h3>Quick checklist</h3>
             <ul className="dashboard-example-list">
-              <li>Turn on two-factor authentication for the Apple Account.</li>
-              <li>Create an app-specific password for Manoa.</li>
+              <li>Two-factor authentication is on.</li>
+              <li>You created a password named Manoa.</li>
+              <li>You copied the generated app-specific password.</li>
+              <li>You are using the Apple Account with the calendars you want.</li>
             </ul>
           </article>
         </div>
 
-        <div className="setup-grid">
-          {appleSteps.map((step, index) => (
-            <article key={step.title} className="setup-step">
-              <span className="step-number">{index + 1}</span>
-              <h2>{step.title}</h2>
-              <p>{step.body}</p>
-            </article>
-          ))}
-        </div>
-
         <div className="notice warning" role="status">
-          Apple can be simplified on Manoa&apos;s side later, but the 2FA and app-specific password
-          pieces are still Apple&apos;s required setup today.
+          Apple app-specific passwords are different from your normal Apple password. You can revoke
+          the Manoa password later from your Apple Account if needed.
         </div>
 
         <div className="dashboard-support-grid">

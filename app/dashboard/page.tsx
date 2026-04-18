@@ -10,6 +10,7 @@ import CalendarSettingsForm from '@/src/components/CalendarSettingsForm'
 import DisconnectCalendarAccountForm from '@/src/components/DisconnectCalendarAccountForm'
 import DefaultDurationForm from '@/src/components/DefaultDurationForm'
 import DashboardTextConsole from '@/src/components/DashboardTextConsole'
+import TimezoneForm from '@/src/components/TimezoneForm'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -252,6 +253,18 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </div>
         ) : null}
 
+        {params.settings === 'timezone_saved' ? (
+          <div className="notice success" role="status" aria-live="polite">
+            Timezone saved. Manoa will use it for texted times, agendas, and reminders.
+          </div>
+        ) : null}
+
+        {params.settings === 'timezone_invalid' ? (
+          <div className="notice warning" role="status" aria-live="polite">
+            That timezone was not recognized. Choose one from the dashboard and try again.
+          </div>
+        ) : null}
+
         {billingMissing ? (
           <div className="notice warning" role="status" aria-live="polite">
             We could not find your billing record yet. Try again in a minute. If it still looks off,
@@ -288,6 +301,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
               {appleAccounts.length ? 'Reconnect Apple' : 'Connect Apple'}
             </a>
           </div>
+          <p className="dashboard-stage-footnote">
+            Apple uses the manual iCloud path. One Apple account is supported right now.
+          </p>
 
           {calendarAccounts.length ? (
             <div className="calendar-account-stack">
@@ -348,7 +364,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           ) : (
             <div className="dashboard-empty-state">
               <strong>No calendar connected yet.</strong>
-              <p>Start with Google or Outlook above, then come right back here to name calendars and choose how Manoa should use them.</p>
+              <p>Start with Google or Apple above, then come right back here to name calendars and choose how Manoa should use them.</p>
             </div>
           )}
         </section>
@@ -399,6 +415,13 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         </section>
 
         <div className="dashboard-support-grid">
+          <article className="dashboard-support-card">
+            <p className="dashboard-label">Timezone</p>
+            <h3>Use the right local time</h3>
+            <p>Manoa reads texts like “11am” using this timezone.</p>
+            <TimezoneForm profileId={profile.id} currentTimezone={profile.timezone} />
+          </article>
+
           <article className="dashboard-support-card">
             <p className="dashboard-label">Scheduling defaults</p>
             <h3>Default new-event length</h3>

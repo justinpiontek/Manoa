@@ -926,6 +926,30 @@ input:focus {
   box-shadow: 0 0 0 3px rgba(36, 87, 197, 0.14);
 }
 
+select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 13px 14px;
+  outline: none;
+  color: var(--ink);
+  background: #ffffff;
+  font: inherit;
+}
+
+select:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(36, 87, 197, 0.14);
+}
+
+.inline-action {
+  border: 0;
+  background: transparent;
+  color: var(--blue);
+  padding: 0;
+  font-weight: 850;
+}
+
 .button {
   display: inline-flex;
   width: 100%;
@@ -1744,6 +1768,20 @@ footer {
   margin-top: 16px;
 }
 
+.apple-step-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.apple-step-link {
+  display: inline-flex;
+  margin-top: 14px;
+}
+
+.apple-connect-card {
+  background: #ffffff;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+}
+
 .setup-note {
   margin-top: 12px !important;
   font-size: 0.92rem;
@@ -2445,7 +2483,15 @@ footer {
     align-items: flex-start;
   }
 
+  .dashboard-live-prompts {
+    display: none;
+  }
+
   .calendar-settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .apple-step-grid {
     grid-template-columns: 1fr;
   }
 

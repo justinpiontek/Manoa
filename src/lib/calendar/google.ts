@@ -404,6 +404,18 @@ function isAppleCalendarAccessError(error: unknown) {
   return /apple calendar request failed:\s*(403|404)\b/i.test(message)
 }
 
+function isLikelyAppleReminderName(value: string | null | undefined) {
+  return /\b(reminder|to-do|todo)\b/i.test(cleanCalendarDisplayText(value))
+}
+
+function isLikelyAppleReminderConnection(connection: CalendarConnection) {
+  return (
+    connection.provider === 'apple' &&
+    (isLikelyAppleReminderName(connection.calendar_label) ||
+      isLikelyAppleReminderName(connection.calendar_name))
+  )
+}
+
 function normalizeOutlookGraphDateTime(value: Date | string) {
   return new Date(value).toISOString().replace(/Z$/, '')
 }
@@ -774,7 +786,7 @@ async function discoverAppleCalendars(email: string, appSpecificPassword: string
     body:
       '<?xml version="1.0" encoding="utf-8"?>' +
       '<d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">' +
-      '<d:prop><d:displayname /><d:resourcetype /><d:current-user-privilege-set /></d:prop>' +
+      '<d:prop><d:displayname /><d:resourcetype /><d:current-user-privilege-set /><c:supported-calendar-component-set /></d:prop>' +
       '</d:propfind>',
   })
 
@@ -787,9 +799,13 @@ async function discoverAppleCalendars(email: string, appSpecificPassword: string
       const resolvedUrl = sanitizeAppleHref(href, calendarsResponse.url)
       if (resolvedUrl.replace(/\/+$/, '') === homeUrl.replace(/\/+$/, '')) return null
 
+      const supportedComponents = appleProp(responseBlock, 'supported-calendar-component-set') || ''
+      if (supportedComponents && !/name\s*=\s*"VEVENT"/i.test(supportedComponents)) return null
+
       const privilegeSet = appleProp(responseBlock, 'current-user-privilege-set') || ''
       const canEdit = /write/i.test(privilegeSet) || /all/i.test(privilegeSet) || privilegeSet === ''
       const name = firstXmlText(responseBlock, 'displayname') || resolvedUrl.split('/').filter(Boolean).pop() || 'Apple Calendar'
+      if (isLikelyAppleReminderName(name)) return null
 
       return {
         id: resolvedUrl,
@@ -1229,6 +1245,10 @@ function groupConnectionsByAccount(connections: CalendarConnection[]) {
 
 function visibleConfiguredCalendars(connections: CalendarConnection[]) {
   const visible = connections.filter((connection) => {
+    if (connection.provider === 'apple') {
+      return !isLikelyAppleReminderConnection(connection)
+    }
+
     if (connection.provider !== 'google') return true
 
     return !isSystemCalendar({
@@ -1241,7 +1261,7 @@ function visibleConfiguredCalendars(connections: CalendarConnection[]) {
     })
   })
 
-  return visible.length ? visible : connections
+  return visible.length !== connections.length ? visible : connections
 }
 
 function deriveDefaultCalendarLabel({

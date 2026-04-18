@@ -142,9 +142,43 @@ function callPrepOptionList(options: ScheduleOption[]) {
     .join('\n')
 }
 
+function calendarProviderName(provider: CalendarPlacementOption['provider']) {
+  if (provider === 'apple') return 'Apple'
+  if (provider === 'outlook') return 'Outlook'
+  return 'Google'
+}
+
+function calendarChoiceDisplayLabel(
+  calendar: CalendarPlacementOption,
+  calendars: CalendarPlacementOption[],
+) {
+  const normalizedLabel = tokenizeText(calendar.calendarLabel).join(' ')
+  const duplicates = calendars.filter((item) => {
+    return tokenizeText(item.calendarLabel).join(' ') === normalizedLabel
+  })
+
+  if (duplicates.length <= 1) return calendar.calendarLabel
+
+  const providerName = calendarProviderName(calendar.provider)
+  const providerDuplicates = duplicates.filter((item) => item.provider === calendar.provider)
+  if (providerDuplicates.length === 1) {
+    return `${calendar.calendarLabel} (${providerName})`
+  }
+
+  if (calendar.accountEmail) {
+    return `${calendar.calendarLabel} - ${calendar.accountEmail}`
+  }
+
+  if (calendar.calendarName && calendar.calendarName !== calendar.calendarLabel) {
+    return `${calendar.calendarLabel} - ${calendar.calendarName}`
+  }
+
+  return `${calendar.calendarLabel} (${providerName})`
+}
+
 function calendarChoiceList(calendars: CalendarPlacementOption[]) {
   return calendars
-    .map((calendar, index) => `${index + 1}. ${calendar.calendarLabel}`)
+    .map((calendar, index) => `${index + 1}. ${calendarChoiceDisplayLabel(calendar, calendars)}`)
     .join('\n')
 }
 
@@ -274,6 +308,7 @@ function resolveCalendarChoiceFromText(
   if (!normalized) return null
 
   const exact =
+    calendars.find((calendar) => tokenizeText(calendarChoiceDisplayLabel(calendar, calendars)).join(' ') === normalized) ||
     calendars.find((calendar) => tokenizeText(calendar.calendarLabel).join(' ') === normalized) ||
     calendars.find((calendar) => tokenizeText(calendar.calendarName).join(' ') === normalized)
   if (exact) return exact
@@ -283,7 +318,8 @@ function resolveCalendarChoiceFromText(
     calendars.find((calendar) => {
       const label = tokenizeText(calendar.calendarLabel)
       const source = tokenizeText(calendar.calendarName)
-      return words.every((word) => label.includes(word) || source.includes(word))
+      const display = tokenizeText(calendarChoiceDisplayLabel(calendar, calendars))
+      return words.every((word) => label.includes(word) || source.includes(word) || display.includes(word))
     }) || null
   )
 }
