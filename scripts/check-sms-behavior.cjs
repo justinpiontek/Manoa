@@ -15,6 +15,7 @@ require.extensions['.ts'] = function loadTypeScript(module, filename) {
 }
 
 const { dateTimePartsInTimeZone, startOfDay } = require('../src/lib/calendar/dates.ts')
+const { applyDemoText, createDemoState } = require('../src/lib/demoSms.ts')
 const { parseSmsIntent } = require('../src/lib/sms/parser.ts')
 
 const timeZone = 'America/Chicago'
@@ -59,5 +60,60 @@ assert.equal(nextMondayAgenda.type, 'agenda')
 assert.equal(parts(nextMondayAgenda.dateWindow.start).weekday, 1)
 
 assertAgendaWindow("what's coming up", 'coming up')
+
+const lookup = parseSmsIntent("When's Oakleys appointment", timeZone)
+assert.equal(lookup.type, 'lookup')
+assert.equal(lookup.query, 'Oakleys appointment')
+
+let demoState = createDemoState()
+demoState = applyDemoText(demoState, 'schedule haircut this week sometime')
+assert.equal(demoState.pendingAction?.kind, 'external_call_prep')
+demoState = applyDemoText(demoState, '1')
+assert.ok(demoState.events.some((event) => /\(pending\)$/i.test(event.title)))
+demoState = applyDemoText(demoState, 'confirmed')
+assert.match(demoState.messages.at(-1).lines.join('\n'), /marked .*haircut.* as confirmed/i)
+assert.ok(!demoState.events.some((event) => /haircut.*\(pending\)$/i.test(event.title)))
+
+let correctionState = createDemoState()
+correctionState = applyDemoText(correctionState, 'schedule meeting tomorrow')
+assert.equal(correctionState.pendingAction?.kind, 'schedule')
+correctionState = applyDemoText(correctionState, 'actually I meant Friday')
+assert.equal(correctionState.pendingAction?.kind, 'schedule')
+assert.match(correctionState.messages.at(-1).lines.join('\n'), /\bFri\b/)
+
+let cancelCorrectionState = createDemoState()
+cancelCorrectionState = applyDemoText(cancelCorrectionState, 'schedule meeting tomorrow')
+cancelCorrectionState = applyDemoText(cancelCorrectionState, 'actually cancel that')
+assert.equal(cancelCorrectionState.pendingAction, null)
+assert.match(cancelCorrectionState.messages.at(-1).lines.join('\n'), /dropped that request/i)
+
+let nextWeekCorrectionState = createDemoState()
+nextWeekCorrectionState = applyDemoText(nextWeekCorrectionState, 'schedule meeting tomorrow')
+nextWeekCorrectionState = applyDemoText(nextWeekCorrectionState, 'never mind schedule next week')
+assert.equal(nextWeekCorrectionState.pendingAction?.kind, 'schedule')
+assert.match(nextWeekCorrectionState.messages.at(-1).lines.join('\n'), /\b(Mon|Tomorrow)\b/)
+
+let lookupState = createDemoState()
+lookupState.events.push({
+  id: 'oakley',
+  title: "Oakley's appointment",
+  calendar: 'Family',
+  start: startOfDay(4, timeZone).toISOString(),
+  kind: 'owned',
+})
+lookupState = applyDemoText(lookupState, "When's Oakleys appointment")
+assert.match(lookupState.messages.at(-1).lines.join('\n'), /Oakley's appointment is/i)
+
+let punctuationCancelState = createDemoState()
+punctuationCancelState.events.push({
+  id: 'mortgage',
+  title: 'Mortgage due ($1,400)',
+  calendar: 'Home',
+  start: startOfDay(5, timeZone).toISOString(),
+  kind: 'owned',
+})
+punctuationCancelState = applyDemoText(punctuationCancelState, 'Cancel mortgage due ($1,400)')
+assert.match(punctuationCancelState.messages.at(-1).lines.join('\n'), /Canceled Mortgage due/i)
+assert.ok(!punctuationCancelState.events.some((event) => event.id === 'mortgage'))
 
 console.log('SMS behavior checks passed.')

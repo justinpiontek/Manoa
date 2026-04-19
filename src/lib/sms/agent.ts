@@ -46,7 +46,7 @@ import { supabaseAdmin } from '../supabaseAdmin'
 import { inviteeLabel, parseInviteesFromText, resolveInviteeFollowUp, type Invitee } from './invitees'
 import { parseSmsIntentWithAI } from './aiIntent'
 import { resolvePendingChoice } from './pendingChoice'
-import { parseSmsIntent, parseSmsTime, type DateWindow } from './parser'
+import { parseSmsIntent, parseSmsTime, type DateWindow, type ParsedSmsIntent } from './parser'
 
 type SmsProfile = {
   id: string
@@ -419,6 +419,14 @@ async function maybeConfirmExactScheduleTime({
       options,
       attendees,
       unresolvedInvitees,
+      scheduleRequest: {
+        title,
+        baseDate: baseDate.toISOString(),
+        exactTime,
+        durationMinutes,
+        recurrence: recurrence || null,
+        location: location || null,
+      },
     })
 
     return pendingInviteScheduleReply({
@@ -436,6 +444,14 @@ async function maybeConfirmExactScheduleTime({
     options: [requestedOption],
     attendees,
     unresolvedInvitees,
+    scheduleRequest: {
+      title,
+      baseDate: baseDate.toISOString(),
+      exactTime,
+      durationMinutes,
+      recurrence: recurrence || null,
+      location: location || null,
+    },
   })
 
   return exactAvailabilityReply({
@@ -474,6 +490,23 @@ function agendaWindowText(label: string, events: EventSummary[], timeZone?: stri
   if (!events.length) return `Nothing on your calendar for ${label}.`
   return `${label[0]?.toUpperCase() || ''}${label.slice(1)}:\n${sortAgendaEvents(events)
     .map((event) => `${eventDateLabel(event, timeZone)} ${event.title} (${event.calendarName})`)
+    .join('\n')}`
+}
+
+function eventLookupText(query: string, matches: EventSummary[], timeZone?: string) {
+  const cleanedQuery = query.trim()
+  if (!matches.length) {
+    return `I couldn't find ${cleanedQuery || 'that'} on your upcoming calendar. Try the event name plus a day or time.`
+  }
+
+  const topMatches = sortAgendaEvents(matches).slice(0, 3)
+  if (topMatches.length === 1) {
+    const event = topMatches[0]
+    return `${event.title} is ${eventDateLabel(event, timeZone)} on ${event.calendarName}.`
+  }
+
+  return `I found a few matches:\n${topMatches
+    .map((event, index) => `${index + 1}. ${eventDateLabel(event, timeZone)} ${event.title} (${event.calendarName})`)
     .join('\n')}`
 }
 
@@ -532,6 +565,109 @@ function isSingleScheduleDecline(text: string) {
   )
 }
 
+function isCancelPendingRequest(text: string) {
+  return /^(?:actually\s+)?(?:cancel that|cancel it|cancel this|never mind|nevermind|scratch that|forget it|drop that|stop that|leave it)[.!]*$/i.test(
+    text.trim(),
+  )
+}
+
+function pendingScheduleContext(pending: PendingAction, defaultDurationMinutes: number) {
+  const request = pending.payload.scheduleRequest
+  if (request) {
+    return {
+      title: request.title,
+      exactTime: request.exactTime,
+      durationMinutes: request.durationMinutes,
+      recurrence: request.recurrence,
+      location: request.location || null,
+      calendarHint: '',
+    }
+  }
+
+  const option = pending.payload.options?.[0]
+  if (!option) return null
+
+  const start = new Date(option.start).getTime()
+  const end = new Date(option.end).getTime()
+  return {
+    title: option.title.replace(/\s*\(pending\)\s*$/i, ''),
+    exactTime: null,
+    durationMinutes:
+      Number.isFinite(start) && Number.isFinite(end) && end > start
+        ? Math.max(15, Math.round((end - start) / 60_000))
+        : defaultDurationMinutes,
+    recurrence: option.recurrence || null,
+    location: option.location || null,
+    calendarHint: option.calendarName,
+  }
+}
+
+function correctionFragment(text: string) {
+  const trimmed = text.trim()
+  const patterns = [
+    /^(?:actually\s+)?(?:i\s+)?(?:meant|mean)\s+(.+)$/i,
+    /^(?:actually\s+)?(?:make it|change it to|move it to|do)\s+(.+)$/i,
+    /^(?:never mind|nevermind|scratch that|forget that),?\s+(?:schedule|book|add|make it|do it|try|for)?\s*(.+)$/i,
+    /^actually\s+(?!cancel\b)(.+)$/i,
+  ]
+
+  for (const pattern of patterns) {
+    const match = trimmed.match(pattern)
+    if (match?.[1]?.trim()) return match[1].trim()
+  }
+
+  return null
+}
+
+function timeForCorrectionText(exactTime: { hour: number; minute: number }) {
+  const period = exactTime.hour >= 12 ? 'pm' : 'am'
+  const hour = exactTime.hour % 12 || 12
+  const minute = exactTime.minute ? `:${String(exactTime.minute).padStart(2, '0')}` : ''
+  return `${hour}${minute}${period}`
+}
+
+function correctedScheduleIntentFromPending(
+  text: string,
+  pending: PendingAction,
+  defaultDurationMinutes: number,
+  timeZone?: string,
+) {
+  if (
+    ![
+      'schedule',
+      'choose_calendar',
+      'external_call_prep',
+    ].includes(pending.kind)
+  ) {
+    return null
+  }
+
+  const fragment = correctionFragment(text)
+  if (!fragment) return null
+
+  const context = pendingScheduleContext(pending, defaultDurationMinutes)
+  if (!context) return null
+
+  let cleanedFragment = fragment
+    .replace(/^(?:schedule|book|add|set up)\s+/i, '')
+    .replace(/^(?:it|that)\s+/i, '')
+    .trim()
+
+  if (!cleanedFragment) return null
+
+  if (context.exactTime && !parseSmsTime(cleanedFragment)) {
+    cleanedFragment += ` at ${timeForCorrectionText(context.exactTime)}`
+  }
+
+  if (context.calendarHint && !/\bcalendar\b/i.test(cleanedFragment)) {
+    cleanedFragment += ` on ${context.calendarHint} calendar`
+  }
+
+  const correctedText = `schedule ${context.title} ${cleanedFragment}`
+  const intent = parseSmsIntent(correctedText, timeZone)
+  return intent.type === 'schedule' ? { text: correctedText, intent } : null
+}
+
 function reminderForPending(pending: PendingAction) {
   switch (pending.kind) {
     case 'schedule':
@@ -567,6 +703,15 @@ function reminderForPending(pending: PendingAction) {
       ])
     case 'invited_cancel_action':
       if (pending.payload.stage === 'scope') {
+        if (!canCancelDirectly(pending.payload.authority)) {
+          return actionChoiceList([
+            'Reply with:',
+            '1. Remove just this one',
+            '2. Remove the whole series from my calendar',
+            '3. Keep it',
+          ])
+        }
+
         return actionChoiceList([
           'Reply with:',
           '1. Just this one',
@@ -625,8 +770,65 @@ function recurringReschedulePrompt(target: EventSummary) {
   return `${target.title} is part of a repeating series.\nDo you want me to:\n1. Move just this one\n2. Move the whole series\n3. Keep it as is`
 }
 
-function recurringCancelPrompt(target: EventSummary) {
-  return `${target.title} is part of a repeating series.\nDo you want me to:\n1. Cancel just this one\n2. Cancel the whole series\n3. Keep it`
+function canCancelForEveryone(authority: EventAuthority | null | undefined) {
+  return authority === 'owned_meeting'
+}
+
+function canCancelDirectly(authority: EventAuthority | null | undefined) {
+  return authority === 'owned_meeting' || authority === 'personal'
+}
+
+function removedFromCalendarText(
+  target: EventSummary,
+  authority: EventAuthority | null | undefined,
+  timeZone?: string,
+) {
+  const dateText = eventDateLabel(target, timeZone)
+
+  if (authority === 'external_appointment') {
+    return `Removed ${target.title} from your calendar on ${dateText}. I did not cancel it with the business.`
+  }
+
+  if (authority === 'invited_meeting') {
+    return `Removed ${target.title} from your calendar on ${dateText}. I can't cancel it for everyone because you're not the organizer.`
+  }
+
+  return `Removed ${target.title} from your calendar on ${dateText}. I can't confirm it was canceled for anyone else.`
+}
+
+function removedRecurringText(
+  target: EventSummary,
+  authority: EventAuthority | null | undefined,
+  scope: 'occurrence' | 'series',
+) {
+  const scopeText = scope === 'series' ? `the whole ${target.title} series` : `this ${target.title} occurrence`
+
+  if (authority === 'external_appointment') {
+    return `Removed ${scopeText} from your calendar. I did not cancel it with the business.`
+  }
+
+  if (authority === 'invited_meeting') {
+    const extra =
+      scope === 'series'
+        ? "I can't cancel it for everyone because you're not the organizer."
+        : "The organizer's series may still exist."
+    return `Removed ${scopeText} from your calendar. ${extra}`
+  }
+
+  return `Removed ${scopeText} from your calendar. I can't confirm it was canceled for anyone else.`
+}
+
+function recurringCancelPrompt(target: EventSummary, authority: EventAuthority | null | undefined) {
+  if (canCancelDirectly(authority)) {
+    return `${target.title} is part of a repeating series.\nDo you want me to:\n1. Cancel just this one\n2. Cancel the whole series\n3. Keep it`
+  }
+
+  const note =
+    authority === 'external_appointment'
+      ? 'I can remove it from your calendar, but I cannot cancel it with the business.'
+      : 'This looks like an invite, so I can only remove it from your calendar.'
+
+  return `${target.title} is part of a repeating series.\n${note}\nDo you want me to:\n1. Remove just this one\n2. Remove the whole series from your calendar\n3. Keep it`
 }
 
 function buildCallNote(target: EventSummary, options: ScheduleOption[], timeZone?: string) {
@@ -933,6 +1135,12 @@ function parseExternalRescheduleConfirmation(
   }
 }
 
+function isBareExternalAppointmentConfirmation(text: string) {
+  return /^(?:yes,?\s*)?(?:confirmed|confirm|booked|done|all set|it'?s booked|its booked|it'?s confirmed|its confirmed|they confirmed|office confirmed)[.!]*$/i.test(
+    text.trim(),
+  )
+}
+
 function optionFromExactExternalTime(
   target: EventSummary,
   baseDate: Date,
@@ -951,6 +1159,22 @@ function optionFromExactExternalTime(
     dayLabel: formatSmsDate(start, timeZone),
     timeLabel: formatSmsTime(start, timeZone),
     timeZone,
+  }
+}
+
+function optionFromHeldExternalAppointment(target: EventSummary, timeZone?: string): ScheduleOption {
+  const start = new Date(target.start)
+  return {
+    title: target.title,
+    start: target.start,
+    end: target.end,
+    provider: target.provider,
+    calendarId: target.calendarId,
+    calendarName: target.calendarName,
+    dayLabel: formatSmsDate(start, timeZone),
+    timeLabel: formatSmsTime(start, timeZone),
+    timeZone,
+    location: target.location || null,
   }
 }
 
@@ -976,6 +1200,13 @@ const queryNoiseWords = new Set([
   'meeting',
   'calendar',
   'schedule',
+  'today',
+  'tomorrow',
+  'tmrw',
+  'upcoming',
+  'next',
+  'week',
+  'month',
 ])
 
 function queryWords(query: string) {
@@ -986,10 +1217,21 @@ function queryWords(query: string) {
     .filter((word) => !queryNoiseWords.has(word))
 }
 
+function queryWordVariants(word: string) {
+  const variants = [word]
+  if (word.endsWith('s') && word.length > 3) variants.push(word.slice(0, -1))
+  if (word.endsWith('ies') && word.length > 4) variants.push(`${word.slice(0, -3)}y`)
+  return variants
+}
+
 function eventMatchScore(event: EventSummary, words: string[]) {
   if (!words.length) return 0
   const haystack = [event.title, event.location, event.description].join(' ').toLowerCase()
-  return words.reduce((score, word) => (haystack.includes(word) ? score + 1 : score), 0)
+  return words.reduce(
+    (score, word) =>
+      queryWordVariants(word).some((variant) => haystack.includes(variant)) ? score + 1 : score,
+    0,
+  )
 }
 
 function sortEventsByStart<T extends { start: string }>(events: T[]) {
@@ -1100,28 +1342,45 @@ async function cancelCalendarTarget({
   target: EventSummary
   smsFrom: string
 }) {
-  const { authority } = await classifyTargetEvent(profile, target)
+  try {
+    const { authority } = await classifyTargetEvent(profile, target)
 
-  if (isRecurringEvent(target)) {
-    return prepareRecurringCancelScope({
-      profileId: profile.id,
-      smsFrom,
-      target,
-      authority,
-    })
+    if (isRecurringEvent(target)) {
+      return prepareRecurringCancelScope({
+        profileId: profile.id,
+        smsFrom,
+        target,
+        authority,
+      })
+    }
+
+    await deleteCalendarEvent(
+      profile.id,
+      target.id,
+      target.calendarId,
+      authority === 'owned_meeting' ? 'all' : 'none',
+    )
+    await clearPendingRemindersForEvent(profile.id, target.id)
+
+    if (canCancelForEveryone(authority)) {
+      return `Done. I canceled ${target.title} on ${eventDateLabel(target, profile.timezone)} and sent the update.`
+    }
+
+    return authority === 'personal'
+      ? `Done. I canceled ${target.title} on ${eventDateLabel(target, profile.timezone)}.`
+      : removedFromCalendarText(target, authority, profile.timezone)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : ''
+    if (/403|forbidden|read.?only|not allowed|permission/i.test(message)) {
+      return `I found ${target.title}, but that calendar will not let Manoa cancel it. Remove it in ${target.calendarName}, or turn off read-only calendars in Manoa.`
+    }
+
+    if (/400|bad request|rejected/i.test(message)) {
+      return `I found ${target.title}, but ${target.calendarName} rejected the cancel request. Try removing it directly from that calendar.`
+    }
+
+    return `I found ${target.title}, but I could not cancel it from Manoa yet. Try removing it directly from ${target.calendarName}.`
   }
-
-  await deleteCalendarEvent(
-    profile.id,
-    target.id,
-    target.calendarId,
-    authority === 'owned_meeting' ? 'all' : 'none',
-  )
-  await clearPendingRemindersForEvent(profile.id, target.id)
-
-  return authority === 'owned_meeting'
-    ? `Done. I canceled ${target.title} on ${eventDateLabel(target, profile.timezone)} and sent the update.`
-    : `Done. I canceled ${target.title} on ${eventDateLabel(target, profile.timezone)}.`
 }
 
 async function profileForPhone(phoneE164: string) {
@@ -1502,20 +1761,30 @@ async function prepareExternalScheduleCallPrep({
   })
 
   const businessName = inferredContact?.label || title
-  const options = await findExternalCallPrepOptions({
-    profileId: profile.id,
-    optionTitle: `${title} (pending)`,
-    availabilityTitle: title,
-    baseDate,
-    exactTime,
-    calendarId: chosenCalendar?.calendarId,
-    calendarHint: chosenCalendar?.calendarLabel || 'Personal',
-    dateWindow,
-    timeZone: profile.timezone,
-  })
+  const optionTitle = `${title} (pending)`
+  const search = async (searchBaseDate: Date, searchWindow?: DateWindow | null) =>
+    findExternalCallPrepOptions({
+      profileId: profile.id,
+      optionTitle,
+      availabilityTitle: title,
+      baseDate: searchBaseDate,
+      exactTime,
+      calendarId: chosenCalendar?.calendarId,
+      calendarHint: chosenCalendar?.calendarLabel || 'Personal',
+      dateWindow: searchWindow,
+      timeZone: profile.timezone,
+    })
+
+  let options = await search(baseDate, dateWindow)
+  let widenedFrom: string | null = null
+
+  if (!options.length && dateWindow?.label === 'this week') {
+    options = await search(addDays(dateWindow.end, 1, profile.timezone), null)
+    widenedFrom = dateWindow.label
+  }
 
   if (!options.length) {
-    return `I could not find three good ${dateWindow?.label ? `${dateWindow.label} ` : ''}openings for ${title}. Want me to check a wider range?`
+    return `I could not find a good opening${dateWindow?.label ? ` for ${dateWindow.label}` : ''} for ${title}. Try a specific weekday or a different calendar.`
   }
 
   const callNote = buildNewAppointmentCallNote(title, options)
@@ -1541,13 +1810,13 @@ async function prepareExternalScheduleCallPrep({
 
   const replyLine =
     options.length >= 3 ? 'Reply 1, 2, or 3.' : options.length === 2 ? 'Reply 1 or 2.' : 'Reply 1.'
-  let reply = `I can't book ${title} with the office by text.\nHere are times I can hold as pending while you call:\n${callPrepOptionList(options)}\n${replyLine}\nI'll add it as "${title} (pending)" until you confirm with the office.`
+  let reply = widenedFrom
+    ? `I did not find any remaining ${widenedFrom} openings for ${title}, so I checked next week.\nI can hold one of these while you call:\n${callPrepOptionList(options)}\n${replyLine}\nAfter the office books it, reply CONFIRMED. If they give a different time, text that time.`
+    : `I can hold one of these while you call to book ${title}:\n${callPrepOptionList(options)}\n${replyLine}\nAfter the office books it, reply CONFIRMED. If they give a different time, text that time.`
 
   if (inferredContact?.phone_e164) {
     reply += `\nOffice number: ${inferredContact.phone_e164}.`
   }
-
-  reply += `\nCall note: ${callNote}`
   return reply
 }
 
@@ -1598,7 +1867,7 @@ async function prepareInvitedCancel({
     },
   })
 
-  return `I can't cancel ${target.title} for everyone from your side.\nDo you want me to:\n1. Remove it from my calendar only\n2. Draft a decline message\n3. Keep it`
+  return `I can't cancel ${target.title} for everyone because you're not the organizer.\nDo you want me to:\n1. Remove it from my calendar only\n2. Draft a decline message\n3. Keep it`
 }
 
 async function prepareRecurringRescheduleScope({
@@ -1654,7 +1923,7 @@ async function prepareRecurringCancelScope({
     },
   })
 
-  return recurringCancelPrompt(target)
+  return recurringCancelPrompt(target, authority)
 }
 
 async function handleSaveBusinessPhoneReply({
@@ -1865,12 +2134,14 @@ async function storeScheduleOptionsPending({
   options,
   attendees,
   unresolvedInvitees,
+  scheduleRequest,
 }: {
   profileId: string
   smsFrom: string
   options: ScheduleOption[]
   attendees: Invitee[]
   unresolvedInvitees: string[]
+  scheduleRequest?: PendingPayload['scheduleRequest']
 }) {
   await storePendingAction({
     profileId,
@@ -1880,6 +2151,7 @@ async function storeScheduleOptionsPending({
       options,
       attendees,
       unresolvedInvitees,
+      scheduleRequest,
     },
   })
 }
@@ -1976,7 +2248,7 @@ async function handleChoice({
     })
 
     if (!options.length) {
-      return `I couldn't find an opening on ${pickedCalendar.calendarLabel}${scheduleRequest.dateWindow?.label ? ` for ${scheduleRequest.dateWindow.label}` : ''}. Want me to check a wider range?`
+      return `I couldn't find an opening on ${pickedCalendar.calendarLabel}${scheduleRequest.dateWindow?.label ? ` for ${scheduleRequest.dateWindow.label}` : ''}. Try a specific weekday or a different calendar.`
     }
 
     await storeScheduleOptionsPending({
@@ -1985,6 +2257,7 @@ async function handleChoice({
       options,
       attendees,
       unresolvedInvitees,
+      scheduleRequest,
     })
 
     return scheduleOptionsReply({
@@ -2356,9 +2629,15 @@ async function handleChoice({
           await deleteCalendarEvent(profile.id, target.id, target.calendarId, sendUpdates)
           await clearPendingRemindersForEvent(profile.id, target.id)
           await clearPendingAction(pending.id)
-          return pending.payload.authority === 'owned_meeting'
-            ? `Canceled ${target.title} and sent the update.`
-            : `Canceled ${target.title}.`
+          if (pending.payload.authority === 'owned_meeting') {
+            return `Canceled ${target.title} and sent the update.`
+          }
+
+          if (pending.payload.authority === 'personal') {
+            return `Canceled ${target.title}.`
+          }
+
+          return removedFromCalendarText(target, pending.payload.authority, profile.timezone)
         }
 
         if (choice === 3) {
@@ -2373,9 +2652,15 @@ async function handleChoice({
         await deleteCalendarEvent(profile.id, target.id, target.calendarId, sendUpdates)
         await clearPendingRemindersForEvent(profile.id, target.id)
         await clearPendingAction(pending.id)
-        return pending.payload.authority === 'owned_meeting'
-          ? `Canceled this ${target.title} occurrence and sent the update.`
-          : `Canceled just this ${target.title} occurrence.`
+        if (pending.payload.authority === 'owned_meeting') {
+          return `Canceled this ${target.title} occurrence and sent the update.`
+        }
+
+        if (pending.payload.authority === 'personal') {
+          return `Canceled just this ${target.title} occurrence.`
+        }
+
+        return removedRecurringText(target, pending.payload.authority, 'occurrence')
       }
 
       if (choice === 2) {
@@ -2384,7 +2669,9 @@ async function handleChoice({
         if (!seriesTarget) {
           return `I couldn't find the full ${target.title} series right now.\n${actionChoiceList([
             'Reply with:',
-            '1. Cancel just this occurrence',
+            canCancelDirectly(pending.payload.authority)
+              ? '1. Cancel just this occurrence'
+              : '1. Remove just this occurrence',
             '3. Keep it',
           ])}`
         }
@@ -2393,9 +2680,15 @@ async function handleChoice({
         await clearPendingRemindersForEvent(profile.id, target.id)
         await clearPendingRemindersForEvent(profile.id, seriesTarget.id)
         await clearPendingAction(pending.id)
-        return pending.payload.authority === 'owned_meeting'
-          ? `Canceled the whole ${target.title} series and sent the update.`
-          : `Canceled the whole ${target.title} series.`
+        if (pending.payload.authority === 'owned_meeting') {
+          return `Canceled the whole ${target.title} series and sent the update.`
+        }
+
+        if (pending.payload.authority === 'personal') {
+          return `Canceled the whole ${target.title} series.`
+        }
+
+        return removedRecurringText(target, pending.payload.authority, 'series')
       }
 
       if (choice === 3) {
@@ -2410,7 +2703,7 @@ async function handleChoice({
       await deleteCalendarEvent(profile.id, target.id, target.calendarId, 'none')
       await clearPendingRemindersForEvent(profile.id, target.id)
       await clearPendingAction(pending.id)
-      return `Removed ${target.title} from your calendar. I did not cancel it for everyone.`
+      return removedFromCalendarText(target, pending.payload.authority, profile.timezone)
     }
 
     if (choice === 2) {
@@ -2488,7 +2781,7 @@ async function handleChoice({
         },
       })
       return isNewAppointment
-        ? `Held ${option.dayLabel} at ${option.timeLabel} for your call to book ${requestedTitle}.\nOffice number: ${knownPhone}.\nCall note: ${callNote}\nWhen the office confirms the new time, text something like "They booked it for Tuesday at 2pm" and I'll add it to your calendar.\nYou can keep texting me other things in the meantime.`
+        ? `Held ${option.dayLabel} at ${option.timeLabel} as ${requestedTitle} (pending).\nOffice number: ${knownPhone}.\nAfter the office books it, reply CONFIRMED. If they give a different time, text that time.`
         : `Held ${option.dayLabel} at ${option.timeLabel} for your call about ${target.title}.\nOffice number: ${knownPhone}.\nCall note: ${callNote}\nWhen the office confirms the new time, text something like "They moved it to Tuesday at 2pm" and I'll update your calendar.\nYou can keep texting me other things in the meantime.`
     }
 
@@ -2508,7 +2801,7 @@ async function handleChoice({
           holdCalendarId: option.calendarId,
         },
       })
-      return `Held ${option.dayLabel} at ${option.timeLabel} as ${requestedTitle} (pending).\nCall the office to book it. When they confirm, text me the confirmed day and time and I'll update the calendar item.`
+      return `Held ${option.dayLabel} at ${option.timeLabel} as ${requestedTitle} (pending).\nAfter the office books it, reply CONFIRMED. If they give a different time, text that time.`
     }
 
     await storePendingAction({
@@ -2649,6 +2942,24 @@ export async function handleIncomingSms({
       Boolean(externalReschedulePending.payload.holdEventId) &&
       externalReschedulePending.payload.target.id === externalReschedulePending.payload.holdEventId
 
+    if (isNewExternalAppointment && isBareExternalAppointmentConfirmation(body)) {
+      const option = optionFromHeldExternalAppointment(target, profile.timezone)
+      await updateCalendarEvent(profile.id, target.id, option, 'none')
+      await queueReminderForEvent({
+        profileId: profile.id,
+        phoneE164: profile.phone_e164,
+        calendarEventId: target.id,
+        calendarId: target.calendarId,
+        title: target.title,
+        start: target.start,
+        timeZone: profile.timezone,
+      })
+      await clearPendingAction(externalReschedulePending.id)
+      const reply = `Great. I marked ${target.title} as confirmed for ${option.dayLabel} at ${option.timeLabel}.`
+      await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+      return reply
+    }
+
     if (
       mentionsOfficeDelay(
         body,
@@ -2741,24 +3052,52 @@ export async function handleIncomingSms({
   const pending = await loadPendingAction(profile.id, from, {
     excludeKinds: backgroundPendingKinds,
   })
-  if (pending?.kind === 'save_business_contact_phone') {
-    const reply = await handleSaveBusinessPhoneReply({ profile, from, body, pending })
+
+  let activePending = pending
+  let intentBody = body
+  let intentOverride: ParsedSmsIntent | null = null
+
+  if (activePending && isCancelPendingRequest(body)) {
+    await clearPendingAction(activePending.id)
+    const reply = 'Okay. I dropped that request.'
     await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
     return reply
   }
 
-  if (pending?.kind === 'resolve_invitees') {
-    const reply = await handleResolveInviteesReply({ profile, from, body, pending })
+  const correctedSchedule = activePending
+    ? correctedScheduleIntentFromPending(
+        body,
+        activePending,
+        profile.default_event_duration_minutes,
+        profile.timezone,
+      )
+    : null
+
+  if (activePending && correctedSchedule) {
+    await clearPendingAction(activePending.id)
+    activePending = null
+    intentBody = correctedSchedule.text
+    intentOverride = correctedSchedule.intent
+  }
+
+  if (activePending?.kind === 'save_business_contact_phone') {
+    const reply = await handleSaveBusinessPhoneReply({ profile, from, body, pending: activePending })
     await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
     return reply
   }
 
-  if (pending?.kind === 'choose_calendar') {
-    const pickedCalendar = resolveCalendarChoiceFromText(body, pending.payload.calendarChoices)
-    if (pickedCalendar && pending.payload.scheduleRequest) {
-      const scheduleRequest = pending.payload.scheduleRequest
-      const attendees = pending.payload.attendees || []
-      const unresolvedInvitees = pending.payload.unresolvedInvitees || []
+  if (activePending?.kind === 'resolve_invitees') {
+    const reply = await handleResolveInviteesReply({ profile, from, body, pending: activePending })
+    await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+    return reply
+  }
+
+  if (activePending?.kind === 'choose_calendar') {
+    const pickedCalendar = resolveCalendarChoiceFromText(body, activePending.payload.calendarChoices)
+    if (pickedCalendar && activePending.payload.scheduleRequest) {
+      const scheduleRequest = activePending.payload.scheduleRequest
+      const attendees = activePending.payload.attendees || []
+      const unresolvedInvitees = activePending.payload.unresolvedInvitees || []
 
       if (looksExternalScheduleRequest(scheduleRequest.title) && !scheduleRequest.serviceConfirmed) {
         const reply = await prepareExternalScheduleCallPrep({
@@ -2808,7 +3147,7 @@ export async function handleIncomingSms({
       })
 
       if (!options.length) {
-        const reply = `I couldn't find an opening on ${pickedCalendar.calendarLabel}${scheduleRequest.dateWindow?.label ? ` for ${scheduleRequest.dateWindow.label}` : ''}. Want me to check a wider range?`
+        const reply = `I couldn't find an opening on ${pickedCalendar.calendarLabel}${scheduleRequest.dateWindow?.label ? ` for ${scheduleRequest.dateWindow.label}` : ''}. Try a specific weekday or a different calendar.`
         await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
         return reply
       }
@@ -2819,6 +3158,7 @@ export async function handleIncomingSms({
         options,
         attendees,
         unresolvedInvitees,
+        scheduleRequest,
       })
 
       const reply = scheduleOptionsReply({
@@ -2833,46 +3173,70 @@ export async function handleIncomingSms({
   }
 
   if (
-    pending?.kind === 'schedule' &&
-    (pending.payload.options || []).length === 1 &&
+    activePending?.kind === 'schedule' &&
+    (activePending.payload.options || []).length === 1 &&
     isSingleScheduleDecline(body)
   ) {
-    await clearPendingAction(pending.id)
+    await clearPendingAction(activePending.id)
     const reply = 'Okay. I left it off your calendar.'
     await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
     return reply
   }
 
-  if (pending?.kind === 'schedule' && (pending.payload.options || []).length === 1) {
-    const confirmedChoice = resolvePendingChoice(body, pending, profile.timezone)
+  if (activePending?.kind === 'schedule' && (activePending.payload.options || []).length === 1) {
+    const confirmedChoice = resolvePendingChoice(body, activePending, profile.timezone)
     if (confirmedChoice === 1) {
       const reply = await handleChoice({
         profile,
         smsFrom: from,
         choice: 1,
-        pending,
+        pending: activePending,
       })
       await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
       return reply
     }
   }
 
-  if (pending && isShortAcknowledgement(body)) {
-    const reply = reminderForPending(pending)
+  if (activePending && isShortAcknowledgement(body)) {
+    const reply = reminderForPending(activePending)
     await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
     return reply
   }
 
-  const intent = (await parseSmsIntentWithAI(body, profile.timezone)) || parseSmsIntent(body, profile.timezone)
-  const pendingChoice = pending ? resolvePendingChoice(body, pending, profile.timezone) : null
+  const aiIntent = intentOverride || (await parseSmsIntentWithAI(intentBody, profile.timezone))
+  const intent =
+    aiIntent && aiIntent.type !== 'unknown'
+      ? aiIntent
+      : parseSmsIntent(intentBody, profile.timezone)
+  const pendingChoice = activePending ? resolvePendingChoice(body, activePending, profile.timezone) : null
 
-  if (pending && (intent.type === 'choice' || pendingChoice)) {
+  if (activePending && (intent.type === 'choice' || pendingChoice)) {
     const reply = await handleChoice({
       profile,
       smsFrom: from,
       choice: intent.type === 'choice' ? intent.choice : (pendingChoice as number),
-      pending,
+      pending: activePending,
     })
+    await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+    return reply
+  }
+
+  if (intent.type === 'lookup') {
+    const dateWindow =
+      intent.dateWindow ||
+      {
+        start: startOfDay(0, profile.timezone),
+        end: addDays(startOfDay(0, profile.timezone), 90, profile.timezone),
+        label: 'upcoming',
+      }
+    const events = await listUpcomingEvents({
+      profileId: profile.id,
+      startAt: dateWindow.start,
+      windowMinutes: windowMinutes(dateWindow),
+      maxResults: 80,
+      timeZone: profile.timezone,
+    })
+    const reply = eventLookupText(intent.query, matchingEventsByQuery(events, intent.query), profile.timezone)
     await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
     return reply
   }
@@ -2905,9 +3269,9 @@ export async function handleIncomingSms({
   }
 
   if (intent.type === 'schedule') {
-    const inviteeContext = await resolveScheduleInvitees(profile.id, body)
+    const inviteeContext = await resolveScheduleInvitees(profile.id, intentBody)
     const cleanedIntent =
-      inviteeContext.cleanedText && inviteeContext.cleanedText !== body
+      inviteeContext.cleanedText && inviteeContext.cleanedText !== intentBody
         ? parseSmsIntent(inviteeContext.cleanedText, profile.timezone)
         : intent
     const scheduleIntent =
@@ -2951,7 +3315,7 @@ export async function handleIncomingSms({
             durationMinutes: scheduleDurationMinutes,
             recurrence: scheduleIntent.recurrence,
             location: scheduleIntent.location,
-            serviceConfirmed: userAlreadyConfirmedServiceBooking(body),
+            serviceConfirmed: userAlreadyConfirmedServiceBooking(intentBody),
           },
         },
       })
@@ -2968,7 +3332,7 @@ export async function handleIncomingSms({
       placement.matches[0] ||
       placement.bookingCalendars[0]
 
-    if (looksExternalScheduleRequest(scheduleIntent.title) && !userAlreadyConfirmedServiceBooking(body)) {
+    if (looksExternalScheduleRequest(scheduleIntent.title) && !userAlreadyConfirmedServiceBooking(intentBody)) {
       const reply = await prepareExternalScheduleCallPrep({
         profile,
         smsFrom: from,
@@ -3020,7 +3384,7 @@ export async function handleIncomingSms({
     })
 
     if (!options.length) {
-      const reply = `I could not find an opening${scheduleIntent.dateWindow?.label ? ` for ${scheduleIntent.dateWindow.label}` : ''}. Want me to check a wider range?`
+      const reply = `I could not find an opening${scheduleIntent.dateWindow?.label ? ` for ${scheduleIntent.dateWindow.label}` : ''}. Try a specific weekday or a different calendar.`
       await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
       return reply
     }
@@ -3031,6 +3395,16 @@ export async function handleIncomingSms({
       options,
       attendees: inviteeContext.invitees,
       unresolvedInvitees: inviteeContext.unresolvedNames,
+      scheduleRequest: {
+        title: scheduleIntent.title,
+        baseDate: scheduleIntent.baseDate.toISOString(),
+        dateWindow: serializeDateWindow(scheduleIntent.dateWindow),
+        exactTime: scheduleIntent.exactTime,
+        durationMinutes: scheduleDurationMinutes,
+        recurrence: scheduleIntent.recurrence,
+        location: scheduleIntent.location,
+        serviceConfirmed: userAlreadyConfirmedServiceBooking(intentBody),
+      },
     })
 
     const reply = scheduleOptionsReply({

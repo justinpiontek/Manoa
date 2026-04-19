@@ -16,6 +16,7 @@ export type DateWindow = {
 export type ParsedSmsIntent =
   | { type: 'choice'; choice: number }
   | { type: 'agenda'; day: 'today' | 'tomorrow'; dateWindow?: DateWindow | null; label?: string }
+  | { type: 'lookup'; query: string; dateWindow?: DateWindow | null }
   | {
       type: 'schedule'
       title: string
@@ -703,6 +704,26 @@ function stripSchedulingNoise(text: string) {
   return cleaned || 'meeting'
 }
 
+function parseLookupQuery(text: string) {
+  const cleaned = text.trim().replace(/[?!.]+$/g, '')
+  const patterns = [
+    /^when(?:['’]s|\s+is|\s+are)?\s+(?:is\s+|are\s+)?(?:my\s+|the\s+)?(.+)$/i,
+    /^what\s+time(?:\s+is|\s+are)?\s+(?:my\s+|the\s+)?(.+)$/i,
+    /^when\s+do\s+i\s+have\s+(?:my\s+|the\s+)?(.+)$/i,
+  ]
+
+  for (const pattern of patterns) {
+    const match = cleaned.match(pattern)
+    const query = match?.[1]
+      ?.replace(/\b(?:scheduled|happening|coming up)\b/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+    if (query) return query
+  }
+
+  return null
+}
+
 export function parseSmsIntent(body: string, timeZone?: string): ParsedSmsIntent {
   const text = body.trim()
   const lower = text.toLowerCase()
@@ -710,6 +731,9 @@ export function parseSmsIntent(body: string, timeZone?: string): ParsedSmsIntent
 
   const choice = parseChoiceIntent(text)
   if (choice) return { type: 'choice', choice }
+
+  const lookupQuery = parseLookupQuery(text)
+  if (lookupQuery) return { type: 'lookup', query: lookupQuery, dateWindow }
 
   const isTomorrowAgenda =
     !/^(schedule|book|add|set up)\b/.test(lower) && isAgendaRequest(lower, 'tomorrow')

@@ -171,6 +171,65 @@ function isSingleScheduleDecline(text: string) {
   )
 }
 
+function isCancelPendingRequest(text: string) {
+  return /^(?:actually\s+)?(?:cancel that|cancel it|cancel this|never mind|nevermind|scratch that|forget it|drop that|stop that|leave it)[.!]*$/i.test(
+    text.trim(),
+  )
+}
+
+function correctionFragment(text: string) {
+  const trimmed = text.trim()
+  const patterns = [
+    /^(?:actually\s+)?(?:i\s+)?(?:meant|mean)\s+(.+)$/i,
+    /^(?:actually\s+)?(?:make it|change it to|move it to|do)\s+(.+)$/i,
+    /^(?:never mind|nevermind|scratch that|forget that),?\s+(?:schedule|book|add|make it|do it|try|for)?\s*(.+)$/i,
+    /^actually\s+(?!cancel\b)(.+)$/i,
+  ]
+
+  for (const pattern of patterns) {
+    const match = trimmed.match(pattern)
+    if (match?.[1]?.trim()) return match[1].trim()
+  }
+
+  return null
+}
+
+function pendingActionTitle(action: DemoPendingAction) {
+  if (action.kind === 'external_call_prep') return action.title
+  return action.options[0]?.title.replace(/\s*\(pending\)\s*$/i, '') || null
+}
+
+function correctedDemoScheduleText(text: string, action: DemoPendingAction) {
+  if (!['schedule', 'external_call_prep'].includes(action.kind)) return null
+  const fragment = correctionFragment(text)
+  const title = pendingActionTitle(action)
+  if (!fragment || !title) return null
+
+  let cleanedFragment = fragment
+    .replace(/^(?:schedule|book|add|set up)\s+/i, '')
+    .replace(/^(?:it|that)\s+/i, '')
+    .trim()
+
+  if (!cleanedFragment) return null
+
+  const calendarName = action.options[0]?.calendarName
+  if (calendarName && !/\bcalendar\b/i.test(cleanedFragment)) {
+    cleanedFragment += ` on ${calendarName} calendar`
+  }
+
+  return `schedule ${title} ${cleanedFragment}`
+}
+
+function pendingTitleToConfirmed(title: string) {
+  return title.replace(/\s*\(pending\)\s*$/i, '')
+}
+
+function latestPendingExternalHold(events: DemoEvent[]) {
+  return [...events]
+    .reverse()
+    .find((event) => /\(pending\)\s*$/i.test(event.title))
+}
+
 function detectLooseAgendaIntent(value: string): 'today' | 'tomorrow' | null {
   const lower = normalizeText(value)
   const asksWhat =
@@ -490,18 +549,36 @@ function scheduleReply(
 
   if (looksLikeExternalAppointment(rawText)) {
     const title = inferScheduleTitle(rawText)
-    const options = buildCallPrepOptions(intent.baseDate, title, intent.dateWindow)
+    let options = buildCallPrepOptions(intent.baseDate, title, intent.dateWindow)
+    let widenedFrom: string | null = null
+    if (!options.length && intent.dateWindow?.label === 'this week') {
+      const nextSearchDate = new Date(intent.dateWindow.end)
+      nextSearchDate.setDate(nextSearchDate.getDate() + 1)
+      options = buildCallPrepOptions(nextSearchDate, title, null)
+      widenedFrom = intent.dateWindow.label
+    }
+    if (!options.length) {
+      return appendMessage(state, {
+        role: 'manoa',
+        lines: [
+          `I could not find a good opening${intent.dateWindow?.label ? ` for ${intent.dateWindow.label}` : ''} for ${title}.`,
+          'Try a specific weekday.',
+        ],
+      })
+    }
     const note = `Call the office to confirm ${title}. Best times: ${options
       .map((option) => `${option.dayLabel} at ${option.timeLabel}`)
       .join(', ')}.`
     const message: DemoMessage = {
       role: 'manoa',
       lines: [
-        `I can't book ${title} with the office by text.`,
-        'Here are times I can hold as pending while you call:',
+        widenedFrom
+          ? `I did not find any remaining ${widenedFrom} openings for ${title}, so I checked next week.`
+          : `I can hold one of these while you call to book ${title}:`,
+        ...(widenedFrom ? ['I can hold one of these while you call:'] : []),
         ...optionLines(options),
-        "Reply 1, 2, or 3 and I'll add it as pending until the office confirms.",
-        `Call note: ${note}`,
+        'Reply 1, 2, or 3.',
+        'After the office books it, reply CONFIRMED. If they give a different time, text that time.',
       ],
       options,
     }
@@ -751,6 +828,28 @@ function cancelReply(
   }
 }
 
+function lookupReply(
+  state: DemoState,
+  rawText: string,
+  parsedIntent?: ParsedSmsIntent,
+): DemoState {
+  const intent = parsedIntent ?? parseSmsIntent(rawText)
+  if (intent.type !== 'lookup') return state
+
+  const target = findMatchingEvent(state.events, intent.query, null)
+  if (!target) {
+    return appendMessage(state, {
+      role: 'manoa',
+      lines: [`I couldn't find ${intent.query} on this demo calendar.`],
+    })
+  }
+
+  return appendMessage(state, {
+    role: 'manoa',
+    lines: [`${target.title} is ${shortDayLabel(new Date(target.start))} at ${timeLabel(target.start)} on ${target.calendar}.`],
+  })
+}
+
 function applyChoice(state: DemoState, choice: number): DemoState {
   const pendingAction = state.pendingAction
   if (!pendingAction) {
@@ -796,7 +895,9 @@ function applyChoice(state: DemoState, choice: number): DemoState {
           ? `Held ${picked.dayLabel} at ${picked.timeLabel} for your call about ${target.title}.`
           : `Held ${picked.dayLabel} at ${picked.timeLabel} as ${pendingAction.title} (pending).`,
         ...(pendingAction.officeNumber ? [`Office number: ${pendingAction.officeNumber}.`] : []),
-        `Call note: ${pendingAction.callNote}`,
+        target
+          ? `When the office confirms the new time, text something like "They moved it to Tuesday at 2pm."`
+          : 'After the office books it, reply CONFIRMED. If they give a different time, text that time.',
       ],
     }
 
@@ -879,6 +980,30 @@ export function applyDemoTextForIntent(
   if (!trimmed) return state
 
   const withUserMessage = appendMessage(state, { role: 'user', lines: [trimmed] })
+
+  if (state.pendingAction && isCancelPendingRequest(trimmed)) {
+    return appendMessage(
+      { ...withUserMessage, pendingAction: null },
+      { role: 'manoa', lines: ['Okay. I dropped that request.'] },
+    )
+  }
+
+  const correctedScheduleText = state.pendingAction
+    ? correctedDemoScheduleText(trimmed, state.pendingAction)
+    : null
+
+  if (correctedScheduleText) {
+    const correctedIntent = parseSmsIntent(correctedScheduleText)
+    return scheduleReply(
+      {
+        ...withUserMessage,
+        pendingAction: null,
+      },
+      correctedScheduleText,
+      correctedIntent,
+    )
+  }
+
   if (state.pendingAction?.kind === 'schedule' && state.pendingAction.options.length === 1) {
     if (isSingleScheduleConfirmation(trimmed)) {
       return applyChoice(withUserMessage, 1)
@@ -892,7 +1017,29 @@ export function applyDemoTextForIntent(
     }
   }
 
-  const looseAgenda = detectLooseAgendaIntent(trimmed)
+  if (!state.pendingAction && isSingleScheduleConfirmation(trimmed)) {
+    const pendingHold = latestPendingExternalHold(withUserMessage.events)
+    if (pendingHold) {
+      const title = pendingTitleToConfirmed(pendingHold.title)
+      const updatedEvents = withUserMessage.events.map((event) =>
+        event.id === pendingHold.id ? { ...event, title } : event,
+      )
+      return {
+        ...appendMessage(
+          { ...withUserMessage, events: updatedEvents },
+          {
+            role: 'manoa',
+            lines: [
+              `Great. I marked ${title} as confirmed for ${shortDayLabel(new Date(pendingHold.start))} at ${timeLabel(pendingHold.start)}.`,
+            ],
+          },
+        ),
+        events: updatedEvents,
+      }
+    }
+  }
+
+  const looseAgenda = intent.type === 'unknown' ? detectLooseAgendaIntent(trimmed) : null
   if (looseAgenda) {
     return appendMessage(
       { ...withUserMessage, pendingAction: null },
@@ -906,6 +1053,10 @@ export function applyDemoTextForIntent(
 
   if (intent.type === 'agenda') {
     return appendMessage({ ...withUserMessage, pendingAction: null }, agendaReply(withUserMessage.events, intent.day))
+  }
+
+  if (intent.type === 'lookup') {
+    return lookupReply({ ...withUserMessage, pendingAction: null }, trimmed, intent)
   }
 
   if (intent.type === 'schedule') {
