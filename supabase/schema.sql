@@ -106,6 +106,7 @@ create table if not exists public.pending_actions (
       'resolve_invitees',
       'reschedule',
       'select_reschedule_target',
+      'select_cancel_target',
       'invited_reschedule_action',
       'invited_reschedule_hold',
       'invited_cancel_action',

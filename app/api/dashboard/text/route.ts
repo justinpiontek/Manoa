@@ -7,7 +7,20 @@ import { createSupabaseRouteHandlerClient } from '@/src/lib/supabase/server'
 export const runtime = 'nodejs'
 
 function friendlyDashboardTextError(error: unknown) {
-  const message = error instanceof Error ? error.message : 'Something went wrong sending that text.'
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'object' && error !== null && 'message' in error
+        ? String((error as { message?: unknown }).message || 'Something went wrong sending that text.')
+        : 'Something went wrong sending that text.'
+
+  if (/people_contacts|schema cache/i.test(message)) {
+    return 'Contact memory is not set up in Supabase yet. Run the people_contacts SQL migration, then try again.'
+  }
+
+  if (/pending_actions_kind_check|violates check constraint/i.test(message)) {
+    return 'The calendar action worked, but Supabase needs the newest pending-actions migration so Manoa can remember the follow-up.'
+  }
 
   if (/apple calendar request failed:\s*403\b/i.test(message)) {
     return 'One of your Apple calendars is blocking access right now. I skipped the broken Apple calendar path for future reads, but if this keeps happening, reconnect Apple or remove the problem calendar from Manoa.'

@@ -253,15 +253,38 @@ async function storeRecentCreatedEvent({
   const event = createdEventSummaryFromOption(option, eventId, organizerEmail)
   if (!event) return
 
-  await storePendingAction({
-    profileId,
-    smsFrom,
-    kind: 'select_cancel_target',
-    payload: {
-      events: [event],
-      recentlyCreated: true,
-    },
-  })
+  try {
+    await storePendingAction({
+      profileId,
+      smsFrom,
+      kind: 'select_cancel_target',
+      payload: {
+        events: [event],
+        recentlyCreated: true,
+      },
+    })
+  } catch (error) {
+    console.error('Could not store recent created event pending action', error)
+  }
+}
+
+function providerCanSendInvites(provider: ScheduleOption['provider']) {
+  return provider !== 'apple'
+}
+
+function attendeesForCalendarEvent(option: ScheduleOption, attendees: Invitee[]) {
+  return providerCanSendInvites(option.provider) ? attendees : []
+}
+
+function inviteOutcomeLine(option: ScheduleOption, attendees: Invitee[]) {
+  if (!attendees.length) return ''
+
+  const summary = inviteeSummary(attendees)
+  if (providerCanSendInvites(option.provider)) {
+    return `I invited ${summary}.`
+  }
+
+  return `${calendarProviderName(option.provider)} Calendar does not send invite emails through Manoa yet, so I booked it on your calendar and saved ${summary} for next time.`
 }
 
 function exactAvailabilityReply({
@@ -2104,9 +2127,10 @@ async function handleResolveInviteesReply({
       lower,
     )
   ) {
+    const eventAttendees = attendeesForCalendarEvent(option, existingInvitees)
     const created = await createCalendarEvent(profile.id, {
       ...option,
-      attendees: existingInvitees,
+      attendees: eventAttendees,
     })
     await maybeQueueReminderForOption({
       profile,
@@ -2119,13 +2143,13 @@ async function handleResolveInviteesReply({
     await storeRecentCreatedEvent({
       profileId: profile.id,
       smsFrom: from,
-      option: { ...option, attendees: existingInvitees },
+      option: { ...option, attendees: eventAttendees },
       eventId: created.id || null,
       organizerEmail: profile.email,
     })
 
     if (existingInvitees.length) {
-      return `${bookingText(option)}\nI invited ${inviteeSummary(existingInvitees)}.\nI did not invite ${unresolvedInviteeSummary(unresolvedNames)} yet.`
+      return `${bookingText(option)}\n${inviteOutcomeLine(option, existingInvitees)}\nI did not invite ${unresolvedInviteeSummary(unresolvedNames)} yet.`
     }
 
     return `${bookingText(option)}\nI did not invite ${unresolvedInviteeSummary(unresolvedNames)} because I still need their email.`
@@ -2173,9 +2197,10 @@ async function handleResolveInviteesReply({
     } for ${unresolvedInviteeSummary(resolution.unresolvedNames)}.`
   }
 
+  const eventAttendees = attendeesForCalendarEvent(option, mergedInvitees)
   const created = await createCalendarEvent(profile.id, {
     ...option,
-    attendees: mergedInvitees,
+    attendees: eventAttendees,
   })
   await maybeQueueReminderForOption({
     profile,
@@ -2188,12 +2213,12 @@ async function handleResolveInviteesReply({
   await storeRecentCreatedEvent({
     profileId: profile.id,
     smsFrom: from,
-    option: { ...option, attendees: mergedInvitees },
+    option: { ...option, attendees: eventAttendees },
     eventId: created.id || null,
     organizerEmail: profile.email,
   })
 
-  return `${bookingText(option)}\nI invited ${inviteeSummary(mergedInvitees)}.`
+  return `${bookingText(option)}\n${inviteOutcomeLine(option, mergedInvitees)}`
 }
 
 async function storeScheduleOptionsPending({
@@ -2257,11 +2282,13 @@ function scheduleOptionsReply({
 async function handleChoice({
   profile,
   smsFrom,
+  body = '',
   choice,
   pending,
 }: {
   profile: SmsProfile
   smsFrom: string
+  body?: string
   choice: number
   pending: PendingAction
 }) {
@@ -2344,6 +2371,67 @@ async function handleChoice({
     const unresolvedInvitees = pending.payload.unresolvedInvitees || []
 
     if (unresolvedInvitees.length) {
+      const resolution = resolveInviteeFollowUp(body, unresolvedInvitees)
+      if (resolution.resolved.length) {
+        for (const invitee of resolution.resolved) {
+          if (!invitee.displayName) continue
+          await saveOrUpdatePersonContact({
+            profileId: profile.id,
+            label: invitee.displayName,
+            email: invitee.email,
+            aliases: buildPersonAliases([invitee.displayName, invitee.email]),
+          })
+        }
+
+        const mergedInvitees = [...attendees]
+        for (const invitee of resolution.resolved) {
+          if (mergedInvitees.some((item) => item.email.toLowerCase() === invitee.email.toLowerCase())) {
+            continue
+          }
+          mergedInvitees.push(invitee)
+        }
+
+        if (resolution.unresolvedNames.length) {
+          await storePendingAction({
+            profileId: profile.id,
+            smsFrom,
+            kind: 'resolve_invitees',
+            payload: {
+              selectedOption: option,
+              attendees: mergedInvitees,
+              unresolvedInvitees: resolution.unresolvedNames,
+            },
+          })
+
+          return `Got ${inviteeSummary(resolution.resolved)}.\nI still need email${
+            resolution.unresolvedNames.length > 1 ? 's' : ''
+          } for ${unresolvedInviteeSummary(resolution.unresolvedNames)}.`
+        }
+
+        const eventAttendees = attendeesForCalendarEvent(option, mergedInvitees)
+        const created = await createCalendarEvent(profile.id, {
+          ...option,
+          attendees: eventAttendees,
+        })
+        await maybeQueueReminderForOption({
+          profile,
+          option,
+          calendarEventId: created.id || null,
+          calendarId: option.calendarId,
+          title: option.title,
+        })
+        await clearPendingAction(pending.id)
+        await storeRecentCreatedEvent({
+          profileId: profile.id,
+          smsFrom,
+          option: { ...option, attendees: eventAttendees },
+          eventId: created.id || null,
+          organizerEmail: profile.email,
+        })
+
+        return `${bookingText(option)}\n${inviteOutcomeLine(option, mergedInvitees)}\nI'll remind you before it starts.`
+      }
+
       await storePendingAction({
         profileId: profile.id,
         smsFrom,
@@ -2360,9 +2448,10 @@ async function handleChoice({
       } for ${unresolvedInviteeSummary(unresolvedInvitees)}.\nReply like "Sam sam@company.com" or say "book it without invites."`
     }
 
+    const eventAttendees = attendeesForCalendarEvent(option, attendees)
     const created = await createCalendarEvent(profile.id, {
       ...option,
-      attendees,
+      attendees: eventAttendees,
     })
     await maybeQueueReminderForOption({
       profile,
@@ -2375,13 +2464,13 @@ async function handleChoice({
     await storeRecentCreatedEvent({
       profileId: profile.id,
       smsFrom,
-      option: { ...option, attendees },
+      option: { ...option, attendees: eventAttendees },
       eventId: created.id || null,
       organizerEmail: profile.email,
     })
 
     if (attendees.length) {
-      return `${bookingText(option)}\nI invited ${inviteeSummary(attendees)} and I'll remind you before it starts.`
+      return `${bookingText(option)}\n${inviteOutcomeLine(option, attendees)}\nI'll remind you before it starts.`
     }
 
     return `${bookingText(option)}\nI'll remind you before it starts.`
@@ -3307,6 +3396,7 @@ export async function handleIncomingSms({
       const reply = await handleChoice({
         profile,
         smsFrom: from,
+        body,
         choice: 1,
         pending: activePending,
       })
@@ -3332,6 +3422,7 @@ export async function handleIncomingSms({
     const reply = await handleChoice({
       profile,
       smsFrom: from,
+      body,
       choice: intent.type === 'choice' ? intent.choice : (pendingChoice as number),
       pending: activePending,
     })

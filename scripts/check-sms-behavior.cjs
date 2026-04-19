@@ -138,6 +138,16 @@ const inviteFollowUp = resolveInviteeFollowUp('Stacey stacey@example.com', ['Sta
 assert.deepEqual(inviteFollowUp.resolved, [{ displayName: 'Stacey', email: 'stacey@example.com' }])
 assert.deepEqual(inviteFollowUp.unresolvedNames, [])
 
+const bareInviteFollowUp = resolveInviteeFollowUp('sw312@mac.com', ['Stacey'])
+assert.deepEqual(bareInviteFollowUp.resolved, [{ displayName: 'Stacey', email: 'sw312@mac.com' }])
+assert.deepEqual(bareInviteFollowUp.unresolvedNames, [])
+
+const combinedChoiceInviteFollowUp = resolveInviteeFollowUp('2, email is sw312@mac.com', ['Stacey'])
+assert.deepEqual(combinedChoiceInviteFollowUp.resolved, [
+  { displayName: 'Stacey', email: 'sw312@mac.com' },
+])
+assert.deepEqual(combinedChoiceInviteFollowUp.unresolvedNames, [])
+
 const authorityBaseEvent = {
   id: 'event',
   title: 'Planning meeting',
