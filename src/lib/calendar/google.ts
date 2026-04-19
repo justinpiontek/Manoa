@@ -2395,8 +2395,11 @@ export async function findScheduleOptions({
       ]
     : [
         setTime(baseDate, { hour: 9, minute: 0 }, resolvedTimeZone),
+        setTime(baseDate, { hour: 10, minute: 0 }, resolvedTimeZone),
         setTime(baseDate, { hour: 11, minute: 0 }, resolvedTimeZone),
+        setTime(baseDate, { hour: 13, minute: 0 }, resolvedTimeZone),
         setTime(baseDate, { hour: 14, minute: 30 }, resolvedTimeZone),
+        setTime(baseDate, { hour: 16, minute: 0 }, resolvedTimeZone),
       ]
   const futureCandidateStarts = candidateStarts.filter((start) => {
     return start.getTime() > Date.now() + 5 * 60_000

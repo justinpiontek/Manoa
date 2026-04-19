@@ -232,7 +232,7 @@ export function resolvePendingChoice(text: string, pending: PendingLike | null, 
     return resolveOptionChoice(text, pending.payload.options || [], timeZone)
   }
 
-  if (pending.kind === 'select_reschedule_target') {
+  if (pending.kind === 'select_reschedule_target' || pending.kind === 'select_cancel_target') {
     return resolveEventChoice(text, pending.payload.events || [], timeZone)
   }
 

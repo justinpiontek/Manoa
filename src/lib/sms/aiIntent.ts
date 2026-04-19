@@ -2,7 +2,7 @@ import type { RecurrenceSpec } from '../calendar/recurrence'
 import { defaultTimezone } from '../env'
 import { dateFromTimeZoneParts, nextDateForWeekday, startOfDay } from '../calendar/dates'
 import type { ParsedSmsIntent } from './parser'
-import { parseExplicitDate, parseScheduleLocation } from './parser'
+import { parseDateWindow, parseExplicitDate, parseScheduleLocation } from './parser'
 
 type AiIntentPayload = {
   intent_type: 'choice' | 'agenda' | 'schedule' | 'reschedule' | 'cancel' | 'unknown'
@@ -57,6 +57,10 @@ function parseExactTime(value: string | null) {
     hour: Number(match[1]),
     minute: Number(match[2]),
   }
+}
+
+function sameDay(left: Date, right: Date, timeZone: string) {
+  return left.toLocaleDateString('en-CA', { timeZone }) === right.toLocaleDateString('en-CA', { timeZone })
 }
 
 function parseBaseDate(
@@ -136,7 +140,16 @@ function toParsedSmsIntent(payload: AiIntentPayload, timeZone: string, originalT
       return payload.choice ? { type: 'choice', choice: payload.choice } : { type: 'unknown' }
 
     case 'agenda':
-      return payload.day ? { type: 'agenda', day: payload.day } : { type: 'unknown' }
+      const agendaWindow = parseDateWindow(originalText, timeZone)
+      if (payload.day || agendaWindow) {
+        return {
+          type: 'agenda',
+          day: payload.day || (agendaWindow && sameDay(agendaWindow.start, startOfDay(1, timeZone), timeZone) ? 'tomorrow' : 'today'),
+          dateWindow: agendaWindow,
+          label: agendaWindow?.label,
+        }
+      }
+      return { type: 'unknown' }
 
     case 'schedule':
       const locationContext = parseScheduleLocation(originalText, timeZone)
@@ -144,6 +157,7 @@ function toParsedSmsIntent(payload: AiIntentPayload, timeZone: string, originalT
         type: 'schedule',
         title: payload.title?.trim() || 'meeting',
         baseDate: parseBaseDate(payload.date_ymd, payload.day, payload.weekday, timeZone, originalText),
+        dateWindow: parseDateWindow(originalText, timeZone),
         exactTime: parseExactTime(payload.exact_time_24h),
         calendarHint: payload.calendar_hint || 'Calendar',
         durationMinutes: payload.duration_minutes,
@@ -156,6 +170,7 @@ function toParsedSmsIntent(payload: AiIntentPayload, timeZone: string, originalT
         type: 'reschedule',
         query: payload.query?.trim() || payload.title?.trim() || 'meeting',
         baseDate: parseBaseDate(payload.date_ymd, payload.day, payload.weekday, timeZone, originalText),
+        dateWindow: parseDateWindow(originalText, timeZone),
         exactTime: parseExactTime(payload.exact_time_24h),
         calendarHint: payload.calendar_hint || 'Calendar',
       }

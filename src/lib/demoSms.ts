@@ -1,5 +1,5 @@
 import { addMinutes, setTime, startOfDay } from './calendar/dates'
-import { parseScheduleLocation, parseSmsIntent, type ParsedSmsIntent } from './sms/parser'
+import { parseScheduleLocation, parseSmsIntent, type DateWindow, type ParsedSmsIntent } from './sms/parser'
 
 export type DemoMessage = {
   role: 'user' | 'manoa'
@@ -429,7 +429,7 @@ function buildScheduleOptions(rawText: string, baseDate: Date, exactTime: { hour
   })
 }
 
-function buildCallPrepOptions(baseDate: Date, appointmentTitle: string) {
+function buildCallPrepOptions(baseDate: Date, appointmentTitle: string, dateWindow?: DateWindow | null) {
   const templates = [
     { dayOffset: 0, hour: 11, minute: 0 },
     { dayOffset: 1, hour: 12, minute: 30 },
@@ -441,23 +441,31 @@ function buildCallPrepOptions(baseDate: Date, appointmentTitle: string) {
   ]
   const allowedWeekdays = externalAvailabilityWeekdays(appointmentTitle)
 
-  return templates
-    .map((template) => {
-      const date = new Date(baseDate)
-      date.setDate(date.getDate() + template.dayOffset)
-      const start = setTime(date, { hour: template.hour, minute: template.minute })
+  const options: DemoOption[] = []
+  const totalDays = dateWindow
+    ? Math.max(1, Math.ceil((dateWindow.end.getTime() - baseDate.getTime()) / 86_400_000) + 1)
+    : 7
 
-      return {
-        title: 'Call office to reschedule',
-        calendarName: 'Personal',
-        dayLabel: shortDayLabel(start),
-        timeLabel: timeLabel(start.toISOString()),
-        start: start.toISOString(),
-      }
-    })
-    .filter((option) => new Date(option.start).getTime() > Date.now() + 5 * 60_000)
-    .filter((option) => allowedWeekdays.has(new Date(option.start).getDay()))
-    .slice(0, 3)
+  for (let dayOffset = 0; dayOffset < totalDays && options.length < 3; dayOffset += 1) {
+    const template = templates[dayOffset % templates.length]
+    const date = new Date(baseDate)
+    date.setDate(date.getDate() + dayOffset)
+    const start = setTime(date, { hour: template.hour, minute: template.minute })
+    const option = {
+      title: `${appointmentTitle} (pending)`,
+      calendarName: 'Personal',
+      dayLabel: shortDayLabel(start),
+      timeLabel: timeLabel(start.toISOString()),
+      start: start.toISOString(),
+    }
+
+    if (new Date(option.start).getTime() <= Date.now() + 5 * 60_000) continue
+    if (dateWindow && (new Date(option.start) < dateWindow.start || new Date(option.start) > dateWindow.end)) continue
+    if (!allowedWeekdays.has(new Date(option.start).getDay())) continue
+    options.push(option)
+  }
+
+  return options.slice(0, 3)
 }
 
 function sameTimeConflict(event: DemoEvent, start: Date) {
@@ -482,17 +490,17 @@ function scheduleReply(
 
   if (looksLikeExternalAppointment(rawText)) {
     const title = inferScheduleTitle(rawText)
-    const options = buildCallPrepOptions(intent.baseDate, title)
+    const options = buildCallPrepOptions(intent.baseDate, title, intent.dateWindow)
     const note = `Call the office to confirm ${title}. Best times: ${options
       .map((option) => `${option.dayLabel} at ${option.timeLabel}`)
       .join(', ')}.`
     const message: DemoMessage = {
       role: 'manoa',
       lines: [
-        `I can't book ${title} with the office by text, but I can get you ready to call.`,
-        'Here are your next openings:',
+        `I can't book ${title} with the office by text.`,
+        'Here are times I can hold as pending while you call:',
         ...optionLines(options),
-        "Reply 1, 2, or 3 and I'll hold that time while you confirm with the office.",
+        "Reply 1, 2, or 3 and I'll add it as pending until the office confirms.",
         `Call note: ${note}`,
       ],
       options,
@@ -776,7 +784,7 @@ function applyChoice(state: DemoState, choice: number): DemoState {
       : null
     const heldEvent: DemoEvent = {
       id: `hold-${picked.start}`,
-      title: target ? `Call ${target.title} to reschedule` : pendingAction.title,
+      title: target ? `Call ${target.title} to reschedule` : `${pendingAction.title} (pending)`,
       calendar: picked.calendarName,
       start: picked.start,
       kind: 'owned',
@@ -784,7 +792,9 @@ function applyChoice(state: DemoState, choice: number): DemoState {
     const message: DemoMessage = {
       role: 'manoa',
       lines: [
-        `Held ${picked.dayLabel} at ${picked.timeLabel} for your call about ${target?.title || pendingAction.title}.`,
+        target
+          ? `Held ${picked.dayLabel} at ${picked.timeLabel} for your call about ${target.title}.`
+          : `Held ${picked.dayLabel} at ${picked.timeLabel} as ${pendingAction.title} (pending).`,
         ...(pendingAction.officeNumber ? [`Office number: ${pendingAction.officeNumber}.`] : []),
         `Call note: ${pendingAction.callNote}`,
       ],

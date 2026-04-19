@@ -1,13 +1,26 @@
-import { dateFromTimeZoneParts, dateTimePartsInTimeZone, nextDateForWeekday, startOfDay } from '../calendar/dates'
+import {
+  addDays,
+  dateFromTimeZoneParts,
+  dateTimePartsInTimeZone,
+  nextDateForWeekday,
+  startOfDay,
+} from '../calendar/dates'
 import type { RecurrenceSpec } from '../calendar/recurrence'
+
+export type DateWindow = {
+  start: Date
+  end: Date
+  label: string
+}
 
 export type ParsedSmsIntent =
   | { type: 'choice'; choice: number }
-  | { type: 'agenda'; day: 'today' | 'tomorrow' }
+  | { type: 'agenda'; day: 'today' | 'tomorrow'; dateWindow?: DateWindow | null; label?: string }
   | {
       type: 'schedule'
       title: string
       baseDate: Date
+      dateWindow: DateWindow | null
       exactTime: { hour: number; minute: number } | null
       calendarHint: string
       durationMinutes: number | null
@@ -18,6 +31,7 @@ export type ParsedSmsIntent =
       type: 'reschedule'
       query: string
       baseDate: Date
+      dateWindow: DateWindow | null
       exactTime: { hour: number; minute: number } | null
       calendarHint: string
     }
@@ -25,14 +39,26 @@ export type ParsedSmsIntent =
   | { type: 'unknown' }
 
 const weekdays: Record<string, number> = {
+  sun: 0,
   sunday: 0,
+  mon: 1,
   monday: 1,
+  tue: 2,
+  tues: 2,
   tuesday: 2,
+  wed: 3,
   wednesday: 3,
+  thu: 4,
+  thur: 4,
+  thurs: 4,
   thursday: 4,
+  fri: 5,
   friday: 5,
+  sat: 6,
   saturday: 6,
 }
+const weekdayNameSource =
+  'sun(?:day)?|mon(?:day)?|tue(?:s|sday)?|wed(?:nesday)?|thu(?:r|rs|rsday|rday)?|fri(?:day)?|sat(?:urday)?'
 
 const schedulingWords = [
   'schedule',
@@ -325,6 +351,231 @@ export function parseExplicitDate(text: string, timeZone?: string) {
   return null
 }
 
+function endOfSpecificDay(date: Date, timeZone?: string) {
+  const parts = dateTimePartsInTimeZone(date, timeZone)
+  return dateFromTimeZoneParts(
+    {
+      year: parts.year,
+      month: parts.month,
+      day: parts.day,
+      hour: 23,
+      minute: 59,
+      second: 59,
+    },
+    timeZone,
+  )
+}
+
+function startOfMonth(year: number, month: number, timeZone?: string) {
+  return dateFromTimeZoneParts({ year, month, day: 1, hour: 0, minute: 0, second: 0 }, timeZone)
+}
+
+function endOfMonthDate(year: number, month: number, timeZone?: string) {
+  const firstOfNextMonth =
+    month === 12
+      ? startOfMonth(year + 1, 1, timeZone)
+      : startOfMonth(year, month + 1, timeZone)
+  return new Date(firstOfNextMonth.getTime() - 1)
+}
+
+function monthWindow(month: number, part: string | null, timeZone?: string): DateWindow {
+  const today = startOfDay(0, timeZone)
+  const todayParts = dateTimePartsInTimeZone(today, timeZone)
+  let year = todayParts.year
+  const fullStart = startOfMonth(year, month, timeZone)
+  const fullEnd = endOfMonthDate(year, month, timeZone)
+
+  if (fullEnd < today) {
+    year += 1
+  }
+
+  const start = startOfMonth(year, month, timeZone)
+  const end = endOfMonthDate(year, month, timeZone)
+  const monthName = start.toLocaleDateString('en-US', { month: 'long', timeZone })
+
+  if (part === 'early') {
+    return {
+      start,
+      end: endOfSpecificDay(dateFromTimeZoneParts({ year, month, day: 10, hour: 0, minute: 0, second: 0 }, timeZone), timeZone),
+      label: `early ${monthName}`,
+    }
+  }
+
+  if (part === 'mid' || part === 'middle') {
+    return {
+      start: dateFromTimeZoneParts({ year, month, day: 11, hour: 0, minute: 0, second: 0 }, timeZone),
+      end: endOfSpecificDay(dateFromTimeZoneParts({ year, month, day: 20, hour: 0, minute: 0, second: 0 }, timeZone), timeZone),
+      label: `mid ${monthName}`,
+    }
+  }
+
+  if (part === 'late' || part === 'end' || part === 'end of') {
+    return {
+      start: dateFromTimeZoneParts({ year, month, day: 21, hour: 0, minute: 0, second: 0 }, timeZone),
+      end,
+      label: `late ${monthName}`,
+    }
+  }
+
+  return { start, end, label: monthName }
+}
+
+function daysUntilWeekEnd(timeZone?: string) {
+  const today = startOfDay(0, timeZone)
+  const weekday = dateTimePartsInTimeZone(today, timeZone).weekday
+  return Math.max(0, 6 - weekday)
+}
+
+function nextWeekStart(timeZone?: string) {
+  const today = startOfDay(0, timeZone)
+  const weekday = dateTimePartsInTimeZone(today, timeZone).weekday
+  const daysUntilNextMonday = ((8 - weekday) % 7) || 7
+  return addDays(today, daysUntilNextMonday, timeZone)
+}
+
+function weekdayFromAlias(value: string | undefined) {
+  if (!value) return null
+  const normalized = value.toLowerCase().replace(/'s$/, '').replace(/s$/, '')
+  return weekdays[value.toLowerCase()] ?? weekdays[normalized] ?? null
+}
+
+export function parseDateWindow(text: string, timeZone?: string): DateWindow | null {
+  const lower = text.toLowerCase()
+  const explicitDate = parseExplicitDate(text, timeZone)
+  if (explicitDate) {
+    return {
+      start: explicitDate,
+      end: endOfSpecificDay(explicitDate, timeZone),
+      label: formatWindowLabel(explicitDate, explicitDate, timeZone),
+    }
+  }
+
+  const inDays = lower.match(/\bin\s+(\d+)\s+days?\b/)
+  if (inDays) {
+    const start = startOfDay(Number(inDays[1]), timeZone)
+    return { start, end: endOfSpecificDay(start, timeZone), label: formatWindowLabel(start, start, timeZone) }
+  }
+
+  const inWeeks = lower.match(/\b(?:in\s+)?(\d+)\s+weeks?\s+from\s+now\b|\bin\s+(\d+)\s+weeks?\b/)
+  const weekCount = Number(inWeeks?.[1] || inWeeks?.[2] || 0)
+  if (weekCount) {
+    const start = startOfDay(weekCount * 7, timeZone)
+    return { start, end: endOfSpecificDay(start, timeZone), label: formatWindowLabel(start, start, timeZone) }
+  }
+
+  const monthMatch = lower.match(
+    new RegExp(`\\b(?:(early|mid|middle|late|end(?: of)?)\\s+)?(?:in\\s+|during\\s+|sometime\\s+in\\s+)?(${monthNameSource})\\b`, 'i'),
+  )
+  if (monthMatch && !/\b(month|months)\b/.test(monthMatch[2])) {
+    const month = monthNames[monthMatch[2].replace(/\.$/, '')]
+    if (month) return monthWindow(month, monthMatch[1]?.trim() || null, timeZone)
+  }
+
+  if (/\bnext month\b/.test(lower)) {
+    const todayParts = dateTimePartsInTimeZone(startOfDay(0, timeZone), timeZone)
+    const nextMonth = todayParts.month === 12 ? 1 : todayParts.month + 1
+    const year = todayParts.month === 12 ? todayParts.year + 1 : todayParts.year
+    const start = startOfMonth(year, nextMonth, timeZone)
+    return {
+      start,
+      end: endOfMonthDate(year, nextMonth, timeZone),
+      label: start.toLocaleDateString('en-US', { month: 'long', timeZone }),
+    }
+  }
+
+  if (/\bend of (?:the )?(?:current )?month\b|\bend of month\b/.test(lower)) {
+    const todayParts = dateTimePartsInTimeZone(startOfDay(0, timeZone), timeZone)
+    const end = endOfMonthDate(todayParts.year, todayParts.month, timeZone)
+    const endParts = dateTimePartsInTimeZone(end, timeZone)
+    const startDay = Math.max(todayParts.day, endParts.day - 6)
+    const start = dateFromTimeZoneParts(
+      { year: todayParts.year, month: todayParts.month, day: startDay, hour: 0, minute: 0, second: 0 },
+      timeZone,
+    )
+    return { start, end, label: 'end of the month' }
+  }
+
+  const nextWeekWithDay =
+    lower.match(new RegExp(`\\bnext week\\s+(?:on\\s+)?(${weekdayNameSource})'?s?\\b`, 'i')) ||
+    lower.match(new RegExp(`\\b(${weekdayNameSource})'?s?\\s+next week\\b`, 'i'))
+  const nextWeekDay = weekdayFromAlias(nextWeekWithDay?.[1])
+  if (nextWeekDay !== null) {
+    const weekStart = nextWeekStart(timeZone)
+    const offset = nextWeekDay === 0 ? 6 : nextWeekDay - 1
+    const start = addDays(weekStart, offset, timeZone)
+    return { start, end: endOfSpecificDay(start, timeZone), label: formatWindowLabel(start, start, timeZone) }
+  }
+
+  if (/\bnext week\b/.test(lower)) {
+    const start = nextWeekStart(timeZone)
+    let end = addDays(start, 6, timeZone)
+    if (/\bearly next week\b/.test(lower)) end = addDays(start, 2, timeZone)
+    if (/\bmid next week\b|\bmiddle of next week\b/.test(lower)) {
+      const midStart = addDays(start, 2, timeZone)
+      return { start: midStart, end: endOfSpecificDay(addDays(start, 3, timeZone), timeZone), label: 'mid next week' }
+    }
+    if (/\bend of next week\b|\blate next week\b/.test(lower)) {
+      const lateStart = addDays(start, 4, timeZone)
+      return { start: lateStart, end: endOfSpecificDay(end, timeZone), label: 'late next week' }
+    }
+    return { start, end: endOfSpecificDay(end, timeZone), label: 'next week' }
+  }
+
+  if (/\bthis weekend\b/.test(lower)) {
+    const today = startOfDay(0, timeZone)
+    const weekday = dateTimePartsInTimeZone(today, timeZone).weekday
+    const saturday = addDays(today, (6 - weekday + 7) % 7, timeZone)
+    const sunday = addDays(saturday, 1, timeZone)
+    return { start: saturday, end: endOfSpecificDay(sunday, timeZone), label: 'this weekend' }
+  }
+
+  if (/\bthis week\b/.test(lower)) {
+    const start = startOfDay(0, timeZone)
+    const end = addDays(start, daysUntilWeekEnd(timeZone), timeZone)
+    return { start, end: endOfSpecificDay(end, timeZone), label: 'this week' }
+  }
+
+  if (/\btoday\b|\bthis (morning|afternoon|evening)\b|\btonight\b/.test(lower)) {
+    const start = startOfDay(0, timeZone)
+    return { start, end: endOfSpecificDay(start, timeZone), label: 'today' }
+  }
+
+  if (/\btomorrow'?s?\b|\btmrw\b|\btomororws?\b/.test(lower)) {
+    const start = startOfDay(1, timeZone)
+    return { start, end: endOfSpecificDay(start, timeZone), label: 'tomorrow' }
+  }
+
+  const dayMatch = lower.match(new RegExp(`\\b(?:next\\s+)?(${weekdayNameSource})'?s?\\b`, 'i'))
+  const weekday = weekdayFromAlias(dayMatch?.[1])
+  if (weekday !== null) {
+    const start = nextDateForWeekday(weekday, timeZone)
+    return { start, end: endOfSpecificDay(start, timeZone), label: formatWindowLabel(start, start, timeZone) }
+  }
+
+  return null
+}
+
+function formatWindowLabel(start: Date, end: Date, timeZone?: string) {
+  if (start.toDateString() === end.toDateString()) {
+    return start.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      timeZone,
+    })
+  }
+
+  return `${start.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    timeZone,
+  })}-${end.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    timeZone,
+  })}`
+}
+
 function findLocationStop(rest: string) {
   const stopPatterns = [
     /\s+(?:today|tomorrow|tmrw|tomororws?)\b/i,
@@ -395,20 +646,22 @@ export function parseScheduleLocation(text: string, timeZone?: string) {
 }
 
 function parseBaseDate(text: string, timeZone?: string) {
-  const lower = text.toLowerCase()
-  const explicitDate = parseExplicitDate(text, timeZone)
-  if (explicitDate) return explicitDate
+  return parseDateWindow(text, timeZone)?.start || startOfDay(1, timeZone)
+}
 
-  if (/\btoday\b|\bthis (morning|afternoon|evening)\b|\btonight\b/.test(lower)) {
-    return startOfDay(0, timeZone)
-  }
-  if (/\btomorrow'?s?\b|\btmrw\b|\btomororws?\b/.test(lower)) return startOfDay(1, timeZone)
+function agendaDayFromWindow(window: DateWindow | null, timeZone?: string): 'today' | 'tomorrow' {
+  if (!window) return 'today'
+  return sameDay(window.start, startOfDay(1, timeZone), timeZone) ? 'tomorrow' : 'today'
+}
 
-  const dayMatch = lower.match(/\b(?:next\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/)
-  if (dayMatch) return nextDateForWeekday(weekdays[dayMatch[1]], timeZone)
-  if (/\bthis week\b/.test(lower)) return startOfDay(0, timeZone)
-
-  return startOfDay(1, timeZone)
+function sameDay(left: Date, right: Date, timeZone?: string) {
+  const leftParts = dateTimePartsInTimeZone(left, timeZone)
+  const rightParts = dateTimePartsInTimeZone(right, timeZone)
+  return (
+    leftParts.year === rightParts.year &&
+    leftParts.month === rightParts.month &&
+    leftParts.day === rightParts.day
+  )
 }
 
 function parseCalendarHint(text: string) {
@@ -453,6 +706,7 @@ function stripSchedulingNoise(text: string) {
 export function parseSmsIntent(body: string, timeZone?: string): ParsedSmsIntent {
   const text = body.trim()
   const lower = text.toLowerCase()
+  const dateWindow = parseDateWindow(text, timeZone)
 
   const choice = parseChoiceIntent(text)
   if (choice) return { type: 'choice', choice }
@@ -460,7 +714,7 @@ export function parseSmsIntent(body: string, timeZone?: string): ParsedSmsIntent
   const isTomorrowAgenda =
     !/^(schedule|book|add|set up)\b/.test(lower) && isAgendaRequest(lower, 'tomorrow')
 
-  if (isTomorrowAgenda) return { type: 'agenda', day: 'tomorrow' }
+  if (isTomorrowAgenda) return { type: 'agenda', day: 'tomorrow', dateWindow, label: dateWindow?.label }
 
   const isTodayAgenda =
     lower === 'today' ||
@@ -472,7 +726,25 @@ export function parseSmsIntent(body: string, timeZone?: string): ParsedSmsIntent
         lower.includes('what am i doing today') ||
         lower.includes('today look like')))
 
-  if (isTodayAgenda) return { type: 'agenda', day: 'today' }
+  const isBroadAgenda =
+    !/^(schedule|book|add|set up)\b/.test(lower) &&
+    (lower.includes('agenda') ||
+      lower.includes('schedule') ||
+      lower.includes("what's on") ||
+      lower.includes('what is on') ||
+      lower.includes('what do i have') ||
+      lower.includes('calendar') ||
+      lower.includes('coming up')) &&
+    Boolean(dateWindow || /\bcoming up\b|\bupcoming\b/.test(lower))
+
+  if (isTodayAgenda || isBroadAgenda) {
+    return {
+      type: 'agenda',
+      day: isTomorrowAgenda ? 'tomorrow' : agendaDayFromWindow(dateWindow, timeZone),
+      dateWindow,
+      label: dateWindow?.label || (/\bcoming up\b|\bupcoming\b/.test(lower) ? 'coming up' : undefined),
+    }
+  }
 
   if (cancelPattern.test(lower)) {
     return { type: 'cancel', query: stripSchedulingNoise(text) }
@@ -483,6 +755,7 @@ export function parseSmsIntent(body: string, timeZone?: string): ParsedSmsIntent
       type: 'reschedule',
       query: stripSchedulingNoise(text),
       baseDate: parseBaseDate(text, timeZone),
+      dateWindow,
       exactTime: parseSmsTime(text) || parseLooseTimeHint(text),
       calendarHint: parseCalendarHint(text),
     }
@@ -504,6 +777,7 @@ export function parseSmsIntent(body: string, timeZone?: string): ParsedSmsIntent
       type: 'schedule',
       title: stripSchedulingNoise(locationContext.textWithoutLocation),
       baseDate: parseBaseDate(text, timeZone),
+      dateWindow,
       exactTime: parseSmsTime(text) || parseLooseTimeHint(text),
       calendarHint: parseCalendarHint(text),
       durationMinutes: parseDuration(text),
