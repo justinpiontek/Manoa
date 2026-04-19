@@ -1978,10 +1978,9 @@ export async function resolveCalendarPlacement(
   calendarHint?: string,
 ): Promise<CalendarPlacementResolution> {
   const connections = visibleConfiguredCalendars(await getCalendarConnections(profileId))
-  const writableConnections = connections.filter((connection) => connection.allow_new_events)
-  const bookingConnections = writableConnections.length
-    ? writableConnections
-    : connections.filter((connection) => canWriteToCalendar(connection.access_role))
+  const bookingConnections = connections.filter((connection) => {
+    return connection.allow_new_events && canWriteToCalendar(connection.access_role)
+  })
 
   const bookingCalendars = bookingConnections.map(toPlacementOption)
   const normalizedHint = normalizeCalendarText(calendarHint || '')
@@ -2411,10 +2410,9 @@ export async function findScheduleOptions({
   const connections = visibleConfiguredCalendars(await getCalendarConnections(profileId))
   if (!connections.length) return []
 
-  const writableConnections = connections.filter((connection) => connection.allow_new_events)
-  const bookingConnections = writableConnections.length
-    ? writableConnections
-    : connections.filter((connection) => canWriteToCalendar(connection.access_role))
+  const bookingConnections = connections.filter((connection) => {
+    return connection.allow_new_events && canWriteToCalendar(connection.access_role)
+  })
 
   const targetConnection = chooseTargetConnection({
     connections: bookingConnections,

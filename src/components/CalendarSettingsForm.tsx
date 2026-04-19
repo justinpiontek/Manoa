@@ -48,6 +48,8 @@ export default function CalendarSettingsForm({
     >
       <input type="hidden" name="profile_id" value={profileId} />
       <input type="hidden" name="connection_id" value={connectionId} />
+      <input type="hidden" name="include_in_conflicts" value="false" />
+      <input type="hidden" name="allow_new_events" value="false" />
 
       <div className="calendar-setting-head">
         <div>
@@ -66,6 +68,7 @@ export default function CalendarSettingsForm({
         <input
           type="checkbox"
           name="include_in_conflicts"
+          value="on"
           defaultChecked={includeInConflicts}
           disabled={isPending}
         />
@@ -76,6 +79,7 @@ export default function CalendarSettingsForm({
         <input
           type="checkbox"
           name="allow_new_events"
+          value="on"
           defaultChecked={allowNewEvents}
           disabled={!canWrite || isPending}
         />
