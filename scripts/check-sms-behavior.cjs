@@ -15,7 +15,10 @@ require.extensions['.ts'] = function loadTypeScript(module, filename) {
 }
 
 const { dateTimePartsInTimeZone, startOfDay } = require('../src/lib/calendar/dates.ts')
+const { scheduleCandidateTimesForTitle } = require('../src/lib/calendar/schedulingPreferences.ts')
 const { applyDemoText, createDemoState } = require('../src/lib/demoSms.ts')
+const { classifyEventAuthority } = require('../src/lib/eventAuthority.ts')
+const { parseInviteesFromText, resolveInviteeFollowUp } = require('../src/lib/sms/invitees.ts')
 const { parseSmsIntent } = require('../src/lib/sms/parser.ts')
 
 const timeZone = 'America/Chicago'
@@ -38,12 +41,37 @@ function assertAgendaWindow(text, label) {
   return intent
 }
 
+function assertScheduleTitle(text, expectedTitle) {
+  const intent = parseSmsIntent(text, timeZone)
+  assert.equal(intent.type, 'schedule', text)
+  assert.equal(intent.title, expectedTitle, text)
+  return intent
+}
+
+function assertInviteParse(text, expectedCleanedText, expectedNames) {
+  const parsed = parseInviteesFromText(text)
+  assert.equal(parsed.cleanedText, expectedCleanedText, text)
+  assert.deepEqual(parsed.names, expectedNames, text)
+  return parsed
+}
+
 const thisWeek = assertScheduleWindow('schedule haircut sometime this week', 'this week')
 assert.equal(parts(thisWeek.dateWindow.start).day, parts(startOfDay(0, timeZone)).day)
+
+const nextWeek = assertScheduleWindow('schedule meeting early next week', 'next week')
+assert.equal(parts(nextWeek.dateWindow.start).weekday, 1)
+assert.equal(nextWeek.title, 'meeting')
 
 const may = assertScheduleWindow('I need a dentist appointment in May sometime', 'May')
 assert.equal(parts(may.dateWindow.start).month, 5)
 assert.equal(parts(may.dateWindow.end).month, 5)
+
+const midMay = assertScheduleWindow('schedule dentist mid May', 'mid May')
+assert.equal(midMay.title, 'dentist')
+assert.equal(parts(midMay.dateWindow.start).month, 5)
+
+const endOfMonth = assertScheduleWindow('schedule call end of month', 'end of the month')
+assert.equal(endOfMonth.title, 'call')
 
 const nextWeekThursday = parseSmsIntent('need a dentist appointment next week Thur', timeZone)
 assert.equal(nextWeekThursday.type, 'schedule')
@@ -55,6 +83,31 @@ assert.deepEqual(tomorrowAfternoon.exactTime, { hour: 14, minute: 0 })
 const tonight = assertScheduleWindow('meeting tonight', 'today')
 assert.deepEqual(tonight.exactTime, { hour: 18, minute: 0 })
 
+const bareAfternoonHour = assertScheduleTitle('meeting tomorrow at 2', 'meeting')
+assert.deepEqual(bareAfternoonHour.exactTime, { hour: 14, minute: 0 })
+
+const bareMorningHour = assertScheduleTitle('schedule meeting at 9', 'meeting')
+assert.deepEqual(bareMorningHour.exactTime, { hour: 9, minute: 0 })
+
+const bareNoon = assertScheduleTitle('schedule meeting at 12', 'meeting')
+assert.deepEqual(bareNoon.exactTime, { hour: 12, minute: 0 })
+
+const oneHourMeeting = assertScheduleTitle('schedule 1 hour meeting', 'meeting')
+assert.equal(oneHourMeeting.durationMinutes, 60)
+
+const quickCall = assertScheduleTitle('schedule quick 15 min call', 'quick call')
+assert.equal(quickCall.durationMinutes, 15)
+
+assert.deepEqual(scheduleCandidateTimesForTitle('lunch').slice(0, 3), [
+  { hour: 11, minute: 0 },
+  { hour: 12, minute: 0 },
+  { hour: 13, minute: 0 },
+])
+
+const locationEvent = assertScheduleTitle('Schedule Mokums 3rd bday may 17 10am at Mary’s house', 'mokums 3rd bday')
+assert.equal(locationEvent.location, 'Mary’s house')
+assert.deepEqual(locationEvent.exactTime, { hour: 10, minute: 0 })
+
 const nextMondayAgenda = parseSmsIntent("what's next Mondays agenda", timeZone)
 assert.equal(nextMondayAgenda.type, 'agenda')
 assert.equal(parts(nextMondayAgenda.dateWindow.start).weekday, 1)
@@ -65,6 +118,63 @@ const lookup = parseSmsIntent("When's Oakleys appointment", timeZone)
 assert.equal(lookup.type, 'lookup')
 assert.equal(lookup.query, 'Oakleys appointment')
 
+const staceyInvite = assertInviteParse('meeting with Stacey tomorrow at 2', 'meeting tomorrow at 2', ['Stacey'])
+assert.equal(staceyInvite.directInvitees.length, 0)
+const staceyInviteSchedule = parseSmsIntent(staceyInvite.cleanedText, timeZone)
+assert.equal(staceyInviteSchedule.type, 'schedule')
+assert.deepEqual(staceyInviteSchedule.exactTime, { hour: 14, minute: 0 })
+
+assertInviteParse('call with Mike Friday', 'call Friday', ['Mike'])
+assertInviteParse('lunch with Sarah next week', 'lunch next week', ['Sarah'])
+assertInviteParse('meeting with Alex in May', 'meeting in May', ['Alex'])
+assertInviteParse('invite Priya to meeting Tuesday', 'meeting Tuesday', ['Priya'])
+
+const directInvite = parseInviteesFromText('meeting with Stacey stacey@example.com tomorrow')
+assert.equal(directInvite.cleanedText, 'meeting tomorrow')
+assert.deepEqual(directInvite.names, [])
+assert.deepEqual(directInvite.directInvitees, [{ displayName: 'Stacey', email: 'stacey@example.com' }])
+
+const inviteFollowUp = resolveInviteeFollowUp('Stacey stacey@example.com', ['Stacey'])
+assert.deepEqual(inviteFollowUp.resolved, [{ displayName: 'Stacey', email: 'stacey@example.com' }])
+assert.deepEqual(inviteFollowUp.unresolvedNames, [])
+
+const authorityBaseEvent = {
+  id: 'event',
+  title: 'Planning meeting',
+  start: startOfDay(1, timeZone).toISOString(),
+  end: startOfDay(1, timeZone).toISOString(),
+  provider: 'google',
+  calendarId: 'primary',
+  calendarName: 'Work',
+  timeLabel: '9:00 AM',
+  location: '',
+  description: '',
+  organizerEmail: '',
+  attendeeCount: 0,
+}
+assert.equal(classifyEventAuthority({ event: authorityBaseEvent, profileEmail: 'me@example.com' }), 'personal')
+assert.equal(
+  classifyEventAuthority({
+    event: { ...authorityBaseEvent, attendeeCount: 2, organizerEmail: 'me@example.com' },
+    profileEmail: 'me@example.com',
+  }),
+  'owned_meeting',
+)
+assert.equal(
+  classifyEventAuthority({
+    event: { ...authorityBaseEvent, attendeeCount: 2, organizerEmail: 'stacey@example.com' },
+    profileEmail: 'me@example.com',
+  }),
+  'invited_meeting',
+)
+assert.equal(
+  classifyEventAuthority({
+    event: { ...authorityBaseEvent, title: 'Dentist appointment' },
+    profileEmail: 'me@example.com',
+  }),
+  'external_appointment',
+)
+
 let demoState = createDemoState()
 demoState = applyDemoText(demoState, 'schedule haircut this week sometime')
 assert.equal(demoState.pendingAction?.kind, 'external_call_prep')
@@ -73,6 +183,20 @@ assert.ok(demoState.events.some((event) => /\(pending\)$/i.test(event.title)))
 demoState = applyDemoText(demoState, 'confirmed')
 assert.match(demoState.messages.at(-1).lines.join('\n'), /marked .*haircut.* as confirmed/i)
 assert.ok(!demoState.events.some((event) => /haircut.*\(pending\)$/i.test(event.title)))
+
+let agendaDemoState = createDemoState()
+agendaDemoState = applyDemoText(agendaDemoState, 'whats tomorrow')
+assert.match(agendaDemoState.messages.at(-1).lines.join('\n'), /Tomorrow's schedule:/)
+agendaDemoState = applyDemoText(agendaDemoState, 'whats happening toda')
+assert.match(agendaDemoState.messages.at(-1).lines.join('\n'), /Today:/)
+
+let lunchDemoState = createDemoState()
+lunchDemoState = applyDemoText(lunchDemoState, 'schedule lunch tomorrow on Work')
+assert.equal(lunchDemoState.pendingAction?.kind, 'schedule')
+assert.deepEqual(
+  lunchDemoState.pendingAction.options.map((option) => option.timeLabel),
+  ['11:00 AM', '12:00 PM', '1:00 PM'],
+)
 
 let correctionState = createDemoState()
 correctionState = applyDemoText(correctionState, 'schedule meeting tomorrow')
@@ -86,6 +210,16 @@ cancelCorrectionState = applyDemoText(cancelCorrectionState, 'schedule meeting t
 cancelCorrectionState = applyDemoText(cancelCorrectionState, 'actually cancel that')
 assert.equal(cancelCorrectionState.pendingAction, null)
 assert.match(cancelCorrectionState.messages.at(-1).lines.join('\n'), /dropped that request/i)
+
+let cancelJustBookedState = createDemoState()
+cancelJustBookedState = applyDemoText(cancelJustBookedState, '4pm meeting tomorrow on Work')
+cancelJustBookedState = applyDemoText(cancelJustBookedState, 'yes')
+assert.equal(cancelJustBookedState.pendingAction?.kind, 'recent_created_event')
+const justBookedEventId = cancelJustBookedState.pendingAction.eventId
+cancelJustBookedState = applyDemoText(cancelJustBookedState, 'actually cancel that')
+assert.equal(cancelJustBookedState.pendingAction, null)
+assert.match(cancelJustBookedState.messages.at(-1).lines.join('\n'), /canceled meeting/i)
+assert.ok(!cancelJustBookedState.events.some((event) => event.id === justBookedEventId))
 
 let nextWeekCorrectionState = createDemoState()
 nextWeekCorrectionState = applyDemoText(nextWeekCorrectionState, 'schedule meeting tomorrow')

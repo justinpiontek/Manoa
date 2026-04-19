@@ -1,4 +1,5 @@
 import { parseGoogleRecurrence, recurrenceRule, recurrenceSummary, type RecurrenceSpec } from './recurrence'
+import { scheduleCandidateTimesForTitle } from './schedulingPreferences'
 import type { Invitee } from '../sms/invitees'
 import { google, type calendar_v3 } from 'googleapis'
 import type { Credentials } from 'google-auth-library'
@@ -2393,14 +2394,7 @@ export async function findScheduleOptions({
         addMinutes(setTime(baseDate, exactTime, resolvedTimeZone), 60),
         addMinutes(setTime(baseDate, exactTime, resolvedTimeZone), 120),
       ]
-    : [
-        setTime(baseDate, { hour: 9, minute: 0 }, resolvedTimeZone),
-        setTime(baseDate, { hour: 10, minute: 0 }, resolvedTimeZone),
-        setTime(baseDate, { hour: 11, minute: 0 }, resolvedTimeZone),
-        setTime(baseDate, { hour: 13, minute: 0 }, resolvedTimeZone),
-        setTime(baseDate, { hour: 14, minute: 30 }, resolvedTimeZone),
-        setTime(baseDate, { hour: 16, minute: 0 }, resolvedTimeZone),
-      ]
+    : scheduleCandidateTimesForTitle(title).map((time) => setTime(baseDate, time, resolvedTimeZone))
   const futureCandidateStarts = candidateStarts.filter((start) => {
     return start.getTime() > Date.now() + 5 * 60_000
   })

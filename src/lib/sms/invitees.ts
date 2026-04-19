@@ -10,12 +10,16 @@ type InviteeParse = {
 }
 
 const emailPattern = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi
+const monthStop =
+  '(?:jan\\.?|january|feb\\.?|february|mar\\.?|march|apr\\.?|april|may|jun\\.?|june|jul\\.?|july|aug\\.?|august|sep\\.?|sept\\.?|september|oct\\.?|october|nov\\.?|november|dec\\.?|december)'
 const weekdayStop =
   '(?:today|tomorrow|tmrw|tomororw|tomororws|next\\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)|sunday|monday|tuesday|wednesday|thursday|friday|saturday)'
+const relativeDateStop = `(?:tonight|this\\s+(?:morning|afternoon|evening|week|weekend|month)|next\\s+(?:week|month|weekend)|early\\s+next\\s+week|mid\\s+next\\s+week|end\\s+of\\s+(?:the\\s+)?month|in\\s+(?:\\d+\\s+(?:minutes?|mins?|hours?|hrs?|days?|weeks?|months?)|${monthStop}))`
+const inviteStop = `(?:on|at|for|${weekdayStop}|${relativeDateStop})`
 const inviteClausePatterns = [
-  new RegExp(`\\bwith\\s+(.+?)(?=\\b(?:on|at|for|${weekdayStop})\\b|$)`, 'i'),
-  new RegExp(`\\bincluding\\s+(.+?)(?=\\b(?:on|at|for|${weekdayStop})\\b|$)`, 'i'),
-  new RegExp(`\\binvite\\s+(.+?)(?=\\b(?:to|on|at|for|${weekdayStop})\\b|$)`, 'i'),
+  new RegExp(`\\bwith\\s+(.+?)(?=\\b${inviteStop}\\b|$)`, 'i'),
+  new RegExp(`\\bincluding\\s+(.+?)(?=\\b${inviteStop}\\b|$)`, 'i'),
+  new RegExp(`\\binvite\\s+(.+?)(?=\\b(?:to|${inviteStop})\\b|$)`, 'i'),
 ]
 
 function uniqueInvitees(invitees: Invitee[]) {
@@ -53,9 +57,7 @@ function extractNamedEmails(text: string) {
 export function parseInviteesFromText(text: string): InviteeParse {
   let cleanedText = text
   const names = new Set<string>()
-  const directInvitees = [...uniqueInvitees(
-    [...text.matchAll(emailPattern)].map((match) => ({ email: match[0].toLowerCase() })),
-  )]
+  const directInvitees: Invitee[] = []
 
   for (const pattern of inviteClausePatterns) {
     const match = text.match(pattern)
@@ -70,13 +72,31 @@ export function parseInviteesFromText(text: string): InviteeParse {
     }
 
     const withoutEmails = chunk.replace(emailPattern, ' ')
+    const namedEmailNames = namedEmails
+      .map((invitee) => invitee.displayName?.trim().toLowerCase())
+      .filter(Boolean)
     for (const name of splitNames(withoutEmails)) {
+      const normalizedName = name.toLowerCase()
+      if (
+        namedEmailNames.some(
+          (namedEmailName) =>
+            namedEmailName === normalizedName ||
+            normalizedName.includes(namedEmailName) ||
+            namedEmailName.includes(normalizedName),
+        )
+      ) {
+        continue
+      }
       if (name.length) names.add(name)
     }
   }
 
+  directInvitees.push(
+    ...[...text.matchAll(emailPattern)].map((match) => ({ email: match[0].toLowerCase() })),
+  )
+
   return {
-    cleanedText: cleanedText.replace(/\s+/g, ' ').trim(),
+    cleanedText: cleanedText.replace(/\s+/g, ' ').replace(/^\s*to\s+/i, '').trim(),
     names: [...names],
     directInvitees: uniqueInvitees(directInvitees),
   }

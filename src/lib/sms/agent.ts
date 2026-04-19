@@ -97,6 +97,7 @@ type PendingPayload = {
   stage?: 'scope' | 'options'
   scope?: 'single' | 'series'
   followUpKind?: PendingKind | null
+  recentlyCreated?: boolean
   holdEventId?: string | null
   holdCalendarId?: string | null
   attendees?: Invitee[]
@@ -211,6 +212,56 @@ function bookingText(option: ScheduleOption) {
   }
 
   return `Booked ${option.title} for ${option.dayLabel} at ${option.timeLabel}.${locationLine}`
+}
+
+function createdEventSummaryFromOption(
+  option: ScheduleOption,
+  eventId: string | null | undefined,
+  organizerEmail?: string | null,
+): EventSummary | null {
+  if (!eventId) return null
+
+  return {
+    id: eventId,
+    title: option.title,
+    start: option.start,
+    end: option.end,
+    provider: option.provider,
+    calendarId: option.calendarId,
+    calendarName: option.calendarName,
+    timeLabel: option.timeLabel,
+    location: option.location || '',
+    description: '',
+    organizerEmail: organizerEmail || '',
+    attendeeCount: option.attendees?.length || 0,
+  }
+}
+
+async function storeRecentCreatedEvent({
+  profileId,
+  smsFrom,
+  option,
+  eventId,
+  organizerEmail,
+}: {
+  profileId: string
+  smsFrom: string
+  option: ScheduleOption
+  eventId: string | null | undefined
+  organizerEmail?: string | null
+}) {
+  const event = createdEventSummaryFromOption(option, eventId, organizerEmail)
+  if (!event) return
+
+  await storePendingAction({
+    profileId,
+    smsFrom,
+    kind: 'select_cancel_target',
+    payload: {
+      events: [event],
+      recentlyCreated: true,
+    },
+  })
 }
 
 function exactAvailabilityReply({
@@ -693,6 +744,9 @@ function reminderForPending(pending: PendingAction) {
     case 'select_reschedule_target':
       return 'Reply with which one you mean, like 1, 2, or 3.'
     case 'select_cancel_target':
+      if (pending.payload.recentlyCreated) {
+        return 'You are set. Say "cancel that" if you want me to remove the event I just booked.'
+      }
       return 'Reply with which one to cancel, like 1, 2, or 3.'
     case 'invited_reschedule_action':
       return actionChoiceList([
@@ -2062,6 +2116,13 @@ async function handleResolveInviteesReply({
       title: option.title,
     })
     await clearPendingAction(pending.id)
+    await storeRecentCreatedEvent({
+      profileId: profile.id,
+      smsFrom: from,
+      option: { ...option, attendees: existingInvitees },
+      eventId: created.id || null,
+      organizerEmail: profile.email,
+    })
 
     if (existingInvitees.length) {
       return `${bookingText(option)}\nI invited ${inviteeSummary(existingInvitees)}.\nI did not invite ${unresolvedInviteeSummary(unresolvedNames)} yet.`
@@ -2124,6 +2185,13 @@ async function handleResolveInviteesReply({
     title: option.title,
   })
   await clearPendingAction(pending.id)
+  await storeRecentCreatedEvent({
+    profileId: profile.id,
+    smsFrom: from,
+    option: { ...option, attendees: mergedInvitees },
+    eventId: created.id || null,
+    organizerEmail: profile.email,
+  })
 
   return `${bookingText(option)}\nI invited ${inviteeSummary(mergedInvitees)}.`
 }
@@ -2304,6 +2372,13 @@ async function handleChoice({
       title: option.title,
     })
     await clearPendingAction(pending.id)
+    await storeRecentCreatedEvent({
+      profileId: profile.id,
+      smsFrom,
+      option: { ...option, attendees },
+      eventId: created.id || null,
+      organizerEmail: profile.email,
+    })
 
     if (attendees.length) {
       return `${bookingText(option)}\nI invited ${inviteeSummary(attendees)} and I'll remind you before it starts.`
@@ -2375,6 +2450,10 @@ async function handleChoice({
   }
 
   if (pending.kind === 'select_cancel_target') {
+    if (pending.payload.recentlyCreated) {
+      return 'That event is already booked. Say "cancel that" if you want me to remove it.'
+    }
+
     const event = choose(pending.payload.events, choice)
     if (!event) return 'Reply with 1, 2, or 3 for the event you want to cancel.'
     const reply = await cancelCalendarTarget({ profile, target: event, smsFrom })
@@ -2613,6 +2692,13 @@ async function handleChoice({
       leadMinutes: 15,
     })
     await clearPendingAction(pending.id)
+    await storeRecentCreatedEvent({
+      profileId: profile.id,
+      smsFrom,
+      option,
+      eventId: created.id || null,
+      organizerEmail: profile.email,
+    })
 
     return `Held ${option.dayLabel} at ${option.timeLabel} on your calendar for ${target.title}. The organizer still needs to confirm the real meeting move.`
   }
@@ -2780,6 +2866,13 @@ async function handleChoice({
           holdCalendarId: option.calendarId,
         },
       })
+      await storeRecentCreatedEvent({
+        profileId: profile.id,
+        smsFrom,
+        option,
+        eventId: created.id || null,
+        organizerEmail: profile.email,
+      })
       return isNewAppointment
         ? `Held ${option.dayLabel} at ${option.timeLabel} as ${requestedTitle} (pending).\nOffice number: ${knownPhone}.\nAfter the office books it, reply CONFIRMED. If they give a different time, text that time.`
         : `Held ${option.dayLabel} at ${option.timeLabel} for your call about ${target.title}.\nOffice number: ${knownPhone}.\nCall note: ${callNote}\nWhen the office confirms the new time, text something like "They moved it to Tuesday at 2pm" and I'll update your calendar.\nYou can keep texting me other things in the meantime.`
@@ -2800,6 +2893,13 @@ async function handleChoice({
           holdEventId: created.id || null,
           holdCalendarId: option.calendarId,
         },
+      })
+      await storeRecentCreatedEvent({
+        profileId: profile.id,
+        smsFrom,
+        option,
+        eventId: created.id || null,
+        organizerEmail: profile.email,
       })
       return `Held ${option.dayLabel} at ${option.timeLabel} as ${requestedTitle} (pending).\nAfter the office books it, reply CONFIRMED. If they give a different time, text that time.`
     }
@@ -3058,6 +3158,24 @@ export async function handleIncomingSms({
   let intentOverride: ParsedSmsIntent | null = null
 
   if (activePending && isCancelPendingRequest(body)) {
+    const recentEvent =
+      activePending.payload.recentlyCreated && activePending.kind === 'select_cancel_target'
+        ? activePending.payload.events?.[0] || null
+        : null
+    const heldEvent =
+      activePending.kind === 'save_business_contact_phone' && activePending.payload.holdEventId
+        ? activePending.payload.target || null
+        : null
+    const targetToCancel = recentEvent || heldEvent
+
+    if (targetToCancel) {
+      const oldPendingId = activePending.id
+      const reply = await cancelCalendarTarget({ profile, target: targetToCancel, smsFrom: from })
+      await clearPendingAction(oldPendingId)
+      await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+      return reply
+    }
+
     await clearPendingAction(activePending.id)
     const reply = 'Okay. I dropped that request.'
     await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })

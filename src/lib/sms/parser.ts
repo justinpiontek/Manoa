@@ -191,11 +191,13 @@ function isAgendaRequest(lower: string, day: 'today' | 'tomorrow') {
 export function parseSmsTime(text: string) {
   const lower = text.toLowerCase()
   const match = lower.match(/\b(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)\b/)
-  if (!match) return null
+  const bareHourMatch = match || lower.match(/\b(?:at|@)\s*(1[0-2]|0?[1-9])(?::([0-5]\d))?\b/)
+  if (!bareHourMatch) return null
 
-  let hour = Number(match[1])
-  const minute = Number(match[2] || '0')
-  const period = match[3].startsWith('a') ? 'am' : 'pm'
+  let hour = Number(bareHourMatch[1])
+  const minute = Number(bareHourMatch[2] || '0')
+  const explicitPeriod = match?.[3]?.startsWith('a') ? 'am' : match?.[3]?.startsWith('p') ? 'pm' : null
+  const period = explicitPeriod || (hour === 12 || (hour >= 1 && hour <= 5) ? 'pm' : 'am')
 
   if (period === 'pm' && hour !== 12) hour += 12
   if (period === 'am' && hour === 12) hour = 0
@@ -612,6 +614,7 @@ function isLikelyLocation(value: string, timeZone?: string) {
   const lower = value.toLowerCase()
   if (!value || value.length < 2 || value.length > 80) return false
   if (parseSmsTime(lower) || parseLooseTimeHint(lower) || parseExplicitDate(lower, timeZone)) return false
+  if (/^\d{1,2}(?::[0-5]\d)?$/.test(lower)) return false
   if (/^(?:today|tomorrow|tmrw|sunday|monday|tuesday|wednesday|thursday|friday|saturday)$/i.test(lower)) return false
   if (/^\d+\s*(?:minute|min|hour|hr)s?$/i.test(lower)) return false
   if (/^(?:me|you|it|that|this|calendar)$/i.test(lower)) return false
@@ -689,7 +692,12 @@ function stripSchedulingNoise(text: string) {
     .replace(monthNameDatePattern, ' ')
     .replace(dateMonthNamePattern, ' ')
     .replace(numericDatePattern, ' ')
+    .replace(/\b(?:early|mid|middle of|late|end of(?: the)?)\s+next\s+week\b/g, ' ')
+    .replace(new RegExp(`\\b(?:early|mid|middle of|late|end of(?: the)?)\\s+(?:${monthNameSource})\\b`, 'g'), ' ')
+    .replace(/\bend of (?:the )?(?:current )?month\b|\bend of month\b/g, ' ')
+    .replace(/\b(?:this|next)\s+(?:week|weekend|month)\b/g, ' ')
     .replace(/\b(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)\b/g, ' ')
+    .replace(/\bat\s+(1[0-2]|0?[1-9])(?::[0-5]\d)?\b/g, ' ')
     .replace(/\b(noon|midnight|morning|afternoon|evening|tonight|lunchtime)\b/g, ' ')
     .replace(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday|today|tomorrow|tmrw|next)\b/g, ' ')
     .replace(/\btomororws?\b/g, ' ')
@@ -698,6 +706,7 @@ function stripSchedulingNoise(text: string) {
       ' ',
     )
     .replace(/\b\d+\s*(minute|min|hour|hr)\b/g, ' ')
+    .replace(/\bsometime\b/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 

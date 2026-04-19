@@ -1,4 +1,8 @@
 import { addMinutes, setTime, startOfDay } from './calendar/dates'
+import {
+  hasSpecificScheduleTimePreference,
+  scheduleCandidateTimesForTitle,
+} from './calendar/schedulingPreferences'
 import { parseScheduleLocation, parseSmsIntent, type DateWindow, type ParsedSmsIntent } from './sms/parser'
 
 export type DemoMessage = {
@@ -28,6 +32,7 @@ export type DemoEvent = {
 
 type DemoPendingAction =
   | { kind: 'schedule'; options: DemoOption[] }
+  | { kind: 'recent_created_event'; eventId: string }
   | {
       kind: 'select_reschedule_target'
       options: DemoOption[]
@@ -196,11 +201,12 @@ function correctionFragment(text: string) {
 
 function pendingActionTitle(action: DemoPendingAction) {
   if (action.kind === 'external_call_prep') return action.title
+  if (action.kind === 'recent_created_event') return null
   return action.options[0]?.title.replace(/\s*\(pending\)\s*$/i, '') || null
 }
 
 function correctedDemoScheduleText(text: string, action: DemoPendingAction) {
-  if (!['schedule', 'external_call_prep'].includes(action.kind)) return null
+  if (action.kind !== 'schedule' && action.kind !== 'external_call_prep') return null
   const fragment = correctionFragment(text)
   const title = pendingActionTitle(action)
   if (!fragment || !title) return null
@@ -463,10 +469,20 @@ function buildScheduleOptions(rawText: string, baseDate: Date, exactTime: { hour
             { dayOffset: 1, hour: 14, minute: 0 },
             { dayOffset: 2, hour: 11, minute: 0 },
           ]
+  const preferredTimes = scheduleCandidateTimesForTitle(title)
+  const hasTitlePreference = hasSpecificScheduleTimePreference(title)
+  const preferredTemplates =
+    exactTime || !hasTitlePreference
+      ? templates
+      : preferredTimes.slice(0, 3).map((time) => ({
+          dayOffset: 0,
+          hour: time.hour,
+          minute: time.minute,
+        }))
 
   const requestTemplate =
     exactTime === null
-      ? templates
+      ? preferredTemplates
       : [
           { dayOffset: 0, hour: exactTime.hour, minute: exactTime.minute },
           ...templates.slice(1),
@@ -859,6 +875,13 @@ function applyChoice(state: DemoState, choice: number): DemoState {
     })
   }
 
+  if (pendingAction.kind === 'recent_created_event') {
+    return appendMessage(state, {
+      role: 'manoa',
+      lines: ['That event is already booked. Say "cancel that" if you want me to remove it.'],
+    })
+  }
+
   const picked = pendingAction.options[choice - 1]
   if (!picked) {
     return appendMessage(state, {
@@ -956,7 +979,11 @@ function applyChoice(state: DemoState, choice: number): DemoState {
 
   return {
     ...appendMessage(
-      { ...state, events: sortEvents([...state.events, bookedEvent]), pendingAction: null },
+      {
+        ...state,
+        events: sortEvents([...state.events, bookedEvent]),
+        pendingAction: { kind: 'recent_created_event', eventId: bookedEvent.id },
+      },
       {
         role: 'manoa',
         lines: [
@@ -967,7 +994,7 @@ function applyChoice(state: DemoState, choice: number): DemoState {
       },
     ),
     events: sortEvents([...state.events, bookedEvent]),
-    pendingAction: null,
+    pendingAction: { kind: 'recent_created_event', eventId: bookedEvent.id },
   }
 }
 
@@ -982,6 +1009,19 @@ export function applyDemoTextForIntent(
   const withUserMessage = appendMessage(state, { role: 'user', lines: [trimmed] })
 
   if (state.pendingAction && isCancelPendingRequest(trimmed)) {
+    if (state.pendingAction.kind === 'recent_created_event') {
+      const eventId = state.pendingAction.eventId
+      const target = state.events.find((event) => event.id === eventId)
+      const nextEvents = state.events.filter((event) => event.id !== eventId)
+      return appendMessage(
+        { ...withUserMessage, events: nextEvents, pendingAction: null },
+        {
+          role: 'manoa',
+          lines: [target ? `Done. I canceled ${target.title}.` : 'Done. I canceled that event.'],
+        },
+      )
+    }
+
     return appendMessage(
       { ...withUserMessage, pendingAction: null },
       { role: 'manoa', lines: ['Okay. I dropped that request.'] },
