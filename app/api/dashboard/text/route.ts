@@ -34,6 +34,18 @@ function friendlyDashboardTextError(error: unknown) {
     return 'Apple rejected that calendar change. Try sending the cancel or schedule request again; if it keeps happening, reconnect Apple Calendar with a fresh app-specific password.'
   }
 
+  if (/apple calendar delete failed:\s*404\b/i.test(message)) {
+    return 'Apple says that event is already gone. Refresh your calendar, and if you still see it, remove it directly from Apple Calendar.'
+  }
+
+  if (/apple calendar (?:create|update) was accepted, but manoa could not verify/i.test(message)) {
+    return 'Apple accepted that calendar change, but Manoa could not verify it afterward. Refresh Apple Calendar and try again before trusting that it saved.'
+  }
+
+  if (/apple calendar delete was accepted, but the event still appears/i.test(message)) {
+    return 'Apple accepted the delete request, but Manoa still sees the event. Try again in a minute, or remove it directly from Apple Calendar.'
+  }
+
   return message
 }
 

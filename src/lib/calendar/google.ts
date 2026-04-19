@@ -553,6 +553,14 @@ function sanitizeAppleHref(href: string, baseUrl: string) {
   return new URL(href, baseUrl).toString()
 }
 
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function isAppleNotFoundError(error: unknown) {
+  return /404|not found/i.test(error instanceof Error ? error.message : String(error))
+}
+
 async function appleDavRequest({
   url,
   email,
@@ -789,7 +797,7 @@ function buildAppleCalendarEventBody({
   }
 
   lines.push('END:VEVENT', 'END:VCALENDAR')
-  return lines.join('\r\n')
+  return `${lines.join('\r\n')}\r\n`
 }
 
 async function discoverAppleCalendars(email: string, appSpecificPassword: string) {
@@ -951,6 +959,47 @@ async function getAppleEventForConnection(connection: CalendarConnection, eventI
   return parseAppleCalendarData(response.text, connection, url)
 }
 
+async function maybeGetAppleEventForConnection(connection: CalendarConnection, eventId: string) {
+  try {
+    return await getAppleEventForConnection(connection, eventId)
+  } catch (error) {
+    if (isAppleNotFoundError(error)) return null
+    throw error
+  }
+}
+
+async function verifyAppleEventExists(
+  connection: CalendarConnection,
+  eventId: string,
+  action: 'create' | 'update',
+) {
+  for (const delay of [0, 250, 750, 1500]) {
+    if (delay) await wait(delay)
+    const event = await maybeGetAppleEventForConnection(connection, eventId)
+    if (event) return event
+  }
+
+  throw new Error(
+    `Apple Calendar ${action} was accepted, but Manoa could not verify the event on ${displayCalendarName(
+      connection,
+    )}. Check Apple Calendar and try again.`,
+  )
+}
+
+async function verifyAppleEventDeleted(connection: CalendarConnection, eventId: string) {
+  for (const delay of [0, 250, 750, 1500]) {
+    if (delay) await wait(delay)
+    const event = await maybeGetAppleEventForConnection(connection, eventId)
+    if (!event) return
+  }
+
+  throw new Error(
+    `Apple Calendar delete was accepted, but the event still appears on ${displayCalendarName(
+      connection,
+    )}. Try again in a minute.`,
+  )
+}
+
 async function createAppleCalendarEvent(connection: CalendarConnection, option: ScheduleOption) {
   const uid = crypto.randomUUID()
   const eventUrl = sanitizeAppleHref(`${uid}.ics`, connection.calendar_id.endsWith('/') ? connection.calendar_id : `${connection.calendar_id}/`)
@@ -968,6 +1017,8 @@ async function createAppleCalendarEvent(connection: CalendarConnection, option: 
     const body = await response.text()
     throw new Error(`Apple Calendar create failed: ${response.status} ${body || response.statusText}`)
   }
+
+  await verifyAppleEventExists(connection, eventUrl, 'create')
 
   return { id: eventUrl }
 }
@@ -989,21 +1040,31 @@ async function updateAppleCalendarEvent(connection: CalendarConnection, eventId:
     throw new Error(`Apple Calendar update failed: ${response.status} ${body || response.statusText}`)
   }
 
-  return { id: sanitizeAppleHref(eventId, connection.calendar_id) }
+  const updatedEventUrl = sanitizeAppleHref(eventId, connection.calendar_id)
+  await verifyAppleEventExists(connection, updatedEventUrl, 'update')
+
+  return { id: updatedEventUrl }
 }
 
 async function deleteAppleCalendarEvent(connection: CalendarConnection, eventId: string) {
-  const response = await fetch(sanitizeAppleHref(eventId, connection.calendar_id), {
+  const eventUrl = sanitizeAppleHref(eventId, connection.calendar_id)
+  const response = await fetch(eventUrl, {
     method: 'DELETE',
     headers: {
       Authorization: appleAuthHeader(connection.account_email || connection.account_id, connection.access_token),
     },
   })
 
-  if (!response.ok && response.status !== 404) {
+  if (response.status === 404) {
+    throw new Error('Apple Calendar delete failed: 404 Not Found')
+  }
+
+  if (!response.ok) {
     const body = await response.text()
     throw new Error(`Apple Calendar delete failed: ${response.status} ${body || response.statusText}`)
   }
+
+  await verifyAppleEventDeleted(connection, eventUrl)
 }
 
 function parseOutlookRecurrence(
@@ -1323,7 +1384,8 @@ function groupConnectionsByAccount(connections: CalendarConnection[]) {
 }
 
 function visibleConfiguredCalendars(connections: CalendarConnection[]) {
-  const visible = connections.filter((connection) => {
+  const normalizedConnections = normalizeGoogleAccountConnections(connections)
+  const visible = normalizedConnections.filter((connection) => {
     if (connection.provider === 'apple') {
       return !isLikelyAppleReminderConnection(connection)
     }
@@ -1340,7 +1402,7 @@ function visibleConfiguredCalendars(connections: CalendarConnection[]) {
     })
   })
 
-  return visible.length !== connections.length ? visible : connections
+  return visible.length !== normalizedConnections.length ? visible : normalizedConnections
 }
 
 function deriveDefaultCalendarLabel({
