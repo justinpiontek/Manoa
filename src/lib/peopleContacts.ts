@@ -42,6 +42,15 @@ function contactMatches(contact: PersonContact, query: string) {
   )
 }
 
+function isMissingPeopleContactsTableError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error)
+  const code = typeof error === 'object' && error !== null && 'code' in error
+    ? String((error as { code?: unknown }).code || '')
+    : ''
+
+  return code === 'PGRST205' || /people_contacts.*schema cache|could not find.*people_contacts/i.test(message)
+}
+
 export async function getPeopleContacts(profileId: string) {
   const { data, error } = await supabaseAdmin
     .from('people_contacts')
@@ -49,7 +58,10 @@ export async function getPeopleContacts(profileId: string) {
     .eq('profile_id', profileId)
     .returns<PersonContact[]>()
 
-  if (error) throw error
+  if (error) {
+    if (isMissingPeopleContactsTableError(error)) return []
+    throw error
+  }
   return data || []
 }
 
@@ -91,7 +103,10 @@ export async function saveOrUpdatePersonContact({
       .select('id,profile_id,label,email,aliases')
       .single<PersonContact>()
 
-    if (error) throw error
+    if (error) {
+      if (isMissingPeopleContactsTableError(error)) return null
+      throw error
+    }
     return data
   }
 
@@ -108,6 +123,9 @@ export async function saveOrUpdatePersonContact({
     .select('id,profile_id,label,email,aliases')
     .single<PersonContact>()
 
-  if (error) throw error
+  if (error) {
+    if (isMissingPeopleContactsTableError(error)) return null
+    throw error
+  }
   return data
 }

@@ -1215,6 +1215,32 @@ async function ensureOutlookAccessToken(connection: CalendarConnection) {
   return refreshed.accessToken
 }
 
+function isRevokedCalendarTokenError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error)
+  const dataError =
+    typeof error === 'object' && error !== null && 'response' in error
+      ? (error as { response?: { data?: { error?: unknown; error_description?: unknown } } }).response?.data
+      : null
+
+  return (
+    dataError?.error === 'invalid_grant' ||
+    /invalid_grant|expired or revoked|refresh token.*(expired|revoked)/i.test(message)
+  )
+}
+
+async function deactivateCalendarConnections(connections: CalendarConnection[]) {
+  const ids = connections.map((connection) => connection.id).filter(Boolean)
+  if (!ids.length) return
+
+  await supabaseAdmin
+    .from('calendar_connections')
+    .update({
+      status: 'inactive',
+      updated_at: new Date().toISOString(),
+    })
+    .in('id', ids)
+}
+
 function canonicalAccountId(
   connection: Pick<CalendarConnection, 'provider' | 'account_id' | 'account_email' | 'calendar_id'>,
 ) {
@@ -2249,63 +2275,72 @@ async function busyBlocks(
   connections: CalendarConnection[],
   timeMin: Date,
   timeMax: Date,
+  options?: { skippedConnectionIds?: Set<string> },
 ) {
   if (!connections.length) return []
 
   const grouped = groupedAvailabilityConnections(connections)
   const busyLists = await Promise.all(
     Object.values(grouped).map(async (accountConnections) => {
-      if (accountConnections[0].provider === 'outlook') {
-        const eventLists = await Promise.all(
-          accountConnections.map((connection) =>
-            listOutlookEventsForConnection({
-              connection,
-              timeMin,
-              timeMax,
-              maxResults: 100,
-            }),
-          ),
-        )
+      try {
+        if (accountConnections[0].provider === 'outlook') {
+          const eventLists = await Promise.all(
+            accountConnections.map((connection) =>
+              listOutlookEventsForConnection({
+                connection,
+                timeMin,
+                timeMax,
+                maxResults: 100,
+              }),
+            ),
+          )
 
-        return eventLists.flat().flatMap((event) => {
-          if (!event.start || !event.end) return []
-          return [{ start: new Date(event.start), end: new Date(event.end) }]
+          return eventLists.flat().flatMap((event) => {
+            if (!event.start || !event.end) return []
+            return [{ start: new Date(event.start), end: new Date(event.end) }]
+          })
+        }
+
+        if (accountConnections[0].provider === 'apple') {
+          const eventLists = await Promise.all(
+            accountConnections.map((connection) =>
+              listAppleEventsForConnection({
+                connection,
+                timeMin,
+                timeMax,
+              }),
+            ),
+          )
+
+          return eventLists.flat().flatMap((event) => {
+            if (!event.start || !event.end) return []
+            return [{ start: new Date(event.start), end: new Date(event.end) }]
+          })
+        }
+
+        const client = await calendarForConnection(accountConnections[0])
+        if (client.provider !== 'google') return []
+        const response = await client.calendar.freebusy.query({
+          requestBody: {
+            timeMin: timeMin.toISOString(),
+            timeMax: timeMax.toISOString(),
+            items: accountConnections.map((connection) => ({ id: connection.calendar_id })),
+          },
         })
-      }
 
-      if (accountConnections[0].provider === 'apple') {
-        const eventLists = await Promise.all(
-          accountConnections.map((connection) =>
-            listAppleEventsForConnection({
-              connection,
-              timeMin,
-              timeMax,
-            }),
-          ),
+        return accountConnections.flatMap((connection) =>
+          (response.data.calendars?.[connection.calendar_id]?.busy || []).flatMap((item) => {
+            if (!item.start || !item.end) return []
+            return [{ start: new Date(item.start), end: new Date(item.end) }]
+          }),
         )
+      } catch (error) {
+        if (!isRevokedCalendarTokenError(error)) throw error
 
-        return eventLists.flat().flatMap((event) => {
-          if (!event.start || !event.end) return []
-          return [{ start: new Date(event.start), end: new Date(event.end) }]
-        })
+        accountConnections.forEach((connection) => options?.skippedConnectionIds?.add(connection.id))
+        await deactivateCalendarConnections(accountConnections)
+        return []
       }
-
-      const client = await calendarForConnection(accountConnections[0])
-      if (client.provider !== 'google') return []
-      const response = await client.calendar.freebusy.query({
-        requestBody: {
-          timeMin: timeMin.toISOString(),
-          timeMax: timeMax.toISOString(),
-          items: accountConnections.map((connection) => ({ id: connection.calendar_id })),
-        },
-      })
-
-      return accountConnections.flatMap((connection) =>
-        (response.data.calendars?.[connection.calendar_id]?.busy || []).flatMap((item) => {
-          if (!item.start || !item.end) return []
-          return [{ start: new Date(item.start), end: new Date(item.end) }]
-        }),
-      )
     }),
   )
 
@@ -2403,7 +2438,12 @@ export async function findScheduleOptions({
 
   const timeMin = futureCandidateStarts[0]
   const timeMax = addMinutes(futureCandidateStarts[futureCandidateStarts.length - 1], durationMinutes)
-  const busy = await busyBlocks(connections, timeMin, timeMax)
+  const skippedConnectionIds = new Set<string>()
+  const busy = await busyBlocks(connections, timeMin, timeMax, { skippedConnectionIds })
+
+  if (skippedConnectionIds.has(targetConnection.id)) {
+    throw new Error(`Reconnect ${displayCalendarName(targetConnection)} in Manoa before adding events there.`)
+  }
 
   return futureCandidateStarts
     .map((start) => ({
