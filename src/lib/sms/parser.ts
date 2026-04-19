@@ -702,12 +702,13 @@ function stripSchedulingNoise(text: string) {
     .replace(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday|today|tomorrow|tmrw|next)\b/g, ' ')
     .replace(/\btomororws?\b/g, ' ')
     .replace(
-      /\b(schedule|book|add|reschedule|rescheduled|move|moved|change|changed|push|pushed|cancel|canceled|cancelled|delete|deleted|on|at|to|my|work|personal|family|home|email|calendar|every|each|weekly|biweekly|monthly|week|weeks|month|months|other|recurring)\b/g,
+      /\b(schedule|book|add|reschedule|rescheduled|move|moved|change|changed|push|pushed|cancel|canceled|cancelled|delete|deleted|on|at|to|my|work|personal|family|home|email|calendar|this|every|each|weekly|biweekly|monthly|week|weeks|month|months|other|recurring)\b/g,
       ' ',
     )
     .replace(/\b\d+\s*(minute|min|hour|hr)\b/g, ' ')
     .replace(/\bsometime\b/g, ' ')
     .replace(/\s+/g, ' ')
+    .replace(/^[\s,;:-]+|[\s,;:-]+$/g, '')
     .trim()
 
   return cleaned || 'meeting'

@@ -3271,6 +3271,14 @@ export async function handleIncomingSms({
     return reply
   }
 
+  if (
+    activePending?.kind === 'select_cancel_target' &&
+    activePending.payload.recentlyCreated &&
+    !isShortAcknowledgement(body)
+  ) {
+    activePending = null
+  }
+
   const correctedSchedule = activePending
     ? correctedScheduleIntentFromPending(
         body,

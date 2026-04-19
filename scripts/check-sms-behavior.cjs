@@ -92,6 +92,12 @@ assert.deepEqual(bareMorningHour.exactTime, { hour: 9, minute: 0 })
 const bareNoon = assertScheduleTitle('schedule meeting at 12', 'meeting')
 assert.deepEqual(bareNoon.exactTime, { hour: 12, minute: 0 })
 
+const thisWednesdayDinner = assertScheduleTitle(
+  'this Wednesday, Salmon/Haddock for dinner',
+  'salmon/haddock for dinner',
+)
+assert.equal(parts(thisWednesdayDinner.dateWindow.start).weekday, 3)
+
 const oneHourMeeting = assertScheduleTitle('schedule 1 hour meeting', 'meeting')
 assert.equal(oneHourMeeting.durationMinutes, 60)
 
@@ -230,6 +236,16 @@ cancelJustBookedState = applyDemoText(cancelJustBookedState, 'actually cancel th
 assert.equal(cancelJustBookedState.pendingAction, null)
 assert.match(cancelJustBookedState.messages.at(-1).lines.join('\n'), /canceled meeting/i)
 assert.ok(!cancelJustBookedState.events.some((event) => event.id === justBookedEventId))
+
+let scheduleAfterBookedState = createDemoState()
+scheduleAfterBookedState = applyDemoText(scheduleAfterBookedState, '4pm meeting tomorrow on Work')
+scheduleAfterBookedState = applyDemoText(scheduleAfterBookedState, 'yes')
+scheduleAfterBookedState = applyDemoText(scheduleAfterBookedState, 'this Wednesday, Salmon/Haddock for dinner')
+assert.ok(!/already booked/i.test(scheduleAfterBookedState.messages.at(-1).lines.join('\n')))
+assert.equal(
+  scheduleAfterBookedState.pendingAction?.options?.[0]?.title.toLowerCase(),
+  'salmon/haddock for dinner',
+)
 
 let nextWeekCorrectionState = createDemoState()
 nextWeekCorrectionState = applyDemoText(nextWeekCorrectionState, 'schedule meeting tomorrow')
