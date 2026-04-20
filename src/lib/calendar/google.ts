@@ -466,6 +466,17 @@ function normalizeOutlookGraphDateTime(value: Date | string) {
   return new Date(value).toISOString().replace(/Z$/, '')
 }
 
+function calendarLocalDateTime(value: Date | string, timeZone?: string) {
+  const parts = dateTimePartsInTimeZone(value, timeZone || defaultTimezone())
+  return `${parts.year}-${padCalendarPart(parts.month)}-${padCalendarPart(parts.day)}T${padCalendarPart(
+    parts.hour,
+  )}:${padCalendarPart(parts.minute)}:${padCalendarPart(parts.second)}`
+}
+
+function basicLocalTimestamp(value: Date | string, timeZone?: string) {
+  return calendarLocalDateTime(value, timeZone).replace(/[-:]/g, '')
+}
+
 function graphHeaders(accessToken: string, extra?: Record<string, string>) {
   return {
     Authorization: `Bearer ${accessToken}`,
@@ -774,6 +785,7 @@ function buildAppleCalendarEventBody({
   option: ScheduleOption
   uid: string
 }) {
+  const recurrenceTimeZone = option.recurrence ? option.timeZone || defaultTimezone() : null
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
@@ -782,8 +794,12 @@ function buildAppleCalendarEventBody({
     'BEGIN:VEVENT',
     `UID:${uid}`,
     `DTSTAMP:${basicUtcTimestamp(new Date())}`,
-    `DTSTART:${basicUtcTimestamp(option.start)}`,
-    `DTEND:${basicUtcTimestamp(option.end)}`,
+    recurrenceTimeZone
+      ? `DTSTART;TZID=${recurrenceTimeZone}:${basicLocalTimestamp(option.start, recurrenceTimeZone)}`
+      : `DTSTART:${basicUtcTimestamp(option.start)}`,
+    recurrenceTimeZone
+      ? `DTEND;TZID=${recurrenceTimeZone}:${basicLocalTimestamp(option.end, recurrenceTimeZone)}`
+      : `DTEND:${basicUtcTimestamp(option.end)}`,
     `SUMMARY:${escapeIcsText(option.title)}`,
   ]
 
@@ -2556,18 +2572,23 @@ export async function createCalendarEvent(
   }
   if (client.provider === 'outlook') {
     const recurrence = outlookRecurrenceBody(option.recurrence, option.start, option.timeZone)
+    const recurrenceTimeZone = option.recurrence ? option.timeZone || defaultTimezone() : null
     return graphJson(`/me/calendars/${encodeURIComponent(option.calendarId || client.connection.calendar_id)}/events`, {
       accessToken: client.accessToken,
       method: 'POST',
       body: {
         subject: option.title,
         start: {
-          dateTime: normalizeOutlookGraphDateTime(option.start),
-          timeZone: 'UTC',
+          dateTime: recurrenceTimeZone
+            ? calendarLocalDateTime(option.start, recurrenceTimeZone)
+            : normalizeOutlookGraphDateTime(option.start),
+          timeZone: recurrenceTimeZone || 'UTC',
         },
         end: {
-          dateTime: normalizeOutlookGraphDateTime(option.end),
-          timeZone: 'UTC',
+          dateTime: recurrenceTimeZone
+            ? calendarLocalDateTime(option.end, recurrenceTimeZone)
+            : normalizeOutlookGraphDateTime(option.end),
+          timeZone: recurrenceTimeZone || 'UTC',
         },
         attendees: option.attendees?.map((invitee) => ({
           emailAddress: {
@@ -2589,6 +2610,7 @@ export async function createCalendarEvent(
   const recurrence = option.recurrence
     ? recurrenceRule(option.recurrence, option.start, option.timeZone)
     : null
+  const recurrenceTimeZone = option.recurrence ? option.timeZone || defaultTimezone() : null
 
   const response = await client.calendar.events.insert({
     calendarId: option.calendarId || client.connection.calendar_id,
@@ -2596,10 +2618,16 @@ export async function createCalendarEvent(
     requestBody: {
       summary: option.title,
       start: {
-        dateTime: option.start,
+        dateTime: recurrenceTimeZone
+          ? calendarLocalDateTime(option.start, recurrenceTimeZone)
+          : option.start,
+        timeZone: recurrenceTimeZone || undefined,
       },
       end: {
-        dateTime: option.end,
+        dateTime: recurrenceTimeZone
+          ? calendarLocalDateTime(option.end, recurrenceTimeZone)
+          : option.end,
+        timeZone: recurrenceTimeZone || undefined,
       },
       location: option.location?.trim() || undefined,
       attendees: option.attendees?.map((invitee) => ({
@@ -2629,18 +2657,23 @@ export async function updateCalendarEvent(
   }
   if (client.provider === 'outlook') {
     const recurrence = outlookRecurrenceBody(option.recurrence, option.start, option.timeZone)
+    const recurrenceTimeZone = option.recurrence ? option.timeZone || defaultTimezone() : null
     return graphJson(`/me/calendars/${encodeURIComponent(option.calendarId || client.connection.calendar_id)}/events/${encodeURIComponent(eventId)}`, {
       accessToken: client.accessToken,
       method: 'PATCH',
       body: {
         subject: option.title,
         start: {
-          dateTime: normalizeOutlookGraphDateTime(option.start),
-          timeZone: 'UTC',
+          dateTime: recurrenceTimeZone
+            ? calendarLocalDateTime(option.start, recurrenceTimeZone)
+            : normalizeOutlookGraphDateTime(option.start),
+          timeZone: recurrenceTimeZone || 'UTC',
         },
         end: {
-          dateTime: normalizeOutlookGraphDateTime(option.end),
-          timeZone: 'UTC',
+          dateTime: recurrenceTimeZone
+            ? calendarLocalDateTime(option.end, recurrenceTimeZone)
+            : normalizeOutlookGraphDateTime(option.end),
+          timeZone: recurrenceTimeZone || 'UTC',
         },
         location: option.location?.trim()
           ? {
@@ -2655,6 +2688,7 @@ export async function updateCalendarEvent(
   const recurrence = option.recurrence
     ? recurrenceRule(option.recurrence, option.start, option.timeZone)
     : null
+  const recurrenceTimeZone = option.recurrence ? option.timeZone || defaultTimezone() : null
 
   const response = await client.calendar.events.patch({
     calendarId: option.calendarId || client.connection.calendar_id,
@@ -2663,10 +2697,16 @@ export async function updateCalendarEvent(
     requestBody: {
       summary: option.title,
       start: {
-        dateTime: option.start,
+        dateTime: recurrenceTimeZone
+          ? calendarLocalDateTime(option.start, recurrenceTimeZone)
+          : option.start,
+        timeZone: recurrenceTimeZone || undefined,
       },
       end: {
-        dateTime: option.end,
+        dateTime: recurrenceTimeZone
+          ? calendarLocalDateTime(option.end, recurrenceTimeZone)
+          : option.end,
+        timeZone: recurrenceTimeZone || undefined,
       },
       location: option.location?.trim() || undefined,
       recurrence: recurrence ? [recurrence] : undefined,
