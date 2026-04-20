@@ -15,6 +15,7 @@ require.extensions['.ts'] = function loadTypeScript(module, filename) {
 }
 
 const { dateTimePartsInTimeZone, startOfDay } = require('../src/lib/calendar/dates.ts')
+const { recurrenceRule, recurrenceSummary } = require('../src/lib/calendar/recurrence.ts')
 const { scheduleCandidateTimesForTitle } = require('../src/lib/calendar/schedulingPreferences.ts')
 const { applyDemoText, createDemoState } = require('../src/lib/demoSms.ts')
 const { classifyEventAuthority } = require('../src/lib/eventAuthority.ts')
@@ -117,6 +118,16 @@ assert.deepEqual(locationEvent.exactTime, { hour: 10, minute: 0 })
 const nextMondayAgenda = parseSmsIntent("what's next Mondays agenda", timeZone)
 assert.equal(nextMondayAgenda.type, 'agenda')
 assert.equal(parts(nextMondayAgenda.dateWindow.start).weekday, 1)
+
+const mondayEveningUtcStart = '2026-04-21T00:00:00.000Z'
+assert.equal(
+  recurrenceSummary({ unit: 'week', interval: 1 }, mondayEveningUtcStart, timeZone),
+  'Repeats every Monday.',
+)
+assert.equal(
+  recurrenceRule({ unit: 'week', interval: 1 }, mondayEveningUtcStart, timeZone),
+  'RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=MO',
+)
 
 assertAgendaWindow("what's coming up", 'coming up')
 

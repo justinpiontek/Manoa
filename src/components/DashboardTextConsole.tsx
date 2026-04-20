@@ -13,7 +13,7 @@ export default function DashboardTextConsole({
   starterPrompts,
 }: DashboardTextConsoleProps) {
   const [messages, setMessages] = useState(initialMessages)
-  const [input, setInput] = useState(starterPrompts[0] || '')
+  const [input, setInput] = useState('')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const threadRef = useRef<HTMLDivElement | null>(null)

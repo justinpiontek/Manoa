@@ -368,7 +368,7 @@ function mapOutlookEvent(
     organizerEmail: event.organizer?.emailAddress?.address || '',
     attendeeCount: event.attendees?.length || 0,
     selfResponseStatus: event.responseStatus?.response || null,
-    recurrence: recurrence ? [recurrenceSummary(recurrence, start) || 'Recurring event'] : null,
+    recurrence: recurrence ? [recurrenceSummary(recurrence, start, timeZone) || 'Recurring event'] : null,
     recurringEventId: event.seriesMasterId || null,
     originalStart: event.originalStart || null,
   } satisfies EventSummary
@@ -788,7 +788,7 @@ function buildAppleCalendarEventBody({
   ]
 
   if (option.recurrence) {
-    const rule = recurrenceRule(option.recurrence, option.start)
+    const rule = recurrenceRule(option.recurrence, option.start, option.timeZone)
     if (rule) lines.push(rule)
   }
 
@@ -1105,11 +1105,25 @@ function parseOutlookRecurrence(
   return null
 }
 
-function outlookRecurrenceBody(spec: RecurrenceSpec | null | undefined, start: string) {
+function padCalendarPart(value: number) {
+  return String(value).padStart(2, '0')
+}
+
+function recurrenceStartDate(start: Date | string, timeZone?: string) {
+  const parts = dateTimePartsInTimeZone(start, timeZone)
+  return `${parts.year}-${padCalendarPart(parts.month)}-${padCalendarPart(parts.day)}`
+}
+
+function outlookRecurrenceBody(
+  spec: RecurrenceSpec | null | undefined,
+  start: string,
+  timeZone?: string,
+) {
   if (!spec) return undefined
 
   const date = new Date(start)
   if (Number.isNaN(date.getTime())) return undefined
+  const parts = dateTimePartsInTimeZone(date, timeZone)
 
   const weekdayNames = [
     'sunday',
@@ -1120,20 +1134,21 @@ function outlookRecurrenceBody(spec: RecurrenceSpec | null | undefined, start: s
     'friday',
     'saturday',
   ]
-  const nth = Math.floor((date.getUTCDate() - 1) / 7) + 1
+  const nth = Math.floor((parts.day - 1) / 7) + 1
   const index = nth >= 5 ? 'last' : (['first', 'second', 'third', 'fourth'][nth - 1] || 'last')
+  const startDate = recurrenceStartDate(date, timeZone)
 
   if (spec.unit === 'week') {
     return {
       pattern: {
         type: 'weekly',
         interval: spec.interval,
-        daysOfWeek: [weekdayNames[date.getUTCDay()]],
+        daysOfWeek: [weekdayNames[parts.weekday]],
         firstDayOfWeek: 'sunday',
       },
       range: {
         type: 'noEnd',
-        startDate: date.toISOString().slice(0, 10),
+        startDate,
       },
     }
   }
@@ -1143,12 +1158,12 @@ function outlookRecurrenceBody(spec: RecurrenceSpec | null | undefined, start: s
       pattern: {
         type: 'relativeMonthly',
         interval: 1,
-        daysOfWeek: [weekdayNames[date.getUTCDay()]],
+        daysOfWeek: [weekdayNames[parts.weekday]],
         index,
       },
       range: {
         type: 'noEnd',
-        startDate: date.toISOString().slice(0, 10),
+        startDate,
       },
     }
   }
@@ -1157,11 +1172,11 @@ function outlookRecurrenceBody(spec: RecurrenceSpec | null | undefined, start: s
     pattern: {
       type: 'absoluteMonthly',
       interval: 1,
-      dayOfMonth: date.getUTCDate(),
+      dayOfMonth: parts.day,
     },
     range: {
       type: 'noEnd',
-      startDate: date.toISOString().slice(0, 10),
+      startDate,
     },
   }
 }
@@ -2540,7 +2555,7 @@ export async function createCalendarEvent(
     return createAppleCalendarEvent(client.connection, option)
   }
   if (client.provider === 'outlook') {
-    const recurrence = outlookRecurrenceBody(option.recurrence, option.start)
+    const recurrence = outlookRecurrenceBody(option.recurrence, option.start, option.timeZone)
     return graphJson(`/me/calendars/${encodeURIComponent(option.calendarId || client.connection.calendar_id)}/events`, {
       accessToken: client.accessToken,
       method: 'POST',
@@ -2571,7 +2586,9 @@ export async function createCalendarEvent(
     })
   }
 
-  const recurrence = option.recurrence ? recurrenceRule(option.recurrence, option.start) : null
+  const recurrence = option.recurrence
+    ? recurrenceRule(option.recurrence, option.start, option.timeZone)
+    : null
 
   const response = await client.calendar.events.insert({
     calendarId: option.calendarId || client.connection.calendar_id,
@@ -2611,7 +2628,7 @@ export async function updateCalendarEvent(
     return updateAppleCalendarEvent(client.connection, eventId, option)
   }
   if (client.provider === 'outlook') {
-    const recurrence = outlookRecurrenceBody(option.recurrence, option.start)
+    const recurrence = outlookRecurrenceBody(option.recurrence, option.start, option.timeZone)
     return graphJson(`/me/calendars/${encodeURIComponent(option.calendarId || client.connection.calendar_id)}/events/${encodeURIComponent(eventId)}`, {
       accessToken: client.accessToken,
       method: 'PATCH',
@@ -2635,7 +2652,9 @@ export async function updateCalendarEvent(
     })
   }
 
-  const recurrence = option.recurrence ? recurrenceRule(option.recurrence, option.start) : null
+  const recurrence = option.recurrence
+    ? recurrenceRule(option.recurrence, option.start, option.timeZone)
+    : null
 
   const response = await client.calendar.events.patch({
     calendarId: option.calendarId || client.connection.calendar_id,

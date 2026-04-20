@@ -199,14 +199,18 @@ function actionChoiceList(lines: string[]) {
 
 function recurrenceLine(options: ScheduleOption[]) {
   const firstOption = options[0]
-  const summary = recurrenceSummary(firstOption?.recurrence, firstOption?.start || '')
+  const summary = recurrenceSummary(
+    firstOption?.recurrence,
+    firstOption?.start || '',
+    firstOption?.timeZone,
+  )
   return summary || null
 }
 
 function bookingText(option: ScheduleOption) {
   const location = option.location?.trim()
   const locationLine = location ? `\nLocation: ${location}.` : ''
-  const summary = recurrenceSummary(option.recurrence, option.start)
+  const summary = recurrenceSummary(option.recurrence, option.start, option.timeZone)
   if (summary) {
     return `Booked ${option.title} starting ${option.dayLabel} at ${option.timeLabel}.${locationLine}\n${summary}`
   }
