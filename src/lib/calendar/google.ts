@@ -638,6 +638,27 @@ function escapeIcsText(value: string) {
     .replace(/;/g, '\\;')
 }
 
+function escapeIcsParam(value: string) {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+}
+
+function foldIcsLine(line: string) {
+  const chunks: string[] = []
+  let remaining = line
+
+  while (remaining.length > 75) {
+    chunks.push(remaining.slice(0, 75))
+    remaining = ` ${remaining.slice(75)}`
+  }
+
+  chunks.push(remaining)
+  return chunks.join('\r\n')
+}
+
+function serializeIcsLines(lines: string[]) {
+  return `${lines.map(foldIcsLine).join('\r\n')}\r\n`
+}
+
 function unescapeIcsText(value: string) {
   return value
     .replace(/\\n/g, '\n')
@@ -704,6 +725,31 @@ function parseIcsProperty(rawLine: string) {
     params,
     value,
   }
+}
+
+function attendeeLine(invitee: Invitee) {
+  const email = invitee.email.trim().toLowerCase()
+  const displayName = invitee.displayName?.trim() || email
+
+  return [
+    `ATTENDEE;CN=${escapeIcsParam(displayName)}`,
+    'CUTYPE=INDIVIDUAL',
+    'ROLE=REQ-PARTICIPANT',
+    'PARTSTAT=NEEDS-ACTION',
+    'RSVP=TRUE',
+    `mailto:${email}`,
+  ].join(';').replace(';mailto:', ':mailto:')
+}
+
+function organizerLine(email: string) {
+  const normalizedEmail = email.trim().toLowerCase()
+  return `ORGANIZER;CN=${escapeIcsParam(normalizedEmail)}:mailto:${normalizedEmail}`
+}
+
+function attendeeEmailFromLine(line: string) {
+  const property = parseIcsProperty(line)
+  if (property?.name !== 'ATTENDEE') return ''
+  return property.value.replace(/^mailto:/i, '').trim().toLowerCase()
 }
 
 function parseAppleCalendarData(
@@ -781,9 +827,11 @@ function parseAppleCalendarData(
 function buildAppleCalendarEventBody({
   option,
   uid,
+  organizerEmail,
 }: {
   option: ScheduleOption
   uid: string
+  organizerEmail?: string | null
 }) {
   const recurrenceTimeZone = option.recurrence ? option.timeZone || defaultTimezone() : null
   const lines = [
@@ -812,8 +860,17 @@ function buildAppleCalendarEventBody({
     lines.push(`LOCATION:${escapeIcsText(option.location.trim())}`)
   }
 
+  const attendees = option.attendees || []
+  if (attendees.length && organizerEmail?.trim()) {
+    lines.push(organizerLine(organizerEmail))
+  }
+
+  for (const invitee of attendees) {
+    if (invitee.email.trim()) lines.push(attendeeLine(invitee))
+  }
+
   lines.push('END:VEVENT', 'END:VCALENDAR')
-  return `${lines.join('\r\n')}\r\n`
+  return serializeIcsLines(lines)
 }
 
 async function discoverAppleCalendars(email: string, appSpecificPassword: string) {
@@ -975,6 +1032,22 @@ async function getAppleEventForConnection(connection: CalendarConnection, eventI
   return parseAppleCalendarData(response.text, connection, url)
 }
 
+async function getAppleEventDataForConnection(connection: CalendarConnection, eventId: string) {
+  const url = sanitizeAppleHref(eventId, connection.calendar_id)
+  const response = await appleDavRequest({
+    url,
+    email: connection.account_email || connection.account_id,
+    appSpecificPassword: connection.access_token,
+    method: 'GET',
+    contentType: 'text/calendar; charset=utf-8',
+  })
+
+  return {
+    text: response.text,
+    url,
+  }
+}
+
 async function maybeGetAppleEventForConnection(connection: CalendarConnection, eventId: string) {
   try {
     return await getAppleEventForConnection(connection, eventId)
@@ -1026,7 +1099,11 @@ async function createAppleCalendarEvent(connection: CalendarConnection, option: 
       'Content-Type': 'text/calendar; charset=utf-8',
       'If-None-Match': '*',
     },
-    body: buildAppleCalendarEventBody({ option, uid }),
+    body: buildAppleCalendarEventBody({
+      option,
+      uid,
+      organizerEmail: connection.account_email || connection.account_id,
+    }),
   })
 
   if (!response.ok) {
@@ -1048,7 +1125,11 @@ async function updateAppleCalendarEvent(connection: CalendarConnection, eventId:
       Authorization: appleAuthHeader(connection.account_email || connection.account_id, connection.access_token),
       'Content-Type': 'text/calendar; charset=utf-8',
     },
-    body: buildAppleCalendarEventBody({ option, uid }),
+    body: buildAppleCalendarEventBody({
+      option,
+      uid,
+      organizerEmail: connection.account_email || connection.account_id,
+    }),
   })
 
   if (!response.ok) {
@@ -2714,6 +2795,179 @@ export async function updateCalendarEvent(
   })
 
   return response.data
+}
+
+function mergeGoogleAttendees(
+  existing: calendar_v3.Schema$EventAttendee[] | undefined,
+  invitees: Invitee[],
+) {
+  const merged = [...(existing || [])]
+
+  for (const invitee of invitees) {
+    const email = invitee.email.trim()
+    if (!email) continue
+    if (merged.some((attendee) => (attendee.email || '').trim().toLowerCase() === email.toLowerCase())) {
+      continue
+    }
+
+    merged.push({
+      email,
+      displayName: invitee.displayName || undefined,
+    })
+  }
+
+  return merged
+}
+
+function mergeOutlookAttendees(existing: unknown, invitees: Invitee[]) {
+  const merged = Array.isArray(existing) ? [...existing] : []
+  const attendeeEmail = (attendee: unknown) => {
+    if (!attendee || typeof attendee !== 'object') return ''
+    const emailAddress = (attendee as { emailAddress?: { address?: unknown } }).emailAddress
+    return typeof emailAddress?.address === 'string' ? emailAddress.address.trim().toLowerCase() : ''
+  }
+
+  for (const invitee of invitees) {
+    const email = invitee.email.trim()
+    if (!email) continue
+    if (merged.some((attendee) => attendeeEmail(attendee) === email.toLowerCase())) continue
+
+    merged.push({
+      emailAddress: {
+        address: email,
+        name: invitee.displayName || email,
+      },
+      type: 'required',
+    })
+  }
+
+  return merged
+}
+
+function addInviteesToAppleCalendarData(
+  calendarData: string,
+  invitees: Invitee[],
+  organizerEmail?: string | null,
+) {
+  const lines = unfoldIcs(calendarData).split(/\r?\n/).filter(Boolean)
+  const eventStartIndex = lines.findIndex((line) => /^BEGIN:VEVENT$/i.test(line))
+  const eventEndIndex = lines.findIndex((line) => /^END:VEVENT$/i.test(line))
+
+  if (eventStartIndex === -1 || eventEndIndex === -1 || eventEndIndex <= eventStartIndex) {
+    throw new Error('Apple Calendar invite failed: event data could not be updated')
+  }
+
+  const eventLines = lines.slice(eventStartIndex + 1, eventEndIndex)
+  const existingAttendeeEmails = new Set(
+    eventLines.map(attendeeEmailFromLine).filter(Boolean),
+  )
+  const additions = invitees
+    .filter((invitee) => {
+      const email = invitee.email.trim().toLowerCase()
+      return email && !existingAttendeeEmails.has(email)
+    })
+    .map(attendeeLine)
+
+  if (!additions.length) {
+    return serializeIcsLines(lines)
+  }
+
+  const hasOrganizer = eventLines.some((line) => parseIcsProperty(line)?.name === 'ORGANIZER')
+  const organizerAddition =
+    hasOrganizer || !organizerEmail?.trim() ? [] : [organizerLine(organizerEmail)]
+  const dtstampIndex = eventLines.findIndex((line) => parseIcsProperty(line)?.name === 'DTSTAMP')
+  if (dtstampIndex >= 0) {
+    lines[eventStartIndex + 1 + dtstampIndex] = `DTSTAMP:${basicUtcTimestamp(new Date())}`
+  }
+
+  const sequenceIndex = eventLines.findIndex((line) => parseIcsProperty(line)?.name === 'SEQUENCE')
+  if (sequenceIndex >= 0) {
+    const currentSequence = Number(parseIcsProperty(eventLines[sequenceIndex])?.value || '0')
+    lines[eventStartIndex + 1 + sequenceIndex] = `SEQUENCE:${Number.isFinite(currentSequence) ? currentSequence + 1 : 1}`
+  } else {
+    additions.unshift('SEQUENCE:1')
+  }
+
+  lines.splice(eventEndIndex, 0, ...organizerAddition, ...additions)
+  return serializeIcsLines(lines)
+}
+
+async function addInviteesToAppleCalendarEvent(
+  connection: CalendarConnection,
+  eventId: string,
+  invitees: Invitee[],
+) {
+  const eventData = await getAppleEventDataForConnection(connection, eventId)
+  const body = addInviteesToAppleCalendarData(
+    eventData.text,
+    invitees,
+    connection.account_email || connection.account_id,
+  )
+  const response = await fetch(eventData.url, {
+    method: 'PUT',
+    headers: {
+      Authorization: appleAuthHeader(connection.account_email || connection.account_id, connection.access_token),
+      'Content-Type': 'text/calendar; charset=utf-8',
+    },
+    body,
+  })
+
+  if (!response.ok) {
+    const responseBody = await response.text()
+    throw new Error(`Apple Calendar invite failed: ${response.status} ${responseBody || response.statusText}`)
+  }
+
+  await verifyAppleEventExists(connection, eventData.url, 'update')
+}
+
+export async function addInviteesToCalendarEvent(
+  profileId: string,
+  target: Pick<EventSummary, 'id' | 'calendarId' | 'provider'>,
+  invitees: Invitee[],
+): Promise<void> {
+  const client = await calendarForProfile(profileId, {
+    calendarId: target.calendarId,
+    provider: target.provider,
+  })
+  if (!client) throw new Error('Calendar is not connected.')
+
+  if (client.provider === 'apple') {
+    await addInviteesToAppleCalendarEvent(client.connection, target.id, invitees)
+    return
+  }
+
+  if (client.provider === 'outlook') {
+    const calendarId = target.calendarId || client.connection.calendar_id
+    const current = await graphJson<{ attendees?: unknown }>(
+      `/me/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(target.id)}`,
+      {
+        accessToken: client.accessToken,
+      },
+    )
+    await graphJson(`/me/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(target.id)}`, {
+      accessToken: client.accessToken,
+      method: 'PATCH',
+      body: {
+        attendees: mergeOutlookAttendees(current.attendees, invitees),
+      },
+    })
+    return
+  }
+
+  const calendarId = target.calendarId || client.connection.calendar_id
+  const current = await client.calendar.events.get({
+    calendarId,
+    eventId: target.id,
+  })
+
+  await client.calendar.events.patch({
+    calendarId,
+    eventId: target.id,
+    sendUpdates: 'all',
+    requestBody: {
+      attendees: mergeGoogleAttendees(current.data.attendees, invitees),
+    },
+  })
 }
 
 export async function deleteCalendarEvent(

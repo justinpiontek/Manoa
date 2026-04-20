@@ -9,6 +9,12 @@ type InviteeParse = {
   directInvitees: Invitee[]
 }
 
+export type ExistingEventInviteRequest = {
+  eventQuery: string
+  names: string[]
+  directInvitees: Invitee[]
+}
+
 const emailPattern = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi
 const monthStop =
   '(?:jan\\.?|january|feb\\.?|february|mar\\.?|march|apr\\.?|april|may|jun\\.?|june|jul\\.?|july|aug\\.?|august|sep\\.?|sept\\.?|september|oct\\.?|october|nov\\.?|november|dec\\.?|december)'
@@ -99,6 +105,29 @@ export function parseInviteesFromText(text: string): InviteeParse {
     cleanedText: cleanedText.replace(/\s+/g, ' ').replace(/^\s*to\s+/i, '').trim(),
     names: [...names],
     directInvitees: uniqueInvitees(directInvitees),
+  }
+}
+
+export function parseExistingEventInviteRequest(text: string): ExistingEventInviteRequest | null {
+  const match = text.match(/\b(?:add|invite)\s+(.+?)\s+to\s+(.+)$/i)
+  if (!match) return null
+
+  const peopleText = cleanCandidate(match[1])
+  const eventQuery = cleanCandidate(
+    match[2]
+      .replace(/^(?:the|my|our)\s+/i, '')
+      .replace(/\b(?:event|calendar event)\b/gi, ' '),
+  )
+
+  if (!peopleText || !eventQuery) return null
+
+  const parsed = parseInviteesFromText(`with ${peopleText}`)
+  if (!parsed.names.length && !parsed.directInvitees.length) return null
+
+  return {
+    eventQuery,
+    names: parsed.names,
+    directInvitees: parsed.directInvitees,
   }
 }
 

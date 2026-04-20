@@ -1,4 +1,5 @@
 import {
+  addInviteesToCalendarEvent,
   createCalendarEvent,
   deleteCalendarEvent,
   findScheduleOptions,
@@ -43,7 +44,14 @@ import {
   type EventAuthority,
 } from '../eventAuthority'
 import { supabaseAdmin } from '../supabaseAdmin'
-import { inviteeLabel, parseInviteesFromText, resolveInviteeFollowUp, type Invitee } from './invitees'
+import {
+  inviteeLabel,
+  parseExistingEventInviteRequest,
+  parseInviteesFromText,
+  resolveInviteeFollowUp,
+  type ExistingEventInviteRequest,
+  type Invitee,
+} from './invitees'
 import { parseSmsIntentWithAI } from './aiIntent'
 import { resolvePendingChoice } from './pendingChoice'
 import { parseSmsIntent, parseSmsTime, type DateWindow, type ParsedSmsIntent } from './parser'
@@ -273,7 +281,7 @@ async function storeRecentCreatedEvent({
 }
 
 function providerCanSendInvites(provider: ScheduleOption['provider']) {
-  return provider !== 'apple'
+  return ['apple', 'google', 'outlook'].includes(provider)
 }
 
 function attendeesForCalendarEvent(option: ScheduleOption, attendees: Invitee[]) {
@@ -1396,6 +1404,95 @@ async function resolveScheduleInvitees(profileId: string, body: string) {
   }
 }
 
+async function saveInviteeContacts(profileId: string, invitees: Invitee[]) {
+  for (const invitee of invitees) {
+    if (!invitee.displayName) continue
+    await saveOrUpdatePersonContact({
+      profileId,
+      label: invitee.displayName,
+      email: invitee.email,
+      aliases: buildPersonAliases([invitee.displayName, invitee.email]),
+    })
+  }
+}
+
+async function resolveExistingEventInvitees(profileId: string, request: ExistingEventInviteRequest) {
+  const resolvedInvitees = [...request.directInvitees]
+  const unresolvedNames: string[] = []
+
+  for (const name of request.names) {
+    const match = await findPersonContact(profileId, name)
+    if (match) {
+      resolvedInvitees.push({
+        email: match.email,
+        displayName: match.label,
+      })
+    } else {
+      unresolvedNames.push(name)
+    }
+  }
+
+  const dedupedInvitees = resolvedInvitees.filter((invitee, index, list) => {
+    return list.findIndex((item) => item.email.toLowerCase() === invitee.email.toLowerCase()) === index
+  })
+
+  return {
+    eventQuery: request.eventQuery,
+    invitees: dedupedInvitees,
+    unresolvedNames,
+  }
+}
+
+function inviteTargetChoiceList(events: EventSummary[], timeZone: string) {
+  return events
+    .map((event, index) => `${index + 1}. ${eventDateLabel(event, timeZone)} ${event.title} (${event.calendarName})`)
+    .join('\n')
+}
+
+async function inviteExistingEventTarget({
+  profile,
+  target,
+  attendees,
+  unresolvedInvitees,
+}: {
+  profile: SmsProfile
+  target: EventSummary
+  attendees: Invitee[]
+  unresolvedInvitees: string[]
+}) {
+  await saveInviteeContacts(profile.id, attendees)
+
+  if (!providerCanSendInvites(target.provider)) {
+    return `${calendarProviderName(target.provider)} Calendar does not send invite emails through Manoa yet, so I cannot add invitees to ${target.title}. If you schedule it on Google, I can send the invite.`
+  }
+
+  if (unresolvedInvitees.length) {
+    return `I can invite ${attendees.length ? `${inviteeSummary(attendees)}, but I still` : 'them, but I'} need email${
+      unresolvedInvitees.length > 1 ? 's' : ''
+    } for ${unresolvedInviteeSummary(unresolvedInvitees)}.\nReply like "Sam sam@company.com" or say "skip."`
+  }
+
+  if (!attendees.length) {
+    return `Who should I invite to ${target.title}? Reply with a name and email, like "Sam sam@company.com."`
+  }
+
+  try {
+    await addInviteesToCalendarEvent(profile.id, target, attendees)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (/403|forbidden|read.?only|not allowed|permission/i.test(message)) {
+      return `I found ${target.title}, but ${target.calendarName} will not let Manoa add invitees to it.`
+    }
+
+    throw error
+  }
+
+  return `I invited ${inviteeSummary(attendees)} to ${target.title} on ${eventDateLabel(
+    target,
+    profile.timezone,
+  )}.`
+}
+
 function findEventByQuery(events: EventSummary[], query: string) {
   return bestEventByQuery(events, query)
 }
@@ -2125,6 +2222,97 @@ async function handleResolveInviteesReply({
   const lower = body.trim().toLowerCase()
   const existingInvitees = pending.payload.attendees || []
   const unresolvedNames = pending.payload.unresolvedInvitees || []
+  const eventChoice = parseSmsIntent(body, profile.timezone)
+
+  if (pending.payload.events?.length && !pending.payload.target) {
+    const target = eventChoice.type === 'choice'
+      ? choose(pending.payload.events, eventChoice.choice)
+      : null
+
+    if (!target) {
+      return `Which event should I add them to?\n${inviteTargetChoiceList(
+        pending.payload.events,
+        profile.timezone,
+      )}\nReply 1, 2, or 3.`
+    }
+
+    await clearPendingAction(pending.id)
+
+    if (unresolvedNames.length && providerCanSendInvites(target.provider)) {
+      await storePendingAction({
+        profileId: profile.id,
+        smsFrom: from,
+        kind: 'resolve_invitees',
+        payload: {
+          target,
+          attendees: existingInvitees,
+          unresolvedInvitees: unresolvedNames,
+        },
+      })
+
+      return `I can add them to ${target.title}, but I still need email${
+        unresolvedNames.length > 1 ? 's' : ''
+      } for ${unresolvedInviteeSummary(unresolvedNames)}.\nReply like "Sam sam@company.com" or say "skip."`
+    }
+
+    return inviteExistingEventTarget({
+      profile,
+      target,
+      attendees: existingInvitees,
+      unresolvedInvitees: unresolvedNames,
+    })
+  }
+
+  if (pending.payload.target && !option) {
+    const target = pending.payload.target
+
+    if (/\b(skip|cancel|never mind|no invite|no invites)\b/.test(lower)) {
+      await clearPendingAction(pending.id)
+      return `Okay. I did not add anyone to ${target.title}.`
+    }
+
+    const resolution = resolveInviteeFollowUp(body, unresolvedNames)
+    if (!resolution.resolved.length) {
+      return `I still need email${unresolvedNames.length > 1 ? 's' : ''} for ${unresolvedInviteeSummary(
+        unresolvedNames,
+      )}.\nReply like "Sam sam@company.com" or say "skip."`
+    }
+
+    await saveInviteeContacts(profile.id, resolution.resolved)
+
+    const mergedInvitees = [...existingInvitees]
+    for (const invitee of resolution.resolved) {
+      if (mergedInvitees.some((item) => item.email.toLowerCase() === invitee.email.toLowerCase())) {
+        continue
+      }
+      mergedInvitees.push(invitee)
+    }
+
+    if (resolution.unresolvedNames.length) {
+      await storePendingAction({
+        profileId: profile.id,
+        smsFrom: from,
+        kind: 'resolve_invitees',
+        payload: {
+          target,
+          attendees: mergedInvitees,
+          unresolvedInvitees: resolution.unresolvedNames,
+        },
+      })
+
+      return `Got ${inviteeSummary(resolution.resolved)}.\nI still need email${
+        resolution.unresolvedNames.length > 1 ? 's' : ''
+      } for ${unresolvedInviteeSummary(resolution.unresolvedNames)}.`
+    }
+
+    await clearPendingAction(pending.id)
+    return inviteExistingEventTarget({
+      profile,
+      target,
+      attendees: mergedInvitees,
+      unresolvedInvitees: [],
+    })
+  }
 
   if (
     /\b(skip|just book it|book it anyway|without invites|without invite|no invites|dont invite|don't invite)\b/.test(
@@ -3421,6 +3609,68 @@ export async function handleIncomingSms({
     const reply = reminderForPending(activePending)
     await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
     return reply
+  }
+
+  const existingEventInviteRequest = parseExistingEventInviteRequest(intentBody)
+  if (existingEventInviteRequest) {
+    const inviteeContext = await resolveExistingEventInvitees(profile.id, existingEventInviteRequest)
+    const events = await searchUpcomingEvents(profile.id, profile.timezone)
+    const matches = matchingEventsByQuery(events, inviteeContext.eventQuery).slice(0, 3)
+
+    if (matches.length > 1) {
+      await storePendingAction({
+        profileId: profile.id,
+        smsFrom: from,
+        kind: 'resolve_invitees',
+        payload: {
+          events: matches,
+          attendees: inviteeContext.invitees,
+          unresolvedInvitees: inviteeContext.unresolvedNames,
+        },
+      })
+
+      const reply = `Which event should I add them to?\n${inviteTargetChoiceList(
+        matches,
+        profile.timezone,
+      )}\nReply 1, 2, or 3.`
+      await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+      return reply
+    }
+
+    if (matches.length === 1) {
+      const target = matches[0]
+
+      if (inviteeContext.unresolvedNames.length && providerCanSendInvites(target.provider)) {
+        await storePendingAction({
+          profileId: profile.id,
+          smsFrom: from,
+          kind: 'resolve_invitees',
+          payload: {
+            target,
+            attendees: inviteeContext.invitees,
+            unresolvedInvitees: inviteeContext.unresolvedNames,
+          },
+        })
+
+        const reply = `I found ${target.title} on ${eventDateLabel(
+          target,
+          profile.timezone,
+        )}, but I still need email${inviteeContext.unresolvedNames.length > 1 ? 's' : ''} for ${unresolvedInviteeSummary(
+          inviteeContext.unresolvedNames,
+        )}.\nReply like "Sam sam@company.com" or say "skip."`
+        await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+        return reply
+      }
+
+      const reply = await inviteExistingEventTarget({
+        profile,
+        target,
+        attendees: inviteeContext.invitees,
+        unresolvedInvitees: inviteeContext.unresolvedNames,
+      })
+      await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+      return reply
+    }
   }
 
   const aiIntent = intentOverride || (await parseSmsIntentWithAI(intentBody, profile.timezone))

@@ -19,7 +19,11 @@ const { recurrenceRule, recurrenceSummary } = require('../src/lib/calendar/recur
 const { scheduleCandidateTimesForTitle } = require('../src/lib/calendar/schedulingPreferences.ts')
 const { applyDemoText, createDemoState } = require('../src/lib/demoSms.ts')
 const { classifyEventAuthority } = require('../src/lib/eventAuthority.ts')
-const { parseInviteesFromText, resolveInviteeFollowUp } = require('../src/lib/sms/invitees.ts')
+const {
+  parseExistingEventInviteRequest,
+  parseInviteesFromText,
+  resolveInviteeFollowUp,
+} = require('../src/lib/sms/invitees.ts')
 const { parseSmsIntent } = require('../src/lib/sms/parser.ts')
 
 const timeZone = 'America/Chicago'
@@ -164,6 +168,17 @@ assert.deepEqual(combinedChoiceInviteFollowUp.resolved, [
   { displayName: 'Stacey', email: 'sw312@mac.com' },
 ])
 assert.deepEqual(combinedChoiceInviteFollowUp.unresolvedNames, [])
+
+assert.deepEqual(parseExistingEventInviteRequest('invite Stacey to dinner Monday'), {
+  eventQuery: 'dinner Monday',
+  names: ['Stacey'],
+  directInvitees: [],
+})
+assert.deepEqual(parseExistingEventInviteRequest('add Sam sam@example.com to team meeting'), {
+  eventQuery: 'team meeting',
+  names: [],
+  directInvitees: [{ displayName: 'Sam', email: 'sam@example.com' }],
+})
 
 const authorityBaseEvent = {
   id: 'event',
