@@ -824,6 +824,35 @@ function reminderForPending(pending: PendingAction) {
   }
 }
 
+function isInviteeResolutionAbort(text: string) {
+  return /^(?:skip|cancel|never mind|nevermind|no invite|no invites)[.!]*$/i.test(text.trim())
+}
+
+function resolveInviteesPendingHasContext(pending: PendingAction) {
+  return Boolean(
+    pending.payload.selectedOption ||
+      pending.payload.target ||
+      (pending.payload.events && pending.payload.events.length > 0),
+  )
+}
+
+function shouldClearResolveInviteesPendingForNewRequest(
+  text: string,
+  pending: PendingAction,
+  timeZone?: string,
+) {
+  if (!resolveInviteesPendingHasContext(pending)) return true
+  if (isInviteeResolutionAbort(text)) return false
+
+  const intent = parseSmsIntent(text, timeZone)
+  if (intent.type === 'choice' && pending.payload.events?.length) return false
+
+  const unresolvedNames = pending.payload.unresolvedInvitees || []
+  if (resolveInviteeFollowUp(text, unresolvedNames).resolved.length) return false
+
+  return ['agenda', 'schedule', 'reschedule', 'cancel', 'lookup'].includes(intent.type)
+}
+
 function eventDateLabel(event: EventSummary, timeZone?: string) {
   const start = new Date(event.start)
   if (Number.isNaN(start.getTime())) return event.timeLabel
@@ -2259,10 +2288,6 @@ async function handleResolveInviteesReply({
   pending: PendingAction
 }) {
   const option = pending.payload.selectedOption
-  if (!option) {
-    return 'Send the scheduling request again and I will set it up.'
-  }
-
   const lower = body.trim().toLowerCase()
   const existingInvitees = pending.payload.attendees || []
   const unresolvedNames = pending.payload.unresolvedInvitees || []
@@ -2310,7 +2335,7 @@ async function handleResolveInviteesReply({
   if (pending.payload.target && !option) {
     const target = pending.payload.target
 
-    if (/\b(skip|cancel|never mind|no invite|no invites)\b/.test(lower)) {
+    if (isInviteeResolutionAbort(lower)) {
       await clearPendingAction(pending.id)
       return `Okay. I did not add anyone to ${target.title}.`
     }
@@ -2356,6 +2381,10 @@ async function handleResolveInviteesReply({
       attendees: mergedInvitees,
       unresolvedInvitees: [],
     })
+  }
+
+  if (!option) {
+    return 'Send the scheduling request again and I will set it up.'
   }
 
   if (
@@ -3545,9 +3574,14 @@ export async function handleIncomingSms({
   }
 
   if (activePending?.kind === 'resolve_invitees') {
-    const reply = await handleResolveInviteesReply({ profile, from, body, pending: activePending })
-    await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
-    return reply
+    if (shouldClearResolveInviteesPendingForNewRequest(body, activePending, profile.timezone)) {
+      await clearPendingAction(activePending.id)
+      activePending = null
+    } else {
+      const reply = await handleResolveInviteesReply({ profile, from, body, pending: activePending })
+      await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+      return reply
+    }
   }
 
   if (activePending?.kind === 'choose_calendar') {
