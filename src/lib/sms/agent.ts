@@ -46,6 +46,7 @@ import {
 import { supabaseAdmin } from '../supabaseAdmin'
 import {
   inviteeLabel,
+  isInviteeEmailFollowUp,
   parseExistingEventInviteRequest,
   parseInviteesFromText,
   resolveInviteeFollowUp,
@@ -1289,6 +1290,7 @@ const queryNoiseWords = new Set([
   'meeting',
   'calendar',
   'schedule',
+  'time',
   'today',
   'tomorrow',
   'tmrw',
@@ -1495,6 +1497,48 @@ async function inviteExistingEventTarget({
 
 function findEventByQuery(events: EventSummary[], query: string) {
   return bestEventByQuery(events, query)
+}
+
+function isGenericEventReference(query: string) {
+  const normalized = query
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+  return (
+    !queryWords(query).length ||
+    /^(?:it|that|this|event|calendar event|that event|this event|the event|my event|time)$/.test(
+      normalized,
+    )
+  )
+}
+
+function recentEventFromPending(pending: PendingAction | null | undefined) {
+  if (pending?.kind !== 'select_cancel_target' || !pending.payload.recentlyCreated) return null
+  return pending.payload.events?.[0] || null
+}
+
+function contextualEventTarget(pending: PendingAction | null | undefined, query: string) {
+  if (!isGenericEventReference(query)) return null
+  return recentEventFromPending(pending)
+}
+
+function rescheduleBaseDateForTarget({
+  requestedBaseDate,
+  explicitDateRequested,
+  exactTime,
+  target,
+  timeZone,
+}: {
+  requestedBaseDate?: Date | string | null
+  explicitDateRequested?: boolean
+  exactTime?: { hour: number; minute: number } | null
+  target?: EventSummary | null
+  timeZone?: string
+}) {
+  if (requestedBaseDate && explicitDateRequested) return new Date(requestedBaseDate)
+  if (exactTime && target?.start) return new Date(target.start)
+  if (requestedBaseDate) return new Date(requestedBaseDate)
+  return new Date(Date.now() + 24 * 60 * 60_000)
 }
 
 function agendaDayForBaseDate(baseDate: Date, timeZone?: string) {
@@ -2673,14 +2717,21 @@ async function handleChoice({
     if (!event) return 'Reply with 1, 2, or 3 for the meeting you want to move.'
 
     const { authority, contact } = await classifyTargetEvent(profile, event)
+    const baseDate = rescheduleBaseDateForTarget({
+      requestedBaseDate: pending.payload.requestedBaseDate || null,
+      explicitDateRequested: Boolean(pending.payload.requestedBaseDate),
+      exactTime: pending.payload.exactTime || null,
+      target: event,
+      timeZone: profile.timezone,
+    })
 
     if (authority === 'external_appointment') {
       return prepareExternalCallPrep({
         profile,
         smsFrom,
         target: event,
-        baseDate: new Date(Date.now() + 24 * 60 * 60_000),
-        exactTime: null,
+        baseDate,
+        exactTime: pending.payload.exactTime || null,
         contact,
       })
     }
@@ -2690,8 +2741,8 @@ async function handleChoice({
         profile,
         smsFrom,
         target: event,
-        baseDate: new Date(Date.now() + 24 * 60 * 60_000),
-        exactTime: null,
+        baseDate,
+        exactTime: pending.payload.exactTime || null,
       })
     }
 
@@ -2701,16 +2752,16 @@ async function handleChoice({
         smsFrom,
         target: event,
         authority,
-        baseDate: new Date(Date.now() + 24 * 60 * 60_000),
-        exactTime: null,
+        baseDate,
+        exactTime: pending.payload.exactTime || null,
       })
     }
 
     const options = await findScheduleOptions({
       profileId: profile.id,
       title: event.title,
-      baseDate: new Date(Date.now() + 24 * 60 * 60_000),
-      exactTime: null,
+      baseDate,
+      exactTime: pending.payload.exactTime || null,
       calendarHint: event.calendarName,
       durationMinutes: eventDurationMinutes(event),
       location: event.location || null,
@@ -3592,7 +3643,11 @@ export async function handleIncomingSms({
 
   if (activePending?.kind === 'schedule' && (activePending.payload.options || []).length === 1) {
     const confirmedChoice = resolvePendingChoice(body, activePending, profile.timezone)
-    if (confirmedChoice === 1) {
+    const inviteeEmailFollowUp = isInviteeEmailFollowUp(
+      body,
+      activePending.payload.unresolvedInvitees || [],
+    )
+    if (confirmedChoice === 1 || inviteeEmailFollowUp) {
       const reply = await handleChoice({
         profile,
         smsFrom: from,
@@ -3614,6 +3669,40 @@ export async function handleIncomingSms({
   const existingEventInviteRequest = parseExistingEventInviteRequest(intentBody)
   if (existingEventInviteRequest) {
     const inviteeContext = await resolveExistingEventInvitees(profile.id, existingEventInviteRequest)
+    const contextualTarget = contextualEventTarget(activePending, inviteeContext.eventQuery)
+
+    if (contextualTarget) {
+      if (inviteeContext.unresolvedNames.length && providerCanSendInvites(contextualTarget.provider)) {
+        await storePendingAction({
+          profileId: profile.id,
+          smsFrom: from,
+          kind: 'resolve_invitees',
+          payload: {
+            target: contextualTarget,
+            attendees: inviteeContext.invitees,
+            unresolvedInvitees: inviteeContext.unresolvedNames,
+          },
+        })
+
+        const reply = `I can add them to ${contextualTarget.title}, but I still need email${
+          inviteeContext.unresolvedNames.length > 1 ? 's' : ''
+        } for ${unresolvedInviteeSummary(
+          inviteeContext.unresolvedNames,
+        )}.\nReply like "Sam sam@company.com" or say "skip."`
+        await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+        return reply
+      }
+
+      const reply = await inviteExistingEventTarget({
+        profile,
+        target: contextualTarget,
+        attendees: inviteeContext.invitees,
+        unresolvedInvitees: inviteeContext.unresolvedNames,
+      })
+      await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+      return reply
+    }
+
     const events = await searchUpcomingEvents(profile.id, profile.timezone)
     const matches = matchingEventsByQuery(events, inviteeContext.eventQuery).slice(0, 3)
 
@@ -3897,6 +3986,7 @@ export async function handleIncomingSms({
     const nearbyEvents = sortEventsByStart([...preferredEvents, ...fallbackEvents])
     const candidateEvents = sortEventsByStart(uniqueEvents([...nearbyEvents, ...upcomingEvents]))
     const target =
+      contextualEventTarget(activePending, intent.query) ||
       findEventByQuery(preferredEvents, intent.query) ||
       findEventByQuery(nearbyEvents, intent.query) ||
       findEventByQuery(candidateEvents, intent.query)
@@ -3914,7 +4004,11 @@ export async function handleIncomingSms({
         profileId: profile.id,
         smsFrom: from,
         kind: 'select_reschedule_target',
-        payload: { events: topEvents },
+        payload: {
+          events: topEvents,
+          requestedBaseDate: intent.dateWindow ? intent.baseDate.toISOString() : undefined,
+          exactTime: intent.exactTime,
+        },
       })
 
       const reply = `Which one should I move?\n${topEvents
@@ -3925,13 +4019,20 @@ export async function handleIncomingSms({
     }
 
     const { authority, contact } = await classifyTargetEvent(profile, target)
+    const rescheduleBaseDate = rescheduleBaseDateForTarget({
+      requestedBaseDate: intent.baseDate,
+      explicitDateRequested: Boolean(intent.dateWindow),
+      exactTime: intent.exactTime,
+      target,
+      timeZone: profile.timezone,
+    })
 
     if (authority === 'external_appointment') {
       const reply = await prepareExternalCallPrep({
         profile,
         smsFrom: from,
         target,
-        baseDate: intent.baseDate,
+        baseDate: rescheduleBaseDate,
         exactTime: intent.exactTime,
         contact,
       })
@@ -3944,7 +4045,7 @@ export async function handleIncomingSms({
         profile,
         smsFrom: from,
         target,
-        baseDate: intent.baseDate,
+        baseDate: rescheduleBaseDate,
         exactTime: intent.exactTime,
       })
       await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
@@ -3957,7 +4058,7 @@ export async function handleIncomingSms({
         smsFrom: from,
         target,
         authority,
-        baseDate: intent.baseDate,
+        baseDate: rescheduleBaseDate,
         exactTime: intent.exactTime,
       })
       await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
@@ -3967,7 +4068,7 @@ export async function handleIncomingSms({
     const options = await findScheduleOptions({
       profileId: profile.id,
       title: target.title,
-      baseDate: intent.baseDate,
+      baseDate: rescheduleBaseDate,
       exactTime: intent.exactTime,
       calendarHint: target.calendarName,
       durationMinutes: eventDurationMinutes(target),

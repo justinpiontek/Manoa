@@ -113,19 +113,23 @@ export function parseExistingEventInviteRequest(text: string): ExistingEventInvi
   if (!match) return null
 
   const peopleText = cleanCandidate(match[1])
+  const rawEventText = match[2].trim()
+  const genericEventReference = /^(?:the\s+|my\s+|our\s+)?(?:(?:calendar\s+)?event|that|that\s+event|this|this\s+event|it)$/i.test(
+    rawEventText,
+  )
   const eventQuery = cleanCandidate(
-    match[2]
+    rawEventText
       .replace(/^(?:the|my|our)\s+/i, '')
       .replace(/\b(?:event|calendar event)\b/gi, ' '),
   )
 
-  if (!peopleText || !eventQuery) return null
+  if (!peopleText || (!eventQuery && !genericEventReference)) return null
 
   const parsed = parseInviteesFromText(`with ${peopleText}`)
   if (!parsed.names.length && !parsed.directInvitees.length) return null
 
   return {
-    eventQuery,
+    eventQuery: eventQuery || 'that',
     names: parsed.names,
     directInvitees: parsed.directInvitees,
   }
@@ -164,6 +168,17 @@ export function resolveInviteeFollowUp(text: string, unresolvedNames: string[]) 
     resolved: uniqueInvitees(resolved),
     unresolvedNames: remainingNames,
   }
+}
+
+export function isInviteeEmailFollowUp(text: string, unresolvedNames: string[]) {
+  if (!unresolvedNames.length) return false
+
+  const lower = text.trim().toLowerCase()
+  if (/^(?:no|nope|nah|n|cancel|leave it|do not|don't|dont|not now|never mind|nevermind)\b/.test(lower)) {
+    return false
+  }
+
+  return resolveInviteeFollowUp(text, unresolvedNames).resolved.length > 0
 }
 
 export function inviteeLabel(invitee: Invitee) {

@@ -20,6 +20,7 @@ const { scheduleCandidateTimesForTitle } = require('../src/lib/calendar/scheduli
 const { applyDemoText, createDemoState } = require('../src/lib/demoSms.ts')
 const { classifyEventAuthority } = require('../src/lib/eventAuthority.ts')
 const {
+  isInviteeEmailFollowUp,
   parseExistingEventInviteRequest,
   parseInviteesFromText,
   resolveInviteeFollowUp,
@@ -169,6 +170,15 @@ assert.deepEqual(combinedChoiceInviteFollowUp.resolved, [
 ])
 assert.deepEqual(combinedChoiceInviteFollowUp.unresolvedNames, [])
 
+const yesInviteFollowUp = resolveInviteeFollowUp('yes, justin@metongamedia.com', ['Justin'])
+assert.deepEqual(yesInviteFollowUp.resolved, [
+  { displayName: 'Justin', email: 'justin@metongamedia.com' },
+])
+assert.deepEqual(yesInviteFollowUp.unresolvedNames, [])
+assert.equal(isInviteeEmailFollowUp('yes, justin@metongamedia.com', ['Justin']), true)
+assert.equal(isInviteeEmailFollowUp('justin@metongamedia.com', ['Justin']), true)
+assert.equal(isInviteeEmailFollowUp('no, justin@metongamedia.com', ['Justin']), false)
+
 assert.deepEqual(parseExistingEventInviteRequest('invite Stacey to dinner Monday'), {
   eventQuery: 'dinner Monday',
   names: ['Stacey'],
@@ -178,6 +188,11 @@ assert.deepEqual(parseExistingEventInviteRequest('add Sam sam@example.com to tea
   eventQuery: 'team meeting',
   names: [],
   directInvitees: [{ displayName: 'Sam', email: 'sam@example.com' }],
+})
+assert.deepEqual(parseExistingEventInviteRequest('add Stacey to the event'), {
+  eventQuery: 'that',
+  names: ['Stacey'],
+  directInvitees: [],
 })
 
 const authorityBaseEvent = {
