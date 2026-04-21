@@ -219,6 +219,19 @@ assert.equal(
 )
 assert.equal(
   classifyEventAuthority({
+    event: {
+      ...authorityBaseEvent,
+      provider: 'apple',
+      attendeeCount: 2,
+      organizerEmail: 'icloud@example.com',
+      ownerEmail: 'icloud@example.com',
+    },
+    profileEmail: 'login@example.com',
+  }),
+  'owned_meeting',
+)
+assert.equal(
+  classifyEventAuthority({
     event: { ...authorityBaseEvent, attendeeCount: 2, organizerEmail: 'stacey@example.com' },
     profileEmail: 'me@example.com',
   }),

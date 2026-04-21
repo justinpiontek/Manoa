@@ -60,14 +60,25 @@ export function classifyEventAuthority({
   }
 
   const organizerEmail = normalizeEmail(event.organizerEmail)
+  const ownerEmail = normalizeEmail(event.ownerEmail)
   const userEmail = normalizeEmail(profileEmail)
 
-  if (organizerEmail && userEmail && organizerEmail === userEmail) {
+  if (
+    organizerEmail &&
+    ((userEmail && organizerEmail === userEmail) || (ownerEmail && organizerEmail === ownerEmail))
+  ) {
     return 'owned_meeting'
   }
 
-  if (organizerEmail && userEmail && organizerEmail !== userEmail) {
+  if (
+    organizerEmail &&
+    ((userEmail && organizerEmail !== userEmail) || (ownerEmail && organizerEmail !== ownerEmail))
+  ) {
     return 'invited_meeting'
+  }
+
+  if (ownerEmail && !event.selfResponseStatus) {
+    return 'owned_meeting'
   }
 
   return 'unknown'

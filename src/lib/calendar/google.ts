@@ -87,6 +87,7 @@ export type ScheduleOption = {
   dayLabel: string
   timeLabel: string
   timeZone?: string
+  ownerEmail?: string | null
   attendees?: Invitee[]
   recurrence?: RecurrenceSpec | null
 }
@@ -103,6 +104,7 @@ export type EventSummary = {
   location: string
   description: string
   organizerEmail: string
+  ownerEmail?: string | null
   attendeeCount: number
   selfResponseStatus?: string | null
   recurrence?: string[] | null
@@ -301,6 +303,7 @@ function mapGoogleEvent(
     location: event.location || '',
     description: event.description || '',
     organizerEmail: event.organizer?.email || '',
+    ownerEmail: connection.account_email || null,
     attendeeCount: event.attendees?.length || 0,
     selfResponseStatus: selfAttendee?.responseStatus || null,
     recurrence: event.recurrence || null,
@@ -348,7 +351,7 @@ function mapOutlookEvent(
     type?: string | null
     originalStart?: string | null
   },
-  connection: Pick<CalendarConnection, 'calendar_id' | 'calendar_name' | 'calendar_label'>,
+  connection: Pick<CalendarConnection, 'calendar_id' | 'calendar_name' | 'calendar_label' | 'account_email'>,
   timeZone = defaultTimezone(),
 ) {
   const start = outlookDateTimeToIso(event.start)
@@ -366,6 +369,7 @@ function mapOutlookEvent(
     location: event.location?.displayName || '',
     description: event.bodyPreview || '',
     organizerEmail: event.organizer?.emailAddress?.address || '',
+    ownerEmail: connection.account_email || null,
     attendeeCount: event.attendees?.length || 0,
     selfResponseStatus: event.responseStatus?.response || null,
     recurrence: recurrence ? [recurrenceSummary(recurrence, start, timeZone) || 'Recurring event'] : null,
@@ -752,6 +756,38 @@ function attendeeEmailFromLine(line: string) {
   return property.value.replace(/^mailto:/i, '').trim().toLowerCase()
 }
 
+function appleEventParticipants(calendarData: string) {
+  const lines = unfoldIcs(calendarData).split(/\r?\n/)
+  const attendees: Invitee[] = []
+  let organizerEmail = ''
+
+  for (const line of lines) {
+    const property = parseIcsProperty(line)
+    if (!property) continue
+
+    if (property.name === 'ORGANIZER') {
+      organizerEmail = property.value.replace(/^mailto:/i, '').trim().toLowerCase()
+    }
+
+    if (property.name === 'ATTENDEE') {
+      const email = property.value.replace(/^mailto:/i, '').trim().toLowerCase()
+      if (!email) continue
+      attendees.push({
+        email,
+        displayName: property.params.CN || undefined,
+      })
+    }
+  }
+
+  return {
+    organizerEmail,
+    attendees: attendees.filter(
+      (attendee, index, list) =>
+        list.findIndex((item) => item.email.toLowerCase() === attendee.email.toLowerCase()) === index,
+    ),
+  }
+}
+
 function parseAppleCalendarData(
   calendarData: string,
   connection: Pick<CalendarConnection, 'calendar_id' | 'calendar_name' | 'calendar_label' | 'account_email'>,
@@ -815,6 +851,7 @@ function parseAppleCalendarData(
     location,
     description,
     organizerEmail,
+    ownerEmail: connection.account_email || null,
     attendeeCount,
     selfResponseStatus,
     recurrence: recurrence.length ? recurrence : null,
@@ -1117,7 +1154,9 @@ async function createAppleCalendarEvent(connection: CalendarConnection, option: 
 }
 
 async function updateAppleCalendarEvent(connection: CalendarConnection, eventId: string, option: ScheduleOption) {
-  const existing = await getAppleEventForConnection(connection, eventId)
+  const existingData = await getAppleEventDataForConnection(connection, eventId)
+  const existing = parseAppleCalendarData(existingData.text, connection, existingData.url)
+  const participants = appleEventParticipants(existingData.text)
   const uid = existing?.providerEventUid || new URL(eventId).pathname.split('/').pop()?.replace(/\.ics$/i, '') || crypto.randomUUID()
   const response = await fetch(sanitizeAppleHref(eventId, connection.calendar_id), {
     method: 'PUT',
@@ -1126,9 +1165,12 @@ async function updateAppleCalendarEvent(connection: CalendarConnection, eventId:
       'Content-Type': 'text/calendar; charset=utf-8',
     },
     body: buildAppleCalendarEventBody({
-      option,
+      option: {
+        ...option,
+        attendees: option.attendees || participants.attendees,
+      },
       uid,
-      organizerEmail: connection.account_email || connection.account_id,
+      organizerEmail: participants.organizerEmail || connection.account_email || connection.account_id,
     }),
   })
 
@@ -2635,6 +2677,7 @@ export async function findScheduleOptions({
       dayLabel: formatSmsDate(candidate.start, resolvedTimeZone),
       timeLabel: formatSmsTime(candidate.start, resolvedTimeZone),
       timeZone: resolvedTimeZone,
+      ownerEmail: targetConnection.account_email || targetConnection.account_id || null,
       recurrence,
     }))
 }

@@ -246,6 +246,7 @@ function createdEventSummaryFromOption(
     location: option.location || '',
     description: '',
     organizerEmail: organizerEmail || '',
+    ownerEmail: option.ownerEmail || organizerEmail || '',
     attendeeCount: option.attendees?.length || 0,
   }
 }
@@ -1278,6 +1279,7 @@ function optionFromExactExternalTime(
     dayLabel: formatSmsDate(start, timeZone),
     timeLabel: formatSmsTime(start, timeZone),
     timeZone,
+    ownerEmail: target.ownerEmail || target.organizerEmail || null,
   }
 }
 
