@@ -870,21 +870,18 @@ function buildAppleCalendarEventBody({
   uid: string
   organizerEmail?: string | null
 }) {
-  const recurrenceTimeZone = option.recurrence ? option.timeZone || defaultTimezone() : null
+  const eventTimeZone = option.timeZone || defaultTimezone()
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
     'PRODID:-//Manoa//Calendar//EN',
     'CALSCALE:GREGORIAN',
+    `X-WR-TIMEZONE:${eventTimeZone}`,
     'BEGIN:VEVENT',
     `UID:${uid}`,
     `DTSTAMP:${basicUtcTimestamp(new Date())}`,
-    recurrenceTimeZone
-      ? `DTSTART;TZID=${recurrenceTimeZone}:${basicLocalTimestamp(option.start, recurrenceTimeZone)}`
-      : `DTSTART:${basicUtcTimestamp(option.start)}`,
-    recurrenceTimeZone
-      ? `DTEND;TZID=${recurrenceTimeZone}:${basicLocalTimestamp(option.end, recurrenceTimeZone)}`
-      : `DTEND:${basicUtcTimestamp(option.end)}`,
+    `DTSTART;TZID=${eventTimeZone}:${basicLocalTimestamp(option.start, eventTimeZone)}`,
+    `DTEND;TZID=${eventTimeZone}:${basicLocalTimestamp(option.end, eventTimeZone)}`,
     `SUMMARY:${escapeIcsText(option.title)}`,
   ]
 
