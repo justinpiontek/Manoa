@@ -15,6 +15,7 @@ export default function DashboardTextConsole({
   const [messages, setMessages] = useState(initialMessages)
   const [input, setInput] = useState('')
   const [pending, setPending] = useState(false)
+  const [photoPending, setPhotoPending] = useState(false)
   const [error, setError] = useState('')
   const threadRef = useRef<HTMLDivElement | null>(null)
 
@@ -55,6 +56,42 @@ export default function DashboardTextConsole({
       setError('That text did not go through yet.')
     } finally {
       setPending(false)
+    }
+  }
+
+  async function sendPhoto(file: File | null | undefined) {
+    if (!file || pending || photoPending) return
+
+    setPhotoPending(true)
+    setError('')
+
+    try {
+      const formData = new FormData()
+      formData.append('image', file)
+      if (input.trim()) {
+        formData.append('caption', input.trim())
+      }
+
+      const response = await fetch('/api/dashboard/photo', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string; messages?: SmsThreadMessage[] }
+        | null
+
+      if (!response.ok || !payload?.messages) {
+        setError(payload?.error || 'I could not read that photo yet.')
+        return
+      }
+
+      setMessages(payload.messages)
+      setInput('')
+    } catch {
+      setError('I could not read that photo yet.')
+    } finally {
+      setPhotoPending(false)
     }
   }
 
@@ -131,6 +168,20 @@ export default function DashboardTextConsole({
             {pending ? 'Sending...' : 'Send'}
           </button>
         </form>
+
+        <label className={`dashboard-photo-upload ${pending || photoPending ? 'is-disabled' : ''}`}>
+          <span>{photoPending ? 'Reading photo...' : 'Read photo, screenshot, or flyer'}</span>
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            disabled={pending || photoPending}
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0]
+              event.currentTarget.value = ''
+              void sendPhoto(file)
+            }}
+          />
+        </label>
 
         {error ? (
           <p className="dashboard-live-error" role="status" aria-live="polite">

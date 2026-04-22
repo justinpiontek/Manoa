@@ -2001,6 +2001,35 @@ footer {
   margin-top: 2px;
 }
 
+.dashboard-photo-upload {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d5def1;
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink);
+  padding: 12px 14px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.dashboard-photo-upload:hover {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.dashboard-photo-upload.is-disabled {
+  color: #7b8798;
+  cursor: default;
+  opacity: 0.72;
+}
+
+.dashboard-photo-upload input {
+  display: none;
+}
+
 .dashboard-live-empty {
   display: grid;
   gap: 8px;

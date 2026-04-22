@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
-    "check:sms": "node scripts/check-sms-behavior.cjs"
+    "check:sms": "node scripts/check-sms-behavior.cjs",
+    "check:phrases": "node scripts/check-human-phrases.cjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",

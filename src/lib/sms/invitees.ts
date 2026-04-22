@@ -41,6 +41,7 @@ function uniqueInvitees(invitees: Invitee[]) {
 function cleanCandidate(value: string) {
   return value
     .replace(/\b(?:the|my|our)\b/gi, ' ')
+    .replace(/\b(?:is|email|e-mail|address)\s*$/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 }

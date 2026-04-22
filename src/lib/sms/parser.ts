@@ -63,26 +63,47 @@ const weekdayNameSource =
 
 const schedulingWords = [
   'schedule',
+  'scheudle',
+  'chedule',
   'book',
   'add',
   'set up',
   'fit in',
+  'find time',
+  'find me time',
+  'find me a time',
   'make time',
   'squeeze in',
   'hold',
+  'block off',
+  'pencil in',
+  'put',
+  'throw',
+  'save',
+  'plan',
   'lunch',
   'dinner',
+  'supper',
+  'breakfast',
+  'brunch',
   'coffee',
   'call',
+  'meet',
   'meeting',
   'appointment',
+  'haircut',
+  'hair cut',
+  'dentist',
+  'doctor',
+  'vet',
+  'oil change',
   'event',
 ]
 
-const cancelPattern = /\b(cancel|canceled|cancelled|delete|deleted)\b/
+const cancelPattern = /\b(cancel|canceled|cancelled|delete|deleted|remove|removed|drop|dropped)\b|\btake\b.{0,60}\boff\b/
 const reschedulePattern = /\b(reschedule|rescheduled|move|moved|change|changed|push|pushed)\b/
 const weekdayPattern =
-  /\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday|tomorrow|tmrw|tomororw|tomororws)\b/
+  /\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday|tomorrow|tmrw|tmmrw|tomorow|tommorow|tommorrow|tomororw|tomororws)\b/
 const recurringWeeklyPattern = /\b(weekly|every week|each week|biweekly|every 2 weeks?|every two weeks?)\b/
 const recurringWeekdayPattern =
   /\b(?:every|each)(?:\s+other)?\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/
@@ -144,7 +165,7 @@ function choiceValue(value: string) {
 function parseChoiceIntent(text: string) {
   const lower = text.trim().toLowerCase()
   const directMatch = lower.match(
-    /^(?:(?:book|take|choose|pick|go with|lets do|let's do|do|i(?:'d| would)? like|i want)\s+)?(?:option\s*)?(1|2|3|one|two|three|first|second|third|1st|2nd|3rd)(?:\s+one)?(?:\s+please)?$/,
+    /^(?:(?:book|take|choose|pick|go with|lets do|let's do|do|i(?:['’]d| would)? like|i want)\s+)?(?:option\s*)?(?:the\s+)?(1|2|3|one|two|three|first|second|third|1st|2nd|3rd)(?:\s+one)?(?:\s+please)?$/,
   )
   if (directMatch) return choiceValue(directMatch[1])
 
@@ -165,8 +186,9 @@ function isAgendaRequest(lower: string, day: 'today' | 'tomorrow') {
     lower.includes('recap') ||
     lower.includes('summary') ||
     lower.includes('calendar') ||
-    lower.includes('schedule') ||
-    lower.includes('scheudle') ||
+    /\bschedule\b/.test(lower) ||
+    /\bscheudle\b/.test(lower) ||
+    /^(?:what'?s|whats|what is)\b/.test(lower) ||
     lower.includes("what's on") ||
     lower.includes('what is on') ||
     lower.includes('what do i have') ||
@@ -509,7 +531,7 @@ export function parseDateWindow(text: string, timeZone?: string): DateWindow | n
     return { start, end: endOfSpecificDay(start, timeZone), label: formatWindowLabel(start, start, timeZone) }
   }
 
-  if (/\bnext week\b/.test(lower)) {
+  if (/\bnext week(?:'s|s)?\b/.test(lower)) {
     const start = nextWeekStart(timeZone)
     let end = addDays(start, 6, timeZone)
     if (/\bearly next week\b/.test(lower)) end = addDays(start, 2, timeZone)
@@ -532,7 +554,7 @@ export function parseDateWindow(text: string, timeZone?: string): DateWindow | n
     return { start: saturday, end: endOfSpecificDay(sunday, timeZone), label: 'this weekend' }
   }
 
-  if (/\bthis week\b/.test(lower)) {
+  if (/\bthis week(?:'s|s)?\b/.test(lower)) {
     const start = startOfDay(0, timeZone)
     const end = addDays(start, daysUntilWeekEnd(timeZone), timeZone)
     return { start, end: endOfSpecificDay(end, timeZone), label: 'this week' }
@@ -543,7 +565,7 @@ export function parseDateWindow(text: string, timeZone?: string): DateWindow | n
     return { start, end: endOfSpecificDay(start, timeZone), label: 'today' }
   }
 
-  if (/\btomorrow'?s?\b|\btmrw\b|\btomororws?\b/.test(lower)) {
+  if (/\btomorrow'?s?\b|\btmrw\b|\btmmrw\b|\btomorow\b|\btommorow\b|\btommorrow\b|\btomororws?\b/.test(lower)) {
     const start = startOfDay(1, timeZone)
     return { start, end: endOfSpecificDay(start, timeZone), label: 'tomorrow' }
   }
@@ -581,7 +603,7 @@ function formatWindowLabel(start: Date, end: Date, timeZone?: string) {
 
 function findLocationStop(rest: string) {
   const stopPatterns = [
-    /\s+(?:today|tomorrow|tmrw|tomororws?)\b/i,
+    /\s+(?:today|tomorrow|tmrw|tmmrw|tomorow|tommorow|tommorrow|tomororws?)\b/i,
     /\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/i,
     /\s+next\s+(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/i,
     new RegExp(`\\s+(?:${monthNameSource})\\.?\\s+\\d{1,2}`, 'i'),
@@ -615,7 +637,7 @@ function isLikelyLocation(value: string, timeZone?: string) {
   if (!value || value.length < 2 || value.length > 80) return false
   if (parseSmsTime(lower) || parseLooseTimeHint(lower) || parseExplicitDate(lower, timeZone)) return false
   if (/^\d{1,2}(?::[0-5]\d)?$/.test(lower)) return false
-  if (/^(?:today|tomorrow|tmrw|sunday|monday|tuesday|wednesday|thursday|friday|saturday)$/i.test(lower)) return false
+  if (/^(?:today|tomorrow|tmrw|tmmrw|tomorow|tommorow|tommorrow|sunday|monday|tuesday|wednesday|thursday|friday|saturday)$/i.test(lower)) return false
   if (/^\d+\s*(?:minute|min|hour|hr)s?$/i.test(lower)) return false
   if (/^(?:me|you|it|that|this|calendar)$/i.test(lower)) return false
   return true
@@ -695,14 +717,14 @@ function stripSchedulingNoise(text: string) {
     .replace(/\b(?:early|mid|middle of|late|end of(?: the)?)\s+next\s+week\b/g, ' ')
     .replace(new RegExp(`\\b(?:early|mid|middle of|late|end of(?: the)?)\\s+(?:${monthNameSource})\\b`, 'g'), ' ')
     .replace(/\bend of (?:the )?(?:current )?month\b|\bend of month\b/g, ' ')
-    .replace(/\b(?:this|next)\s+(?:week|weekend|month)\b/g, ' ')
+    .replace(/\b(?:this|next)\s+(?:week(?:'s|s)?|weekend|month)\b/g, ' ')
     .replace(/\b(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)\b/g, ' ')
     .replace(/\bat\s+(1[0-2]|0?[1-9])(?::[0-5]\d)?\b/g, ' ')
     .replace(/\b(noon|midnight|morning|afternoon|evening|tonight|lunchtime)\b/g, ' ')
-    .replace(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday|today|tomorrow|tmrw|next)\b/g, ' ')
+    .replace(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday|today|tomorrow|tmrw|tmmrw|tomorow|tommorow|tommorrow|next)\b/g, ' ')
     .replace(/\btomororws?\b/g, ' ')
     .replace(
-      /\b(schedule|book|add|reschedule|rescheduled|move|moved|change|changed|push|pushed|cancel|canceled|cancelled|delete|deleted|on|at|to|my|work|personal|family|home|email|calendar|this|every|each|weekly|biweekly|monthly|week|weeks|month|months|other|recurring)\b/g,
+      /\b(i need to|need to|schedule|scheudle|chedule|book|add|set up|fit in|find time|find me time|find me a time|make time|squeeze in|hold|block off|pencil in|put|throw|save|plan|meet|reschedule|rescheduled|move|moved|change|changed|push|pushed|cancel|canceled|cancelled|delete|deleted|remove|removed|drop|dropped|take|took|off|from|on|at|to|my|work|personal|family|home|email|calendar|this|every|each|weekly|biweekly|monthly|week|weeks|month|months|other|recurring)\b/g,
       ' ',
     )
     .replace(/\b\d+\s*(minute|min|hour|hr)\b/g, ' ')
@@ -719,6 +741,7 @@ function parseLookupQuery(text: string) {
   const patterns = [
     /^when(?:['’]s|\s+is|\s+are)?\s+(?:is\s+|are\s+)?(?:my\s+|the\s+)?(.+)$/i,
     /^what\s+time(?:\s+is|\s+are)?\s+(?:my\s+|the\s+)?(.+)$/i,
+    /^where(?:['’]s|\s+is|\s+are)?\s+(?:is\s+|are\s+)?(?:my\s+|the\s+)?(.+)$/i,
     /^when\s+do\s+i\s+have\s+(?:my\s+|the\s+)?(.+)$/i,
   ]
 
@@ -745,30 +768,40 @@ export function parseSmsIntent(body: string, timeZone?: string): ParsedSmsIntent
   const lookupQuery = parseLookupQuery(text)
   if (lookupQuery) return { type: 'lookup', query: lookupQuery, dateWindow }
 
+  const startsWithScheduleCommand = /^(schedule|scheudle|chedule|book|add|set up|put|throw|save|plan|pencil in|block off|already scheduled|already booked|they scheduled|they booked)\b/.test(lower)
   const isTomorrowAgenda =
-    !/^(schedule|book|add|set up)\b/.test(lower) && isAgendaRequest(lower, 'tomorrow')
+    !startsWithScheduleCommand && isAgendaRequest(lower, 'tomorrow')
 
   if (isTomorrowAgenda) return { type: 'agenda', day: 'tomorrow', dateWindow, label: dateWindow?.label }
 
   const isTodayAgenda =
-    lower === 'today' ||
-    lower === "today's schedule" ||
-    isAgendaRequest(lower, 'today') ||
-    (!/\btomorrow'?s?\b|\btmrw\b|\btomororws?\b/.test(lower) &&
-      (lower.includes("what's my day") ||
-        lower.includes('what is my day') ||
-        lower.includes('what am i doing today') ||
-        lower.includes('today look like')))
+    !startsWithScheduleCommand &&
+    (lower === 'today' ||
+      lower === "today's schedule" ||
+      isAgendaRequest(lower, 'today') ||
+      (!/\btomorrow'?s?\b|\btmrw\b|\btmmrw\b|\btomorow\b|\btommorow\b|\btommorrow\b|\btomororws?\b/.test(lower) &&
+        (lower.includes("what's my day") ||
+          lower.includes('what is my day') ||
+          lower.includes('what am i doing today') ||
+          lower.includes('today look like'))))
 
   const isBroadAgenda =
-    !/^(schedule|book|add|set up)\b/.test(lower) &&
+    !startsWithScheduleCommand &&
     (lower.includes('agenda') ||
-      lower.includes('schedule') ||
+      /\bschedule\b/.test(lower) ||
       lower.includes("what's on") ||
       lower.includes('what is on') ||
       lower.includes('what do i have') ||
+      lower.includes('show me') ||
+      lower.includes('walk me through') ||
+      lower.includes('brief me') ||
+      lower.includes('do i have anything') ||
+      lower.includes('am i free') ||
+      lower.includes('am i open') ||
+      lower.includes('am i available') ||
       lower.includes('calendar') ||
-      lower.includes('coming up')) &&
+      lower.includes('coming up') ||
+      lower.includes('upcoming')) &&
     Boolean(dateWindow || /\bcoming up\b|\bupcoming\b/.test(lower))
 
   if (isTodayAgenda || isBroadAgenda) {
@@ -784,7 +817,7 @@ export function parseSmsIntent(body: string, timeZone?: string): ParsedSmsIntent
     return { type: 'cancel', query: stripSchedulingNoise(text) }
   }
 
-  if (reschedulePattern.test(lower)) {
+  if (!startsWithScheduleCommand && reschedulePattern.test(lower)) {
     return {
       type: 'reschedule',
       query: stripSchedulingNoise(text),

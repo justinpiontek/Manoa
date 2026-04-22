@@ -232,6 +232,8 @@ export async function parseSmsIntentWithAIResult(
               `- cancel means canceling or removing an existing event.\n` +
               `- choice means direct option-selection like first, second, third, 1, 2, 3.\n` +
               `- unknown if the text is too vague or not a calendar action.\n` +
+              `- If the user pastes or forwards event details from an email, invitation, school flyer, appointment reminder, sports schedule, or text thread, treat it as schedule when there is one clear calendar event.\n` +
+              `- If pasted details contain multiple events and no single main event is obvious, use unknown instead of guessing.\n` +
               `- For explicit dates like "May 17", "5/17", or "17 May", set date_ymd to YYYY-MM-DD in the current local year unless that date has passed; then use next year. Prefer date_ymd over weekday.\n` +
               `- For loose times, map morning to 09:00, afternoon to 14:00, evening/tonight to 18:00, noon/lunchtime to 12:00.\n` +
               `- Detect recurring scheduling like every Tuesday, weekly, every other Friday, biweekly, and monthly.\n` +

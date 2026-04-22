@@ -20,6 +20,10 @@ const { scheduleCandidateTimesForTitle } = require('../src/lib/calendar/scheduli
 const { applyDemoText, createDemoState } = require('../src/lib/demoSms.ts')
 const { classifyEventAuthority } = require('../src/lib/eventAuthority.ts')
 const {
+  calendarImagePayloadToSmsText,
+  calendarImagePayloadToSmsTexts,
+} = require('../src/lib/sms/calendarImage.ts')
+const {
   isInviteeEmailFollowUp,
   parseExistingEventInviteRequest,
   parseInviteesFromText,
@@ -243,6 +247,107 @@ assert.equal(
     profileEmail: 'me@example.com',
   }),
   'external_appointment',
+)
+
+assert.equal(
+  calendarImagePayloadToSmsText({
+    has_calendar_items: true,
+    items: [{
+      is_confirmed_or_fixed: true,
+      title: 'Dentist appointment',
+      date_ymd: '2026-05-17',
+      time_24h: '10:30',
+      duration_minutes: 45,
+      location: 'Northwoods Dental',
+      organizer_or_source: 'Northwoods Dental',
+      item_type: 'appointment',
+      confidence: 'high',
+      notes: null,
+    }],
+    confidence: 'high',
+    notes: null,
+  }),
+  'already scheduled Dentist appointment on 5/17/2026 at 10:30am at Northwoods Dental for 45 minutes',
+)
+
+assert.equal(
+  calendarImagePayloadToSmsText({
+    has_calendar_items: true,
+    items: [{
+      is_confirmed_or_fixed: true,
+      title: 'Mokums birthday party',
+      date_ymd: '2026-05-16',
+      time_24h: '13:00',
+      duration_minutes: null,
+      location: 'Mary’s house',
+      organizer_or_source: 'Mary',
+      item_type: 'party',
+      confidence: 'high',
+      notes: null,
+    }],
+    confidence: 'high',
+    notes: null,
+  }),
+  'already scheduled Mokums birthday party on 5/16/2026 at 1:00pm at Mary’s house',
+)
+
+assert.equal(
+  calendarImagePayloadToSmsText({
+    has_calendar_items: true,
+    items: [{
+      is_confirmed_or_fixed: false,
+      title: 'Lunch with Stacey',
+      date_ymd: '2026-04-22',
+      time_24h: '12:00',
+      duration_minutes: null,
+      location: 'Rhinelander',
+      organizer_or_source: 'Stacey',
+      item_type: 'meeting',
+      confidence: 'medium',
+      notes: null,
+    }],
+    confidence: 'medium',
+    notes: null,
+  }),
+  'schedule Lunch with Stacey on 4/22/2026 at 12:00pm at Rhinelander',
+)
+
+assert.deepEqual(
+  calendarImagePayloadToSmsTexts({
+    has_calendar_items: true,
+    items: [
+      {
+        is_confirmed_or_fixed: true,
+        title: 'Soccer practice',
+        date_ymd: '2026-04-23',
+        time_24h: '18:00',
+        duration_minutes: 60,
+        location: 'Field 2',
+        organizer_or_source: null,
+        item_type: 'sports',
+        confidence: 'high',
+        notes: null,
+      },
+      {
+        is_confirmed_or_fixed: true,
+        title: 'School concert',
+        date_ymd: '2026-04-24',
+        time_24h: '19:00',
+        duration_minutes: null,
+        location: 'Auditorium',
+        organizer_or_source: null,
+        item_type: 'school',
+        confidence: 'high',
+        notes: null,
+      },
+    ],
+    confidence: 'high',
+    notes: null,
+  }),
+  [
+    'already scheduled Soccer practice on 4/23/2026 at 6:00pm at Field 2 for 60 minutes',
+    'already scheduled School concert on 4/24/2026 at 7:00pm at Auditorium',
+  ],
 )
 
 let demoState = createDemoState()

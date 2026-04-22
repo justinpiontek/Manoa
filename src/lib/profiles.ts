@@ -239,6 +239,12 @@ export async function findProfileForAccess({
   )
 }
 
+export async function findProfileByPhone(phoneE164: string) {
+  return selectProfileMaybeSingle((columns) =>
+    supabaseAdmin.from('profiles').select(columns).eq('phone_e164', phoneE164).maybeSingle<ProfileRow>(),
+  )
+}
+
 export async function getDashboardProfileByEmail(email: string) {
   const profile = await selectProfileMaybeSingle((columns) =>
     supabaseAdmin
