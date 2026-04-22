@@ -121,35 +121,9 @@ export default function DashboardTextConsole({
             </div>
           )}
         </div>
-      </div>
-
-      <div className="dashboard-live-panel">
-        <p className="dashboard-label">Use Manoa here</p>
-        <h3>Real backend, real calendars.</h3>
-        <p>
-          This runs through the same backend Manoa will use for SMS. It is the easiest way to use
-          the real product before texting approval finishes.
-        </p>
-
-        <div className="dashboard-live-prompts">
-          {starterPrompts.map((prompt) => (
-            <button
-              key={prompt}
-              className="demo-prompt"
-              type="button"
-              disabled={pending}
-              onClick={() => {
-                setInput(prompt)
-                void sendText(prompt)
-              }}
-            >
-              {prompt}
-            </button>
-          ))}
-        </div>
 
         <form
-          className="demo-form dashboard-live-form"
+          className="demo-form dashboard-live-form dashboard-live-composer"
           onSubmit={(event) => {
             event.preventDefault()
             void sendText(input)
@@ -160,7 +134,7 @@ export default function DashboardTextConsole({
             value={input}
             onChange={(event) => setInput(event.target.value)}
             autoComplete="off"
-            placeholder="What's on my calendar tomorrow?"
+            placeholder="Text Manoa..."
             aria-label="Text Manoa from the dashboard"
             disabled={pending}
           />
@@ -169,7 +143,7 @@ export default function DashboardTextConsole({
           </button>
         </form>
 
-        <label className={`dashboard-photo-upload ${pending || photoPending ? 'is-disabled' : ''}`}>
+        <label className={`dashboard-photo-upload dashboard-photo-upload-compact ${pending || photoPending ? 'is-disabled' : ''}`}>
           <span>{photoPending ? 'Reading photo...' : 'Read photo, screenshot, or flyer'}</span>
           <input
             type="file"
@@ -188,6 +162,31 @@ export default function DashboardTextConsole({
             {error}
           </p>
         ) : null}
+      </div>
+
+      <div className="dashboard-live-panel">
+        <p className="dashboard-label">Quick tries</p>
+        <h3>Real backend, real calendars.</h3>
+        <p>
+          Tap a shortcut or type in the phone. This is the same backend Manoa will use for SMS.
+        </p>
+
+        <div className="dashboard-live-prompts">
+          {starterPrompts.map((prompt) => (
+            <button
+              key={prompt}
+              className="demo-prompt"
+              type="button"
+              disabled={pending}
+              onClick={() => {
+                setInput(prompt)
+                void sendText(prompt)
+              }}
+            >
+              {prompt}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   )

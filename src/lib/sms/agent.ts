@@ -393,6 +393,39 @@ function pendingInviteScheduleReply({
   return lines.join('\n')
 }
 
+function hardConflictScheduleReply({
+  conflict,
+  requestedOption,
+  alternatives,
+}: {
+  conflict: EventSummary
+  requestedOption: ScheduleOption
+  alternatives: ScheduleOption[]
+}) {
+  const lines = [
+    `That time is already reserved for "${conflict.title}" at ${conflict.timeLabel} on ${conflict.calendarName}.`,
+    `1. Book anyway: ${requestedOption.dayLabel} at ${requestedOption.timeLabel} on ${requestedOption.calendarName}`,
+  ]
+
+  if (alternatives[0]) {
+    lines.push(`2. Adjust to ${alternatives[0].dayLabel} at ${alternatives[0].timeLabel} on ${alternatives[0].calendarName}`)
+  }
+
+  if (alternatives[1]) {
+    lines.push(`3. Adjust to ${alternatives[1].dayLabel} at ${alternatives[1].timeLabel} on ${alternatives[1].calendarName}`)
+  }
+
+  if (alternatives[1]) {
+    lines.push('Reply 1, 2, or 3.')
+  } else if (alternatives[0]) {
+    lines.push('Reply 1 or 2.')
+  } else {
+    lines.push('Reply 1 to book anyway, or text a different day or time.')
+  }
+
+  return lines.join('\n')
+}
+
 function requestedExactScheduleOption({
   title,
   baseDate,
@@ -485,6 +518,44 @@ async function maybeConfirmExactScheduleTime({
   const hardConflict = overlappingEvents.find(
     (event) => !isPendingInviteConflict(event, profile.email),
   )
+
+  if (hardConflict) {
+    const alternatives = await findScheduleOptions({
+      profileId: profile.id,
+      title,
+      baseDate,
+      exactTime,
+      calendarId: chosenCalendar.calendarId,
+      calendarHint: chosenCalendar.calendarLabel || calendarHint,
+      durationMinutes,
+      recurrence,
+      location,
+    })
+
+    const options = [requestedOption, ...alternatives].slice(0, 3)
+
+    await storeScheduleOptionsPending({
+      profileId: profile.id,
+      smsFrom,
+      options,
+      attendees,
+      unresolvedInvitees,
+      scheduleRequest: {
+        title,
+        baseDate: baseDate.toISOString(),
+        exactTime,
+        durationMinutes,
+        recurrence: recurrence || null,
+        location: location || null,
+      },
+    })
+
+    return hardConflictScheduleReply({
+      conflict: hardConflict,
+      requestedOption,
+      alternatives: alternatives.slice(0, 2),
+    })
+  }
 
   if (pendingInviteConflict && !hardConflict) {
     const alternatives = await findScheduleOptions({
@@ -1310,6 +1381,7 @@ function buildOrganizerCancelDraft(target: EventSummary, timeZone?: string) {
 
 const queryNoiseWords = new Set([
   'the',
+  'it',
   'that',
   'this',
   'my',
@@ -3543,14 +3615,6 @@ export async function handleIncomingSms({
     const reply = 'Okay. I dropped that request.'
     await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
     return reply
-  }
-
-  if (
-    activePending?.kind === 'select_cancel_target' &&
-    activePending.payload.recentlyCreated &&
-    !isShortAcknowledgement(body)
-  ) {
-    activePending = null
   }
 
   const correctedSchedule = activePending

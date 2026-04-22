@@ -1958,17 +1958,23 @@ footer {
 
 .dashboard-live-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+  grid-template-columns: minmax(320px, 520px) minmax(280px, 1fr);
   gap: 16px;
   align-items: start;
 }
 
 .dashboard-live-phone {
   max-width: none;
+  display: flex;
+  height: min(680px, 76vh);
+  flex-direction: column;
 }
 
 .dashboard-live-thread {
-  min-height: 300px;
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  padding: 13px;
 }
 
 .dashboard-live-panel {
@@ -1998,7 +2004,23 @@ footer {
 }
 
 .dashboard-live-form {
-  margin-top: 2px;
+  margin-top: 10px;
+}
+
+.dashboard-live-composer {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.dashboard-live-composer input {
+  min-width: 0;
+  min-height: 46px;
+  padding: 11px 12px;
+}
+
+.dashboard-live-composer .button {
+  min-width: 78px;
+  padding: 0 14px;
 }
 
 .dashboard-photo-upload {
@@ -2030,6 +2052,13 @@ footer {
   display: none;
 }
 
+.dashboard-photo-upload-compact {
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  font-size: 0.92rem;
+}
+
 .dashboard-live-empty {
   display: grid;
   gap: 8px;
@@ -2046,6 +2075,7 @@ footer {
 }
 
 .dashboard-live-error {
+  margin: 8px 2px 0;
   color: #9a3b3b !important;
   font-weight: 700;
 }
@@ -2516,6 +2546,22 @@ footer {
     display: none;
   }
 
+  .dashboard-live-panel {
+    display: none;
+  }
+
+  .dashboard-live-phone {
+    height: min(640px, 74svh);
+  }
+
+  .dashboard-live-thread {
+    padding: 12px;
+  }
+
+  .dashboard-live-composer {
+    grid-template-columns: minmax(0, 1fr) 74px;
+  }
+
   .calendar-settings-grid {
     grid-template-columns: 1fr;
   }
@@ -2809,5 +2855,25 @@ footer {
     min-height: 280px;
     max-height: 360px;
     padding: 14px;
+  }
+
+  .dashboard-live-thread {
+    min-height: 0;
+    max-height: none;
+    padding: 12px;
+  }
+
+  .dashboard-live-composer {
+    grid-template-columns: minmax(0, 1fr) 74px;
+  }
+
+  .dashboard-live-composer .button {
+    min-width: 0;
+    padding: 0 10px;
+  }
+
+  .dashboard-photo-upload-compact {
+    padding: 9px 10px;
+    font-size: 0.88rem;
   }
 }

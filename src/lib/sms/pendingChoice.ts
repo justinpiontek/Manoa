@@ -142,6 +142,10 @@ function resolveOptionChoice(text: string, options: PendingOption[], timeZone?: 
   if (ordinal) return ordinal
 
   const lower = text.toLowerCase()
+  if (/\b(book anyway|book it anyway|book over|over it|keep that time|use that time)\b/.test(lower)) {
+    return 1
+  }
+
   const timeMatches = options
     .map((option, index) => (matchesTime(text, option.start, timeZone) ? index + 1 : null))
     .filter((value): value is number => value !== null)

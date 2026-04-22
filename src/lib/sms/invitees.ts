@@ -114,7 +114,7 @@ export function parseExistingEventInviteRequest(text: string): ExistingEventInvi
   if (!match) return null
 
   const peopleText = cleanCandidate(match[1])
-  const rawEventText = match[2].trim()
+  const rawEventText = match[2].trim().replace(/[?.!]+$/g, '').trim()
   const genericEventReference = /^(?:the\s+|my\s+|our\s+)?(?:(?:calendar\s+)?event|that|that\s+event|this|this\s+event|it)$/i.test(
     rawEventText,
   )
@@ -130,7 +130,7 @@ export function parseExistingEventInviteRequest(text: string): ExistingEventInvi
   if (!parsed.names.length && !parsed.directInvitees.length) return null
 
   return {
-    eventQuery: eventQuery || 'that',
+    eventQuery: genericEventReference ? 'that' : eventQuery,
     names: parsed.names,
     directInvitees: parsed.directInvitees,
   }

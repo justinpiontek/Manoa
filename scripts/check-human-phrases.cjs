@@ -22,6 +22,7 @@ const {
   resolveInviteeFollowUp,
 } = require('../src/lib/sms/invitees.ts')
 const { parseSmsIntent } = require('../src/lib/sms/parser.ts')
+const { resolvePendingChoice } = require('../src/lib/sms/pendingChoice.ts')
 
 const timeZone = 'America/Chicago'
 
@@ -253,6 +254,19 @@ const choicePhrases = [
 
 assertTypes(choicePhrases, 'choice')
 
+assert.equal(
+  resolvePendingChoice('book anyway', {
+    kind: 'schedule',
+    payload: {
+      options: [
+        { title: 'meeting', start: '2026-04-22T23:00:00.000Z' },
+        { title: 'meeting', start: '2026-04-23T00:00:00.000Z' },
+      ],
+    },
+  }),
+  1,
+)
+
 assert.deepEqual(parseInviteesFromText('meeting with Stacey tomorrow at 2').names, ['Stacey'])
 assert.deepEqual(parseInviteesFromText('call with Mike and Sarah Friday').names, ['Mike', 'Sarah'])
 assert.deepEqual(parseInviteesFromText('invite Priya to meeting Tuesday').names, ['Priya'])
@@ -268,6 +282,11 @@ assert.deepEqual(resolveInviteeFollowUp('Stacey is sw312@mac.com', ['Stacey']).r
 
 assert.deepEqual(parseExistingEventInviteRequest('add Stacey to Mokums birthday party'), {
   eventQuery: 'Mokums birthday party',
+  names: ['Stacey'],
+  directInvitees: [],
+})
+assert.deepEqual(parseExistingEventInviteRequest('Can you add Stacey to it?'), {
+  eventQuery: 'that',
   names: ['Stacey'],
   directInvitees: [],
 })

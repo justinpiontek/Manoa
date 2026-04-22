@@ -198,6 +198,11 @@ assert.deepEqual(parseExistingEventInviteRequest('add Stacey to the event'), {
   names: ['Stacey'],
   directInvitees: [],
 })
+assert.deepEqual(parseExistingEventInviteRequest('Can you add Stacey to it?'), {
+  eventQuery: 'that',
+  names: ['Stacey'],
+  directInvitees: [],
+})
 
 const authorityBaseEvent = {
   id: 'event',
