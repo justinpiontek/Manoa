@@ -64,27 +64,29 @@ export default function CalendarSettingsForm({
         <input name="calendar_label" defaultValue={label} disabled={isPending} />
       </label>
 
-      <label className="calendar-toggle">
-        <input
-          type="checkbox"
-          name="include_in_conflicts"
-          value="on"
-          defaultChecked={includeInConflicts}
-          disabled={isPending}
-        />
-        <span>Use this to block conflicting times</span>
-      </label>
+      <div className="calendar-toggle-row">
+        <label className="calendar-toggle">
+          <input
+            type="checkbox"
+            name="include_in_conflicts"
+            value="on"
+            defaultChecked={includeInConflicts}
+            disabled={isPending}
+          />
+          <span>Block conflicts</span>
+        </label>
 
-      <label className="calendar-toggle">
-        <input
-          type="checkbox"
-          name="allow_new_events"
-          value="on"
-          defaultChecked={allowNewEvents}
-          disabled={!canWrite || isPending}
-        />
-        <span>{canWrite ? 'Let Manoa place new events here' : 'This calendar is read only'}</span>
-      </label>
+        <label className="calendar-toggle">
+          <input
+            type="checkbox"
+            name="allow_new_events"
+            value="on"
+            defaultChecked={allowNewEvents}
+            disabled={!canWrite || isPending}
+          />
+          <span>{canWrite ? 'New events here' : 'Read only'}</span>
+        </label>
+      </div>
 
       <div className="calendar-card-actions">
         <button
@@ -94,7 +96,7 @@ export default function CalendarSettingsForm({
           name="intent"
           value="save"
         >
-          {pendingAction === 'save' ? 'Saving...' : 'Save calendar settings'}
+          {pendingAction === 'save' ? 'Saving...' : 'Save'}
         </button>
         <button
           className="nav-link secondary calendar-remove-button"
