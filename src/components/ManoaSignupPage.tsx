@@ -478,17 +478,20 @@ export default function ManoaSignupPage() {
                 name="sms_consent"
                 type="checkbox"
                 value="yes"
-                required
               />
               <span>
-                I agree to receive recurring service-related SMS messages from Manoa, including
-                scheduling, reminders, and account notifications. Message frequency varies. Msg
-                &amp; data rates may apply. Reply STOP to opt out and HELP for help. See{' '}
+                <strong>Optional:</strong> I agree to receive recurring service-related SMS
+                messages from Manoa, including scheduling, reminders, and account notifications.
+                Message frequency varies. Msg &amp; data rates may apply. Reply STOP to opt out
+                and HELP for help. See{' '}
                 <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms</a>.
               </span>
             </label>
+            <p className="pricing-optional-note">
+              You can continue without SMS consent and turn texts on later.
+            </p>
             <button className="button pricing-button" type="submit">
-              Start texting Manoa
+              Start setup
             </button>
           </form>
 

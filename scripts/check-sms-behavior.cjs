@@ -124,6 +124,31 @@ const locationEvent = assertScheduleTitle('Schedule Mokums 3rd bday may 17 10am 
 assert.equal(locationEvent.location, 'Mary’s house')
 assert.deepEqual(locationEvent.exactTime, { hour: 10, minute: 0 })
 
+assertScheduleTitle('already scheduled dentist May 17 at 10:30', 'dentist')
+
+assert.equal(
+  calendarImagePayloadToSmsText({
+    has_calendar_items: true,
+    confidence: 'high',
+    notes: null,
+    items: [
+      {
+        is_confirmed_or_fixed: true,
+        title: 'Wellness Coaching',
+        date_ymd: '2026-05-04',
+        time_24h: '11:00',
+        duration_minutes: 30,
+        location: 'Microsoft Teams meeting',
+        organizer_or_source: 'Amy L. Sheedy',
+        item_type: 'meeting',
+        confidence: 'high',
+        notes: null,
+      },
+    ],
+  }),
+  'add Wellness Coaching on 5/4/2026 at 11:00am at Microsoft Teams meeting for 30 minutes',
+)
+
 const nextMondayAgenda = parseSmsIntent("what's next Mondays agenda", timeZone)
 assert.equal(nextMondayAgenda.type, 'agenda')
 assert.equal(parts(nextMondayAgenda.dateWindow.start).weekday, 1)
@@ -272,7 +297,7 @@ assert.equal(
     confidence: 'high',
     notes: null,
   }),
-  'already scheduled Dentist appointment on 5/17/2026 at 10:30am at Northwoods Dental for 45 minutes',
+  'add Dentist appointment on 5/17/2026 at 10:30am at Northwoods Dental for 45 minutes',
 )
 
 assert.equal(
@@ -293,7 +318,7 @@ assert.equal(
     confidence: 'high',
     notes: null,
   }),
-  'already scheduled Mokums birthday party on 5/16/2026 at 1:00pm at Mary’s house',
+  'add Mokums birthday party on 5/16/2026 at 1:00pm at Mary’s house',
 )
 
 assert.equal(
@@ -350,8 +375,8 @@ assert.deepEqual(
     notes: null,
   }),
   [
-    'already scheduled Soccer practice on 4/23/2026 at 6:00pm at Field 2 for 60 minutes',
-    'already scheduled School concert on 4/24/2026 at 7:00pm at Auditorium',
+    'add Soccer practice on 4/23/2026 at 6:00pm at Field 2 for 60 minutes',
+    'add School concert on 4/24/2026 at 7:00pm at Auditorium',
   ],
 )
 

@@ -52,14 +52,15 @@ export default function PrivacyPage() {
         <section className="legal-section">
           <h2>SMS consent</h2>
           <p>
-            When you sign up for Manoa and provide your phone number, you are
-            giving consent to receive service-related text messages such as
-            scheduling options, booking confirmations, reminders, daily agenda
-            messages, and account support messages. Mobile information will not
-            be shared with third parties or affiliates for marketing or
-            promotional purposes. Text messaging originator opt-in data and
-            consent will not be shared with third parties for their own
-            marketing or promotional purposes.
+            If you choose to opt in to Manoa text messages, you agree to
+            receive service-related text messages such as scheduling options,
+            booking confirmations, reminders, daily agenda messages, and
+            account support messages. SMS consent is optional and is not
+            required to complete signup, checkout, or use the web dashboard.
+            Mobile information will not be shared with third parties or
+            affiliates for marketing or promotional purposes. Text messaging
+            originator opt-in data and consent will not be shared with third
+            parties for their own marketing or promotional purposes.
           </p>
           <p>Message frequency may vary. Message and data rates may apply.</p>
         </section>

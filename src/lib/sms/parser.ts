@@ -723,6 +723,7 @@ function stripSchedulingNoise(text: string) {
     .replace(/\b(noon|midnight|morning|afternoon|evening|tonight|lunchtime)\b/g, ' ')
     .replace(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday|today|tomorrow|tmrw|tmmrw|tomorow|tommorow|tommorrow|next)\b/g, ' ')
     .replace(/\btomororws?\b/g, ' ')
+    .replace(/\b(?:already scheduled|already booked|they scheduled|they booked)\b/g, ' ')
     .replace(
       /\b(i need to|need to|schedule|scheudle|chedule|book|add|set up|fit in|find time|find me time|find me a time|make time|squeeze in|hold|block off|pencil in|put|throw|save|plan|meet|reschedule|rescheduled|move|moved|change|changed|push|pushed|cancel|canceled|cancelled|delete|deleted|remove|removed|drop|dropped|take|took|off|from|on|at|to|my|work|personal|family|home|email|calendar|this|every|each|weekly|biweekly|monthly|week|weeks|month|months|other|recurring)\b/g,
       ' ',

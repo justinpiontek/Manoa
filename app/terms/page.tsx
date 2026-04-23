@@ -28,11 +28,12 @@ export default function TermsPage() {
         <section className="legal-section">
           <h2>SMS program terms</h2>
           <p>
-            By providing your phone number and using Manoa, you agree to
-            receive text messages related to scheduling, booking confirmations,
-            reminders, daily agenda summaries, rescheduling support, account
-            support, and other service-related updates. Message frequency
-            varies. Message and data rates may apply.
+            If you opt in to Manoa text messages, you agree to receive text
+            messages related to scheduling, booking confirmations, reminders,
+            daily agenda summaries, rescheduling support, account support, and
+            other service-related updates. SMS consent is optional and is not
+            required to complete signup, checkout, or use the web dashboard.
+            Message frequency varies. Message and data rates may apply.
           </p>
           <p>
             Reply <strong>STOP</strong> to opt out, <strong>START</strong> to

@@ -5,6 +5,7 @@ import { listConfiguredCalendarAccounts, type CalendarProvider } from '@/src/lib
 import { getDashboardProfile, getDashboardProfileByEmail } from '@/src/lib/profiles'
 import { listSmsThreadEntries, toSmsThreadMessages } from '@/src/lib/sms/thread'
 import { createSupabaseServerClient } from '@/src/lib/supabase/server'
+import { supabaseAdmin } from '@/src/lib/supabaseAdmin'
 import ManoaWordmark from '@/src/components/ManoaWordmark'
 import CalendarSettingsForm from '@/src/components/CalendarSettingsForm'
 import DisconnectCalendarAccountForm from '@/src/components/DisconnectCalendarAccountForm'
@@ -40,12 +41,18 @@ function providerLabel(provider: CalendarProvider) {
 function statusLine({
   calendarConnected,
   manoaNumber,
+  smsEnabled,
 }: {
   calendarConnected: boolean
   manoaNumber: string
+  smsEnabled: boolean
 }) {
   if (!calendarConnected) {
     return 'Calendar not connected • Connect Google or Apple'
+  }
+
+  if (!smsEnabled) {
+    return '✅ Calendar connected • Use dashboard console'
   }
 
   return manoaNumber ? '✅ Calendar connected • Texting ready' : 'Calendar connected • SMS approval pending'
@@ -148,6 +155,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   let calendarAccounts: Awaited<ReturnType<typeof listConfiguredCalendarAccounts>> = []
   let calendarSettingsWarning = ''
+  let smsEnabled = true
 
   try {
     calendarAccounts = await listConfiguredCalendarAccounts(profile.id)
@@ -157,6 +165,18 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       error instanceof Error && error.message
         ? 'Your dashboard loaded, but the calendar settings section needs one more setup step. If you recently updated Manoa, a database migration may still be missing.'
         : 'Your dashboard loaded, but the calendar settings section could not be loaded yet.'
+  }
+
+  try {
+    const { data: consentProfile } = await supabaseAdmin
+      .from('profiles')
+      .select('sms_opted_out_at')
+      .eq('id', profile.id)
+      .maybeSingle<{ sms_opted_out_at: string | null }>()
+
+    smsEnabled = !consentProfile?.sms_opted_out_at
+  } catch {
+    smsEnabled = true
   }
 
   const googleAccounts = calendarAccounts.filter((account) => account.provider === 'google')
@@ -171,16 +191,20 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const connectedAccountLabel = `${totalConnectedAccounts} connected account${totalConnectedAccounts === 1 ? '' : 's'}`
   let dashboardLede = 'Connect Google or Apple to start using Manoa.'
   if (profile.calendarConnected) {
-    dashboardLede = 'Everything is set up. Use the console below while SMS approval finishes, or connect another calendar.'
+    dashboardLede = smsEnabled
+      ? 'Everything is set up. Use the console below while SMS approval finishes, or connect another calendar.'
+      : 'Everything is set up. SMS is off for this account, so use the console below.'
   }
-  if (readyToText) {
+  if (readyToText && smsEnabled) {
     dashboardLede = 'Everything is set up. Text Manoa, use the console below, or connect another calendar.'
   }
   const calendarStageHeading = totalConnectedAccounts ? 'Calendars' : 'Connect a calendar'
   const calendarStageCopy = totalConnectedAccounts
     ? 'Most people can leave these settings alone. Open calendar settings only if you want to rename a calendar, stop conflict checks, or change where Manoa books.'
     : 'Choose one calendar provider. You can add more later.'
-  const textingStageCopy = readyToText
+  const textingStageCopy = !smsEnabled
+    ? 'SMS is not turned on for this account. Use this console with your real calendars.'
+    : readyToText
     ? `Text ${displayNumber} from ${displayUserPhone}, or use this console.`
     : totalConnectedAccounts
       ? 'SMS approval is still pending. Use this console now with your real calendars.'
@@ -221,7 +245,36 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         <p className="dashboard-status-line">{statusLine({
           calendarConnected: profile.calendarConnected,
           manoaNumber,
+          smsEnabled,
         })}</p>
+
+        {!smsEnabled ? (
+          <div className="notice warning" role="status" aria-live="polite">
+            SMS is off for this account. If you skipped the signup consent box, Manoa will not text
+            this number. Use the live console below instead.
+            <form className="dashboard-inline-consent" action="/api/profile/sms-consent" method="post">
+              <input type="hidden" name="profile_id" value={profile.id} />
+              <label className="consent-check pricing-consent" htmlFor="dashboard-sms-consent">
+                <input
+                  id="dashboard-sms-consent"
+                  name="sms_consent"
+                  type="checkbox"
+                  value="yes"
+                />
+                <span>
+                  <strong>Optional:</strong> I agree to receive recurring service-related SMS
+                  messages from Manoa, including scheduling, reminders, and account notifications.
+                  Message frequency varies. Msg &amp; data rates may apply. Reply STOP to opt out
+                  and HELP for help. See <a href="/privacy">Privacy Policy</a> and{' '}
+                  <a href="/terms">Terms</a>.
+                </span>
+              </label>
+              <button className="button dashboard-button" type="submit">
+                Turn on SMS for this account
+              </button>
+            </form>
+          </div>
+        ) : null}
 
         {calendarConnected ? (
           <div className="notice success" role="status" aria-live="polite">
@@ -280,6 +333,24 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         {params.settings === 'timezone_invalid' ? (
           <div className="notice warning" role="status" aria-live="polite">
             That timezone was not recognized. Choose one from the dashboard and try again.
+          </div>
+        ) : null}
+
+        {params.settings === 'sms_consent_enabled' ? (
+          <div className="notice success" role="status" aria-live="polite">
+            SMS turned on for this account. You can use Manoa by text as soon as texting is available.
+          </div>
+        ) : null}
+
+        {params.settings === 'sms_consent_missing' ? (
+          <div className="notice warning" role="status" aria-live="polite">
+            Check the SMS consent box before turning texts on for this account.
+          </div>
+        ) : null}
+
+        {params.settings === 'sms_consent_error' ? (
+          <div className="notice warning" role="status" aria-live="polite">
+            We could not turn SMS on yet. Try again in a minute.
           </div>
         ) : null}
 
@@ -420,12 +491,12 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           )}
 
           <div className="dashboard-stage-actions">
-            {manoaNumber && totalConnectedAccounts ? (
+            {manoaNumber && totalConnectedAccounts && smsEnabled ? (
               <a className="button dashboard-button" href={`sms:${manoaNumber}`}>
                 Text Manoa now
               </a>
             ) : null}
-            {manoaNumber && totalConnectedAccounts ? (
+            {manoaNumber && totalConnectedAccounts && smsEnabled ? (
               <a className="button dashboard-button secondary-button" href="/api/contact-card">
                 Save Manoa contact
               </a>
@@ -438,6 +509,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           <p className="dashboard-stage-footnote">
             SMS: <strong>{displayNumber || 'pending approval'}</strong> • Account:{' '}
             <strong>{profile.email}</strong> • Phone: <strong>{displayUserPhone}</strong>
+            {!smsEnabled ? ' • SMS consent not enabled' : ''}
           </p>
         </section>
 

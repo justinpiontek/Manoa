@@ -120,7 +120,7 @@ function calendarImageItemToEvent(item: CalendarImageItemPayload): CalendarImage
     ? ` for ${item.duration_minutes} minutes`
     : ''
 
-  const prefix = item.is_confirmed_or_fixed ? 'already scheduled' : 'schedule'
+  const prefix = item.is_confirmed_or_fixed ? 'add' : 'schedule'
   const smsText = `${prefix} ${title} on ${date} at ${time}${location ? ` at ${location}` : ''}${duration}`
 
   return {

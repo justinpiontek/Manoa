@@ -146,10 +146,16 @@ export async function ensureAuthUserForEmail(email: string) {
 export async function findOrCreateProfile({
   email,
   phoneE164,
+  smsConsentGranted = false,
 }: {
   email: string
   phoneE164: string
+  smsConsentGranted?: boolean
 }) {
+  const consentUpdate = smsConsentGranted
+    ? { sms_opted_out_at: null, updated_at: new Date().toISOString() }
+    : { updated_at: new Date().toISOString() }
+
   const byPhone = await selectProfileMaybeSingle((columns) =>
     supabaseAdmin.from('profiles').select(columns).eq('phone_e164', phoneE164).maybeSingle<ProfileRow>(),
   )
@@ -158,7 +164,7 @@ export async function findOrCreateProfile({
     const updated = await selectProfileSingle((columns) =>
       supabaseAdmin
         .from('profiles')
-        .update({ email, updated_at: new Date().toISOString() })
+        .update({ email, ...consentUpdate })
         .eq('id', byPhone.id)
         .select(columns)
         .single<ProfileRow>(),
@@ -176,7 +182,7 @@ export async function findOrCreateProfile({
     const updated = await selectProfileSingle((columns) =>
       supabaseAdmin
         .from('profiles')
-        .update({ phone_e164: phoneE164, updated_at: new Date().toISOString() })
+        .update({ phone_e164: phoneE164, ...consentUpdate })
         .eq('id', byEmail.id)
         .select(columns)
         .single<ProfileRow>(),
@@ -188,14 +194,15 @@ export async function findOrCreateProfile({
 
   const created = await supabaseAdmin
     .from('profiles')
-    .insert({
-      email,
-      phone_e164: phoneE164,
-      timezone: defaultTimezone(),
-      default_event_duration_minutes: 30,
-    })
-    .select(profileSelectColumns)
-    .single<ProfileRow>()
+      .insert({
+        email,
+        phone_e164: phoneE164,
+        timezone: defaultTimezone(),
+        default_event_duration_minutes: 30,
+        sms_opted_out_at: smsConsentGranted ? null : new Date().toISOString(),
+      })
+      .select(profileSelectColumns)
+      .single<ProfileRow>()
 
   let createdProfile: Profile
   if (created.error && isMissingDefaultDurationColumnError(created.error)) {
@@ -205,6 +212,7 @@ export async function findOrCreateProfile({
         email,
         phone_e164: phoneE164,
         timezone: defaultTimezone(),
+        sms_opted_out_at: smsConsentGranted ? null : new Date().toISOString(),
       })
       .select(legacyProfileSelectColumns)
       .single<ProfileRow>()

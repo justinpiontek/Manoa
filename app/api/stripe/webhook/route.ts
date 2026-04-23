@@ -3,8 +3,14 @@ import { NextRequest } from 'next/server'
 import { requiredEnv } from '@/src/lib/env'
 import { findProfileIdForSubscription, upsertStripeSubscription } from '@/src/lib/subscriptions'
 import { stripe } from '@/src/lib/stripeClient'
+import { supabaseAdmin } from '@/src/lib/supabaseAdmin'
+import { sendSms } from '@/src/lib/twilioClient'
 
 export const runtime = 'nodejs'
+
+const activeWelcomeStatuses = new Set<Stripe.Subscription.Status>(['active', 'trialing'])
+const welcomeText =
+  'Welcome to Manoa. Your account is set up. Connect Google or Apple in your dashboard to get started. Reply STOP to opt out or HELP for help.'
 
 async function handleSubscription(subscription: Stripe.Subscription) {
   const profileId =
@@ -16,6 +22,56 @@ async function handleSubscription(subscription: Stripe.Subscription) {
   }
 
   await upsertStripeSubscription({ profileId, subscription })
+}
+
+async function welcomeTextAlreadySent(profileId: string) {
+  const { data, error } = await supabaseAdmin
+    .from('sms_messages')
+    .select('id')
+    .eq('profile_id', profileId)
+    .eq('direction', 'outbound')
+    .eq('body', welcomeText)
+    .limit(1)
+    .maybeSingle<{ id: string }>()
+
+  if (error) throw error
+  return Boolean(data?.id)
+}
+
+async function sendWelcomeTextIfEligible({
+  profileId,
+  session,
+  subscription,
+}: {
+  profileId: string
+  session: Stripe.Checkout.Session
+  subscription: Stripe.Subscription
+}) {
+  if (session.metadata?.sms_consent !== 'yes') return
+  if (!activeWelcomeStatuses.has(subscription.status)) return
+
+  const { data: profile, error } = await supabaseAdmin
+    .from('profiles')
+    .select('phone_e164,sms_opted_out_at')
+    .eq('id', profileId)
+    .maybeSingle<{ phone_e164: string; sms_opted_out_at: string | null }>()
+
+  if (error) throw error
+  if (!profile?.phone_e164 || profile.sms_opted_out_at) return
+  if (await welcomeTextAlreadySent(profileId)) return
+
+  try {
+    const result = await sendSms({ to: profile.phone_e164, body: welcomeText })
+    await supabaseAdmin.from('sms_messages').insert({
+      profile_id: profileId,
+      from_e164: profile.phone_e164,
+      body: welcomeText,
+      direction: 'outbound',
+      twilio_message_sid: result.sid,
+    })
+  } catch (error) {
+    console.error('Could not send Manoa welcome text', error)
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -45,6 +101,7 @@ export async function POST(request: NextRequest) {
     if (profileId && typeof session.subscription === 'string') {
       const subscription = await stripe.subscriptions.retrieve(session.subscription)
       await upsertStripeSubscription({ profileId, subscription })
+      await sendWelcomeTextIfEligible({ profileId, session, subscription })
     }
   }
 

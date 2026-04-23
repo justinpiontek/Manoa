@@ -977,6 +977,21 @@ function shouldClearResolveInviteesPendingForNewRequest(
   return ['agenda', 'schedule', 'reschedule', 'cancel', 'lookup'].includes(intent.type)
 }
 
+function shouldClearRecentCreatedPendingForIntent(
+  text: string,
+  intent: ParsedSmsIntent,
+) {
+  if (isCancelPendingRequest(text)) return false
+
+  if (intent.type === 'unknown' || intent.type === 'choice') return false
+
+  if (intent.type === 'cancel' || intent.type === 'reschedule') {
+    return !isGenericEventReference(intent.query)
+  }
+
+  return true
+}
+
 function eventDateLabel(event: EventSummary, timeZone?: string) {
   const start = new Date(event.start)
   if (Number.isNaN(start.getTime())) return event.timeLabel
@@ -3925,6 +3940,16 @@ export async function handleIncomingSms({
     aiIntent && aiIntent.type !== 'unknown'
       ? aiIntent
       : parseSmsIntent(intentBody, profile.timezone)
+
+  if (
+    activePending?.kind === 'select_cancel_target' &&
+    activePending.payload.recentlyCreated &&
+    shouldClearRecentCreatedPendingForIntent(body, intent)
+  ) {
+    await clearPendingAction(activePending.id)
+    activePending = null
+  }
+
   const pendingChoice = activePending ? resolvePendingChoice(body, activePending, profile.timezone) : null
 
   if (activePending && (intent.type === 'choice' || pendingChoice)) {
