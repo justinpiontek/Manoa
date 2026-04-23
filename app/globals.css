@@ -1772,14 +1772,222 @@ footer {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.apple-setup-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(300px, 0.95fr);
+  gap: 16px;
+  align-items: start;
+  margin-top: 24px;
+}
+
+.apple-setup-steps,
+.apple-help-details {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcff;
+  padding: 16px;
+}
+
+.apple-setup-list {
+  display: grid;
+  gap: 12px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.apple-setup-list li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+}
+
+.apple-setup-list li > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: #eaf3ff;
+  color: var(--blue);
+  font-weight: 850;
+}
+
+.apple-setup-list strong {
+  display: block;
+}
+
+.apple-setup-list p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.apple-step-visual {
+  display: grid;
+  gap: 8px;
+  min-height: 112px;
+  margin-bottom: 10px;
+  border: 1px solid #d7e0ef;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.05);
+}
+
+.apple-browser-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #e3e9f2;
+  border-radius: 999px;
+  background: #f8fafc;
+  padding: 6px 8px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.apple-browser-bar span,
+.apple-visual-avatar {
+  display: inline-block;
+  border-radius: 999px;
+  background: #2457c5;
+}
+
+.apple-browser-bar span {
+  width: 8px;
+  height: 8px;
+}
+
+.apple-visual-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #e3e9f2;
+  border-radius: 8px;
+  background: #fbfcff;
+  padding: 10px;
+}
+
+.apple-visual-panel strong,
+.apple-visual-panel span,
+.apple-visual-list span,
+.apple-visual-list strong {
+  display: block;
+}
+
+.apple-visual-panel span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.apple-visual-avatar {
+  width: 34px;
+  height: 34px;
+  background: linear-gradient(135deg, #2457c5, #5aa8ff);
+}
+
+.apple-visual-list {
+  display: grid;
+  gap: 5px;
+}
+
+.apple-visual-list span,
+.apple-visual-list strong {
+  border: 1px solid #e3e9f2;
+  border-radius: 8px;
+  background: #fbfcff;
+  padding: 8px 9px;
+  font-size: 0.78rem;
+}
+
+.apple-visual-list strong {
+  border-color: #b9d8ff;
+  background: #eaf3ff;
+  color: var(--blue);
+}
+
+.apple-visual-callout {
+  border: 1px solid #b9ded9;
+  border-radius: 8px;
+  background: #eef8f7;
+  color: #174d48;
+  padding: 8px 9px;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.apple-visual-card-title {
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.apple-visual-input,
+.apple-visual-button {
+  border-radius: 8px;
+  padding: 8px 9px;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.apple-visual-input {
+  border: 1px solid #d7e0ef;
+  background: #fbfcff;
+  color: var(--muted);
+}
+
+.apple-visual-input.is-password {
+  letter-spacing: 0.03em;
+}
+
+.apple-visual-button {
+  width: max-content;
+  border: 1px solid var(--blue);
+  background: var(--blue);
+  color: #ffffff;
+}
+
 .apple-step-link {
   display: inline-flex;
-  margin-top: 14px;
+  margin-top: 10px;
 }
 
 .apple-connect-card {
   background: #ffffff;
   box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+}
+
+.apple-connect-card h2 {
+  margin: 8px 0 8px;
+  font-size: 1.35rem;
+}
+
+.apple-connect-card p {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.apple-help-details {
+  margin-top: 14px;
+}
+
+.apple-help-details summary {
+  cursor: pointer;
+  color: var(--ink);
+  font-weight: 850;
+}
+
+.apple-help-details div {
+  margin-top: 12px;
+}
+
+.apple-help-details p {
+  margin: 0 0 10px;
+  color: var(--muted);
+  line-height: 1.6;
 }
 
 .setup-note {
@@ -2198,6 +2406,64 @@ footer {
   justify-content: flex-end;
 }
 
+.calendar-account-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.calendar-account-summary span {
+  border: 1px solid #cfe0f8;
+  border-radius: 999px;
+  background: #eef6ff;
+  color: #244d8f;
+  padding: 7px 10px;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.calendar-account-note {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.calendar-account-details {
+  margin-top: 12px;
+  border: 1px solid #d7e0ef;
+  border-radius: 8px;
+  background: #fbfcff;
+}
+
+.calendar-account-details > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 12px;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 850;
+}
+
+.calendar-account-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.calendar-account-details > summary strong {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: #eaf3ff;
+  color: var(--blue);
+  font-size: 0.82rem;
+}
+
 .calendar-settings-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -2580,7 +2846,8 @@ footer {
 
   .simple-step-grid,
   .pricing-form-grid,
-  .working-demo-grid {
+  .working-demo-grid,
+  .apple-setup-panel {
     grid-template-columns: 1fr;
   }
 
@@ -2671,6 +2938,14 @@ footer {
   .calendar-account-actions {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .calendar-account-summary span {
+    width: 100%;
+  }
+
+  .calendar-account-details > summary {
+    padding: 10px;
   }
 
   .calendar-setting-summary {

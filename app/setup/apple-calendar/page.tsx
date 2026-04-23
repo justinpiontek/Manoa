@@ -9,24 +9,82 @@ export const metadata: Metadata = {
 
 const appleSteps = [
   {
-    title: 'Open Apple Account',
-    body: 'Go to appleaccount.apple.com and sign in with the Apple Account that owns the calendars you want Manoa to use.',
-    href: 'https://appleaccount.apple.com',
+    title: 'Open Apple Account in a new tab',
+    body: 'Sign in with the Apple Account that owns the calendars you want Manoa to use.',
+    href: 'https://account.apple.com',
     cta: 'Open Apple Account',
+    visual: 'account',
   },
   {
-    title: 'Check two-factor authentication',
-    body: 'Open Sign-In & Security and make sure Two-Factor Authentication is turned on. Apple requires this before app-specific passwords work.',
+    title: 'Go to Sign-In & Security',
+    body: 'Make sure Two-Factor Authentication is on. Apple requires it for this connection.',
+    visual: 'security',
   },
   {
     title: 'Create an app-specific password',
-    body: 'In Sign-In & Security, choose App-Specific Passwords, create one named Manoa, then copy the generated password.',
+    body: 'Choose App-Specific Passwords, name it Manoa, create it, then copy the generated password.',
+    visual: 'password',
   },
   {
-    title: 'Paste it into Manoa',
-    body: 'Come back here, enter your iCloud email and the app-specific password, then connect Apple Calendar.',
+    title: 'Paste it here',
+    body: 'Come back to this page and paste the generated password below. Do not use your normal Apple password.',
+    visual: 'paste',
   },
 ]
+
+type AppleStepVisualKind = (typeof appleSteps)[number]['visual']
+
+function AppleStepVisual({ visual }: { visual: AppleStepVisualKind }) {
+  if (visual === 'account') {
+    return (
+      <div className="apple-step-visual" aria-hidden="true">
+        <div className="apple-browser-bar">
+          <span />
+          <strong>account.apple.com</strong>
+        </div>
+        <div className="apple-visual-panel">
+          <div className="apple-visual-avatar" />
+          <div>
+            <strong>Apple Account</strong>
+            <span>Sign in</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (visual === 'security') {
+    return (
+      <div className="apple-step-visual" aria-hidden="true">
+        <div className="apple-visual-list">
+          <span>Personal Information</span>
+          <strong>Sign-In & Security</strong>
+          <span>Payment & Shipping</span>
+        </div>
+        <div className="apple-visual-callout">Two-Factor Authentication On</div>
+      </div>
+    )
+  }
+
+  if (visual === 'password') {
+    return (
+      <div className="apple-step-visual" aria-hidden="true">
+        <div className="apple-visual-card-title">App-Specific Passwords</div>
+        <div className="apple-visual-input">Manoa</div>
+        <div className="apple-visual-button">Create</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="apple-step-visual" aria-hidden="true">
+      <div className="apple-visual-card-title">Paste into Manoa</div>
+      <div className="apple-visual-input">you@icloud.com</div>
+      <div className="apple-visual-input is-password">xxxx-xxxx-xxxx-xxxx</div>
+      <div className="apple-visual-button">Connect</div>
+    </div>
+  )
+}
 
 type AppleCalendarSetupPageProps = {
   searchParams: Promise<{
@@ -47,45 +105,35 @@ export default async function AppleCalendarSetupPage({ searchParams }: AppleCale
         <p className="legal-eyebrow">Apple Calendar</p>
         <h1 className="setup-title">Connect Apple Calendar.</h1>
         <p className="setup-lede">
-          Apple uses the manual iCloud path. It takes a few more steps than Google, but the flow is:
-          create an Apple app-specific password, paste it here, then Manoa will import your Apple
-          calendars. One Apple account is supported right now.
+          Apple takes a few extra steps. Keep this page open, open Apple Account in a new tab,
+          create an app-specific password named Manoa, then paste it here.
         </p>
 
-        <div className="status-row" aria-label="Apple setup progress">
-          <div className="status-pill pending">
-            <strong>Two-factor authentication</strong>
-            <span>Required</span>
-          </div>
-          <div className="status-pill pending">
-            <strong>App-specific password</strong>
-            <span>Required</span>
-          </div>
-          <div className={`status-pill ${profileId ? 'ready' : 'pending'}`}>
-            <strong>Apple sync in Manoa</strong>
-            <span>{profileId ? 'Ready to connect' : 'Open from dashboard'}</span>
-          </div>
-        </div>
+        <div className="apple-setup-panel">
+          <section className="apple-setup-steps" aria-label="Apple Calendar connection steps">
+            <p className="dashboard-label">Do this first</p>
+            <ol className="apple-setup-list">
+              {appleSteps.map((step, index) => (
+                <li key={step.title}>
+                  <span>{index + 1}</span>
+                  <div>
+                    <AppleStepVisual visual={step.visual} />
+                    <strong>{step.title}</strong>
+                    <p>{step.body}</p>
+                    {'href' in step && step.href ? (
+                      <a className="nav-link apple-step-link" href={step.href} target="_blank" rel="noreferrer">
+                        {step.cta}
+                      </a>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </section>
 
-        <div className="setup-grid apple-step-grid">
-          {appleSteps.map((step, index) => (
-            <article key={step.title} className="setup-step">
-              <span className="step-number">{index + 1}</span>
-              <h2>{step.title}</h2>
-              <p>{step.body}</p>
-              {'href' in step && step.href ? (
-                <a className="nav-link apple-step-link" href={step.href} target="_blank" rel="noreferrer">
-                  {step.cta}
-                </a>
-              ) : null}
-            </article>
-          ))}
-        </div>
-
-        <div className="dashboard-support-grid apple-connect-grid">
-          <article className="dashboard-support-card apple-connect-card">
-            <p className="dashboard-label">Final step</p>
-            <h3>Paste the password here</h3>
+          <section className="dashboard-support-card apple-connect-card">
+            <p className="dashboard-label">Then paste here</p>
+            <h2>Connect to Manoa</h2>
             <p>
               Use your iCloud email and the app-specific password Apple generated for Manoa. Do not
               paste your normal Apple password.
@@ -101,48 +149,30 @@ export default async function AppleCalendarSetupPage({ searchParams }: AppleCale
                 calendars.
               </p>
             )}
-          </article>
-
-          <article className="dashboard-support-card">
-            <p className="dashboard-label">Before you connect</p>
-            <h3>Quick checklist</h3>
-            <ul className="dashboard-example-list">
-              <li>Two-factor authentication is on.</li>
-              <li>You created a password named Manoa.</li>
-              <li>You copied the generated app-specific password.</li>
-              <li>You are using the Apple Account with the calendars you want.</li>
-            </ul>
-          </article>
+          </section>
         </div>
+
+        <details className="apple-help-details">
+          <summary>Need help finding the Apple password screen?</summary>
+          <div>
+            <p>
+              In Apple Account, open <strong>Sign-In & Security</strong>, then look for{' '}
+              <strong>App-Specific Passwords</strong>. Two-factor authentication must be on first.
+            </p>
+            <ul className="dashboard-example-list">
+              <li>
+                <a href="https://support.apple.com/en-us/102660">Apple: turn on two-factor authentication</a>
+              </li>
+              <li>
+                <a href="https://support.apple.com/en-us/102654">Apple: create an app-specific password</a>
+              </li>
+            </ul>
+          </div>
+        </details>
 
         <div className="notice warning" role="status">
           Apple app-specific passwords are different from your normal Apple password. You can revoke
           the Manoa password later from your Apple Account if needed.
-        </div>
-
-        <div className="dashboard-support-grid">
-          <article className="dashboard-support-card">
-            <p className="dashboard-label">Helpful links</p>
-            <h3>Official Apple steps</h3>
-            <ul className="dashboard-example-list">
-              <li>
-                <a href="https://support.apple.com/en-us/102660">Turn on two-factor authentication</a>
-              </li>
-              <li>
-                <a href="https://support.apple.com/en-us/102654">Create an app-specific password</a>
-              </li>
-            </ul>
-          </article>
-
-          <article className="dashboard-support-card">
-            <p className="dashboard-label">What to save</p>
-            <h3>Keep these ready</h3>
-            <ul className="dashboard-example-list">
-              <li>Your iCloud email address</li>
-              <li>Your new app-specific password</li>
-              <li>The Apple Account with the calendars you want Manoa to respect</li>
-            </ul>
-          </article>
         </div>
 
         <div className="setup-footer">

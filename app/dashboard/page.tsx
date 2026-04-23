@@ -50,6 +50,21 @@ function statusLine({
   return `✅ ${calendarLabel} • ${textLabel}`
 }
 
+function accountConflictSummary(calendars: Awaited<ReturnType<typeof listConfiguredCalendarAccounts>>[number]['calendars']) {
+  const count = calendars.filter((calendar) => calendar.includeInConflicts).length
+  if (!count) return 'Not checking conflicts yet'
+  return `Checks ${count} calendar${count === 1 ? '' : 's'} for conflicts`
+}
+
+function accountBookingSummary(calendars: Awaited<ReturnType<typeof listConfiguredCalendarAccounts>>[number]['calendars']) {
+  const bookingCalendars = calendars.filter((calendar) => calendar.allowNewEvents)
+  if (!bookingCalendars.length) return 'No booking calendar chosen'
+
+  const names = bookingCalendars.slice(0, 2).map((calendar) => calendar.label || calendar.sourceName)
+  const extraCount = bookingCalendars.length - names.length
+  return `Books to ${names.join(', ')}${extraCount > 0 ? ` +${extraCount} more` : ''}`
+}
+
 function calendarErrorMessage(code: string | undefined, detail?: string) {
   const extra = detail ? ` Details: ${detail}` : ''
 
@@ -160,7 +175,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const connectedAccountLabel = `${totalConnectedAccounts} connected account${totalConnectedAccounts === 1 ? '' : 's'}`
   const calendarStageHeading = totalConnectedAccounts ? 'Teach Manoa what each calendar means.' : 'Connect your calendar.'
   const calendarStageCopy = totalConnectedAccounts
-    ? 'Manoa checks every calendar you mark for conflicts. For new events, it uses the calendar name you text and asks instead of guessing when more than one destination could fit.'
+    ? 'Most people can leave this alone. Manoa checks calendars marked for conflicts, then uses the calendar name you text when placing new events.'
     : 'Connect Google, Outlook, or Apple Calendar first so Manoa can check availability, route events to the right calendar, and book by text.'
   const textingStageCopy = readyToText
     ? `Text from ${displayUserPhone} so Manoa recognizes you right away, or use the live console here.`
@@ -342,22 +357,41 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                     </div>
                   </div>
 
-                  <div className="calendar-settings-grid">
-                    {account.calendars.map((calendar) => (
-                      <CalendarSettingsForm
-                        key={calendar.connectionId}
-                        profileId={profile.id}
-                        connectionId={calendar.connectionId}
-                        sourceName={calendar.sourceName}
-                        providerLabel={providerLabel(calendar.provider)}
-                        isPrimary={calendar.isPrimary}
-                        canWrite={calendar.canWrite}
-                        label={calendar.label}
-                        includeInConflicts={calendar.includeInConflicts}
-                        allowNewEvents={calendar.allowNewEvents}
-                      />
-                    ))}
+                  <div className="calendar-account-summary">
+                    <span>{accountConflictSummary(account.calendars)}</span>
+                    <span>{accountBookingSummary(account.calendars)}</span>
                   </div>
+
+                  {account.provider === 'apple' ? (
+                    <p className="calendar-account-note">
+                      Apple may show many calendars from iCloud, Family Sharing, and app-created lists.
+                      You only need to edit a calendar if Manoa should stop checking it or should not
+                      place new events there.
+                    </p>
+                  ) : null}
+
+                  <details className="calendar-account-details">
+                    <summary>
+                      <span>Advanced calendar settings</span>
+                      <strong>{account.calendars.length}</strong>
+                    </summary>
+                    <div className="calendar-settings-grid">
+                      {account.calendars.map((calendar) => (
+                        <CalendarSettingsForm
+                          key={calendar.connectionId}
+                          profileId={profile.id}
+                          connectionId={calendar.connectionId}
+                          sourceName={calendar.sourceName}
+                          providerLabel={providerLabel(calendar.provider)}
+                          isPrimary={calendar.isPrimary}
+                          canWrite={calendar.canWrite}
+                          label={calendar.label}
+                          includeInConflicts={calendar.includeInConflicts}
+                          allowNewEvents={calendar.allowNewEvents}
+                        />
+                      ))}
+                    </div>
+                  </details>
                 </article>
               ))}
             </div>
