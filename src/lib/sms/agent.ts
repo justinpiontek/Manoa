@@ -92,6 +92,7 @@ type SerializedDateWindow = {
 type PendingPayload = {
   options?: ScheduleOption[]
   calendarChoices?: CalendarPlacementOption[]
+  visibleCalendarChoiceCount?: number
   selectedOption?: ScheduleOption
   events?: EventSummary[]
   target?: EventSummary
@@ -146,6 +147,7 @@ const weekdayNumbers: Record<string, number> = {
 
 const stopWords = new Set(['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit'])
 const startWords = new Set(['start', 'unstop'])
+const maxCalendarChoicesToDisplay = 5
 
 function optionList(options: ScheduleOption[]) {
   return options
@@ -196,10 +198,58 @@ function calendarChoiceDisplayLabel(
   return `${calendar.calendarLabel} (${providerName})`
 }
 
-function calendarChoiceList(calendars: CalendarPlacementOption[]) {
+function calendarChoiceList(
+  calendars: CalendarPlacementOption[],
+  allCalendars: CalendarPlacementOption[] = calendars,
+) {
   return calendars
-    .map((calendar, index) => `${index + 1}. ${calendarChoiceDisplayLabel(calendar, calendars)}`)
+    .map((calendar, index) => `${index + 1}. ${calendarChoiceDisplayLabel(calendar, allCalendars)}`)
     .join('\n')
+}
+
+function calendarChoiceRank(calendar: CalendarPlacementOption) {
+  const label = tokenizeText(`${calendar.calendarLabel} ${calendar.calendarName}`).join(' ')
+  if (calendar.isPrimary) return 0
+  if (/\b(personal|home|work|main|primary)\b/.test(label)) return 1
+  if (/\b(family|business|company)\b/.test(label)) return 2
+  return 3
+}
+
+function prioritizedCalendarChoices(calendars: CalendarPlacementOption[]) {
+  return [...calendars].sort((left, right) => {
+    const rankDelta = calendarChoiceRank(left) - calendarChoiceRank(right)
+    if (rankDelta) return rankDelta
+    return calendarChoiceDisplayLabel(left, calendars).localeCompare(calendarChoiceDisplayLabel(right, calendars))
+  })
+}
+
+function visibleCalendarChoices(calendars: CalendarPlacementOption[]) {
+  return prioritizedCalendarChoices(calendars).slice(0, maxCalendarChoicesToDisplay)
+}
+
+function calendarChoiceReply({
+  heading,
+  calendars,
+}: {
+  heading: string
+  calendars: CalendarPlacementOption[]
+}) {
+  const visibleCalendars = visibleCalendarChoices(calendars)
+  const extraCount = calendars.length - visibleCalendars.length
+  const lines = [
+    heading,
+    calendarChoiceList(visibleCalendars, calendars),
+  ]
+
+  if (extraCount > 0) {
+    lines.push(`There are ${extraCount} more calendars hidden. You can type the exact calendar name instead.`)
+  }
+
+  lines.push('Reply with a number or calendar name.')
+  return {
+    reply: lines.join('\n'),
+    visibleCount: visibleCalendars.length,
+  }
 }
 
 function actionChoiceList(lines: string[]) {
@@ -680,12 +730,14 @@ function choose<T>(items: T[] | undefined, choice: number) {
 function resolveCalendarChoiceFromText(
   text: string,
   calendars: CalendarPlacementOption[] | undefined,
+  visibleCount?: number,
 ) {
   if (!calendars?.length) return null
 
   const lower = text.trim().toLowerCase()
   const directNumber = lower.match(/^(?:option\s*)?(\d+)$/)
   if (directNumber) {
+    if (visibleCount && Number(directNumber[1]) > visibleCount) return null
     const picked = calendars[Number(directNumber[1]) - 1]
     if (picked) return picked
   }
@@ -2632,7 +2684,9 @@ async function handleChoice({
   pending: PendingAction
 }) {
   if (pending.kind === 'choose_calendar') {
-    const pickedCalendar = choose(pending.payload.calendarChoices, choice)
+    const visibleChoiceCount = pending.payload.visibleCalendarChoiceCount || pending.payload.calendarChoices?.length || 0
+    const pickedCalendar =
+      choice <= visibleChoiceCount ? choose(pending.payload.calendarChoices, choice) : null
     const scheduleRequest = pending.payload.scheduleRequest
     if (!pickedCalendar || !scheduleRequest) return 'Reply with the calendar name or number you want.'
 
@@ -3651,7 +3705,11 @@ export async function handleIncomingSms({
   }
 
   if (activePending?.kind === 'choose_calendar') {
-    const pickedCalendar = resolveCalendarChoiceFromText(body, activePending.payload.calendarChoices)
+    const pickedCalendar = resolveCalendarChoiceFromText(
+      body,
+      activePending.payload.calendarChoices,
+      activePending.payload.visibleCalendarChoiceCount,
+    )
     if (pickedCalendar && activePending.payload.scheduleRequest) {
       const scheduleRequest = activePending.payload.scheduleRequest
       const attendees = activePending.payload.attendees || []
@@ -3954,10 +4012,18 @@ export async function handleIncomingSms({
       (!placement.genericHint && placement.matches.length === 0 && placement.bookingCalendars.length > 1)
 
     if (needsCalendarChoice) {
-      const calendarChoices =
+      const calendarChoices = prioritizedCalendarChoices(
         placement.matches.length > 1
           ? placement.matches
-          : placement.bookingCalendars
+          : placement.bookingCalendars,
+      )
+      const choicePrompt = calendarChoiceReply({
+        heading:
+          placement.matches.length === 0 && !placement.genericHint
+            ? `I couldn't tell which calendar "${scheduleIntent.calendarHint}" means. Which calendar should I use?`
+            : 'Which calendar should I put that on?',
+        calendars: calendarChoices,
+      })
 
       await storePendingAction({
         profileId: profile.id,
@@ -3965,6 +4031,7 @@ export async function handleIncomingSms({
         kind: 'choose_calendar',
         payload: {
           calendarChoices,
+          visibleCalendarChoiceCount: choicePrompt.visibleCount,
           attendees: inviteeContext.invitees,
           unresolvedInvitees: inviteeContext.unresolvedNames,
           scheduleRequest: {
@@ -3980,10 +4047,7 @@ export async function handleIncomingSms({
         },
       })
 
-      const reply =
-        placement.matches.length === 0 && !placement.genericHint
-          ? `I couldn't tell which calendar "${scheduleIntent.calendarHint}" means.\nWhich calendar should I use?\n${calendarChoiceList(calendarChoices)}\nReply with the name or number.`
-          : `Which calendar should I put that on?\n${calendarChoiceList(calendarChoices)}\nReply with the name or number.`
+      const reply = choicePrompt.reply
       await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
       return reply
     }

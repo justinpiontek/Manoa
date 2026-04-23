@@ -68,6 +68,7 @@ export type CalendarPlacementOption = {
   calendarName: string
   calendarLabel: string
   provider: CalendarProvider
+  isPrimary: boolean
 }
 
 export type CalendarPlacementResolution = {
@@ -1919,6 +1920,11 @@ export async function storeAppleConnection(
     .eq('provider', 'apple')
     .eq('account_id', options?.reconnectAccountId || accountId)
 
+  const defaultBookingCalendarId =
+    accountData.calendars.find((descriptor) => descriptor.canEdit && descriptor.isDefaultCalendar)?.id ||
+    accountData.calendars.find((descriptor) => descriptor.canEdit)?.id ||
+    null
+
   const rows = accountData.calendars.map((descriptor) => {
     const existing = existingByCalendarId.get(descriptor.id)
     const writable = descriptor.canEdit
@@ -1939,7 +1945,7 @@ export async function storeAppleConnection(
       access_role: existing?.access_role || (writable ? 'owner' : 'reader'),
       is_primary: descriptor.isDefaultCalendar,
       include_in_conflicts: existing?.include_in_conflicts ?? true,
-      allow_new_events: existing?.allow_new_events ?? writable,
+      allow_new_events: existing?.allow_new_events ?? (writable && descriptor.id === defaultBookingCalendarId),
       status: 'active',
       updated_at: new Date().toISOString(),
     }
@@ -2183,6 +2189,7 @@ function toPlacementOption(connection: CalendarConnection): CalendarPlacementOpt
     calendarName: connection.calendar_name,
     calendarLabel: displayCalendarName(connection),
     provider: connection.provider,
+    isPrimary: connection.is_primary,
   }
 }
 

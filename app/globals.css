@@ -1774,7 +1774,7 @@ footer {
 
 .apple-setup-panel {
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(300px, 0.95fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   align-items: start;
   margin-top: 24px;
@@ -1786,6 +1786,10 @@ footer {
   border-radius: 8px;
   background: #fbfcff;
   padding: 16px;
+}
+
+.apple-setup-steps-full {
+  max-width: 860px;
 }
 
 .apple-setup-list {
@@ -1925,6 +1929,71 @@ footer {
   font-weight: 850;
 }
 
+.apple-visual-apple-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 92px;
+  border: 1px solid #d7e0ef;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 14px;
+  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.06);
+}
+
+.apple-visual-apple-card strong,
+.apple-visual-apple-card span {
+  display: block;
+}
+
+.apple-visual-apple-card strong {
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.apple-visual-apple-card span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.apple-visual-security-icon,
+.apple-visual-more-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border: 2px solid var(--blue);
+  color: var(--blue);
+}
+
+.apple-visual-security-icon {
+  flex-direction: column;
+  gap: 3px;
+  border-radius: 10px;
+}
+
+.apple-visual-security-icon span,
+.apple-visual-more-icon span {
+  display: block;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.apple-visual-more-icon {
+  gap: 3px;
+  transform: rotate(45deg);
+  border-radius: 8px;
+}
+
+.apple-visual-more-icon span {
+  transform: rotate(-45deg);
+}
+
 .apple-visual-input,
 .apple-visual-button {
   border-radius: 8px;
@@ -1955,19 +2024,27 @@ footer {
   margin-top: 10px;
 }
 
-.apple-connect-card {
+.apple-form-step-card {
+  border: 1px solid #b9d8ff;
+  border-radius: 8px;
   background: #ffffff;
+  padding: 14px;
   box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
 }
 
-.apple-connect-card h2 {
-  margin: 8px 0 8px;
-  font-size: 1.35rem;
+.apple-form-step-card > strong {
+  font-size: 1.08rem;
 }
 
-.apple-connect-card p {
+.apple-form-step-card p {
   color: var(--muted);
   line-height: 1.6;
+}
+
+.apple-connect-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
 }
 
 .apple-help-details {

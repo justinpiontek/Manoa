@@ -25,12 +25,7 @@ const appleSteps = [
     body: 'Choose App-Specific Passwords, name it Manoa, create it, then copy the generated password.',
     visual: 'password',
   },
-  {
-    title: 'Paste it here',
-    body: 'Come back to this page and paste the generated password below. Do not use your normal Apple password.',
-    visual: 'paste',
-  },
-]
+] as const
 
 type AppleStepVisualKind = (typeof appleSteps)[number]['visual']
 
@@ -56,12 +51,19 @@ function AppleStepVisual({ visual }: { visual: AppleStepVisualKind }) {
   if (visual === 'security') {
     return (
       <div className="apple-step-visual" aria-hidden="true">
-        <div className="apple-visual-list">
-          <span>Personal Information</span>
-          <strong>Sign-In & Security</strong>
-          <span>Payment & Shipping</span>
+        <div className="apple-visual-apple-card">
+          <div>
+            <strong>Account Security</strong>
+            <span>Two-factor authentication</span>
+            <span>1 trusted phone number</span>
+            <span>Trusted devices</span>
+          </div>
+          <div className="apple-visual-security-icon">
+            <span />
+            <span />
+            <span />
+          </div>
         </div>
-        <div className="apple-visual-callout">Two-Factor Authentication On</div>
       </div>
     )
   }
@@ -69,21 +71,22 @@ function AppleStepVisual({ visual }: { visual: AppleStepVisualKind }) {
   if (visual === 'password') {
     return (
       <div className="apple-step-visual" aria-hidden="true">
-        <div className="apple-visual-card-title">App-Specific Passwords</div>
-        <div className="apple-visual-input">Manoa</div>
-        <div className="apple-visual-button">Create</div>
+        <div className="apple-visual-apple-card">
+          <div>
+            <strong>App-Specific Passwords</strong>
+            <span>View details</span>
+          </div>
+          <div className="apple-visual-more-icon">
+            <span />
+            <span />
+            <span />
+          </div>
+        </div>
       </div>
     )
   }
 
-  return (
-    <div className="apple-step-visual" aria-hidden="true">
-      <div className="apple-visual-card-title">Paste into Manoa</div>
-      <div className="apple-visual-input">you@icloud.com</div>
-      <div className="apple-visual-input is-password">xxxx-xxxx-xxxx-xxxx</div>
-      <div className="apple-visual-button">Connect</div>
-    </div>
-  )
+  return null
 }
 
 type AppleCalendarSetupPageProps = {
@@ -106,11 +109,11 @@ export default async function AppleCalendarSetupPage({ searchParams }: AppleCale
         <h1 className="setup-title">Connect Apple Calendar.</h1>
         <p className="setup-lede">
           Apple takes a few extra steps. Keep this page open, open Apple Account in a new tab,
-          create an app-specific password named Manoa, then paste it here.
+          create an app-specific password named Manoa, then enter the email and password in step 4.
         </p>
 
         <div className="apple-setup-panel">
-          <section className="apple-setup-steps" aria-label="Apple Calendar connection steps">
+          <section className="apple-setup-steps apple-setup-steps-full" aria-label="Apple Calendar connection steps">
             <p className="dashboard-label">Do this first</p>
             <ol className="apple-setup-list">
               {appleSteps.map((step, index) => (
@@ -128,27 +131,28 @@ export default async function AppleCalendarSetupPage({ searchParams }: AppleCale
                   </div>
                 </li>
               ))}
+              <li className="apple-form-step">
+                <span>4</span>
+                <div className="apple-form-step-card">
+                  <strong>Enter it here</strong>
+                  <p>
+                    Use your iCloud email and the app-specific password Apple generated for Manoa.
+                    Do not enter your normal Apple password.
+                  </p>
+                  {profileId ? (
+                    <AppleCalendarConnectForm
+                      profileId={profileId}
+                      reconnectAccountId={reconnectAccountId || null}
+                    />
+                  ) : (
+                    <p className="setup-note">
+                      Open this page from your dashboard so Manoa knows which account should receive the Apple
+                      calendars.
+                    </p>
+                  )}
+                </div>
+              </li>
             </ol>
-          </section>
-
-          <section className="dashboard-support-card apple-connect-card">
-            <p className="dashboard-label">Then paste here</p>
-            <h2>Connect to Manoa</h2>
-            <p>
-              Use your iCloud email and the app-specific password Apple generated for Manoa. Do not
-              paste your normal Apple password.
-            </p>
-            {profileId ? (
-              <AppleCalendarConnectForm
-                profileId={profileId}
-                reconnectAccountId={reconnectAccountId || null}
-              />
-            ) : (
-              <p className="setup-note">
-                Open this page from your dashboard so Manoa knows which account should receive the Apple
-                calendars.
-              </p>
-            )}
           </section>
         </div>
 
