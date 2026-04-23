@@ -7,14 +7,14 @@ const baseUrl = appUrl()
 export const metadata: Metadata = {
   title: 'Manoa | Text to schedule anything',
   description:
-    'Manoa is a calendar assistant you text. Book meetings, get reminders, and manage your calendar by text.',
+    'Manoa is a calendar assistant you text. Book meetings, read screenshots and flyers, get reminders, and manage your calendar by text.',
   alternates: {
     canonical: '/',
   },
   openGraph: {
     title: 'Manoa | Text to schedule anything',
     description:
-      'Manoa is a calendar assistant you text. Book meetings, get reminders, and manage your calendar by text.',
+      'Manoa is a calendar assistant you text. Book meetings, read screenshots and flyers, get reminders, and manage your calendar by text.',
     url: baseUrl,
     siteName: 'Manoa',
     type: 'website',
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'Manoa | Text to schedule anything',
     description:
-      'Manoa is a calendar assistant you text. Book meetings, get reminders, and manage your calendar by text.',
+      'Manoa is a calendar assistant you text. Book meetings, read screenshots and flyers, get reminders, and manage your calendar by text.',
   },
   icons: {
     icon: [

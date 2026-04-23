@@ -53,12 +53,12 @@ const homepageFaqs = [
   {
     question: 'Do I need an app?',
     answer:
-      'No. You sign up on the site once, connect Google Calendar or Outlook, and then use Manoa by text.',
+      'No. You sign up on the site once, connect your calendar, and then use Manoa by text.',
   },
   {
     question: 'What calendars work with Manoa?',
     answer:
-      'Right now Manoa connects directly to Google Calendar and Outlook. Apple Calendar is being added through a guided iCloud setup path.',
+      'Right now Manoa connects to Google Calendar and Apple Calendar. Outlook support is coming soon.',
   },
   {
     question: 'Will Manoa change things without me knowing?',
@@ -92,7 +92,7 @@ const homepageSoftwareApplicationStructuredData = {
   operatingSystem: 'Any',
   url: siteUrl,
   description:
-    'Manoa is a calendar assistant you text. Book meetings, get reminders, and manage your calendar by text.',
+    'Manoa is a calendar assistant you text. Book meetings, read photos and screenshots, get reminders, and manage your calendar by text.',
   offers: {
     '@type': 'Offer',
     price: '19.99',
@@ -304,8 +304,38 @@ export default function ManoaSignupPage() {
         <p className="simple-hero-note">Takes 30 seconds • Cancel anytime</p>
         <ul className="simple-hero-benefits" aria-label="Why Manoa feels simple">
           <li>No apps or links</li>
+          <li>Send photos, screenshots, flyers, and reminder cards</li>
           <li>Never forget anything with daily agenda and reminders by text</li>
         </ul>
+      </section>
+
+      <section className="home-section capability-section" aria-label="What Manoa can handle">
+        <div className="capability-copy">
+          <p className="section-label section-label-left">Send what you have</p>
+          <h2>Text it, snap it, or paste it.</h2>
+          <p>
+            Manoa can read event details from normal messages and photos, then ask before adding
+            anything to your calendar.
+          </p>
+        </div>
+        <div className="capability-grid">
+          <article>
+            <strong>Photo to calendar</strong>
+            <span>Appointment cards, school flyers, invitations, full schedules.</span>
+          </article>
+          <article>
+            <strong>Plain text requests</strong>
+            <span>Meetings, lunches, calls, workouts, reminders, and errands.</span>
+          </article>
+          <article>
+            <strong>Agenda and reminders</strong>
+            <span>Ask what is next or get nudged before things start.</span>
+          </article>
+          <article>
+            <strong>Asks when unclear</strong>
+            <span>If the date, time, calendar, or person is missing, Manoa asks.</span>
+          </article>
+        </div>
       </section>
 
       <section className="home-section working-demo-section" aria-label="Working demo">
@@ -462,7 +492,7 @@ export default function ManoaSignupPage() {
             </button>
           </form>
 
-          <p className="pricing-meta">Connect Google or Outlook after checkout.</p>
+          <p className="pricing-meta">Connect Google or Apple after checkout. Outlook coming soon.</p>
           <p className="fine-print pricing-fine-print">
             Manoa only sends service-related account texts. Message frequency varies. Msg &amp;
             data rates may apply.

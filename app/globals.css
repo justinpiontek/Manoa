@@ -300,6 +300,57 @@ button {
   padding: 24px;
 }
 
+.capability-section {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(320px, 1.1fr);
+  gap: 22px;
+  align-items: center;
+}
+
+.capability-copy h2 {
+  max-width: 14ch;
+  margin: 10px 0 0;
+  font-size: 2rem;
+  line-height: 1.08;
+}
+
+.capability-copy p:not(.section-label) {
+  max-width: 31rem;
+  margin: 14px 0 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.capability-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.capability-grid article {
+  border: 1px solid #d7e3f7;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 14px;
+}
+
+.capability-grid strong,
+.capability-grid span {
+  display: block;
+}
+
+.capability-grid strong {
+  color: var(--ink);
+  font-size: 0.98rem;
+}
+
+.capability-grid span {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.94rem;
+  line-height: 1.55;
+}
+
 .working-demo-grid {
   display: grid;
   grid-template-columns: minmax(0, 0.95fr) minmax(320px, 0.85fr);
@@ -2245,6 +2296,13 @@ footer {
   gap: 10px;
 }
 
+.dashboard-action-note {
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
 .dashboard-example-card {
   display: grid;
   gap: 6px;
@@ -2436,10 +2494,10 @@ footer {
 }
 
 .dashboard-empty-state {
-  border: 1px dashed #d5def1;
+  border: 1px solid #d7e3f7;
   border-radius: 8px;
-  background: #ffffff;
-  padding: 18px;
+  background: #eef6ff;
+  padding: 14px;
 }
 
 .dashboard-empty-state strong,
@@ -2993,6 +3051,8 @@ footer {
 
   .simple-step-grid,
   .pricing-form-grid,
+  .capability-section,
+  .capability-grid,
   .working-demo-grid,
   .apple-setup-panel {
     grid-template-columns: 1fr;
@@ -3191,6 +3251,11 @@ footer {
 
   .working-demo-section {
     padding: 18px;
+  }
+
+  .capability-copy h2 {
+    max-width: none;
+    font-size: 1.8rem;
   }
 
   .pricing-title {

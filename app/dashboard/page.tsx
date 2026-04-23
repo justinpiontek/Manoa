@@ -44,10 +44,11 @@ function statusLine({
   calendarConnected: boolean
   manoaNumber: string
 }) {
-  const calendarLabel = calendarConnected ? 'Calendar connected' : 'Calendar needs attention'
-  const textLabel = manoaNumber ? 'Texting ready' : 'Texting pending approval'
+  if (!calendarConnected) {
+    return 'Calendar not connected • Connect Google or Apple'
+  }
 
-  return `✅ ${calendarLabel} • ${textLabel}`
+  return manoaNumber ? '✅ Calendar connected • Texting ready' : 'Calendar connected • SMS approval pending'
 }
 
 function accountConflictSummary(calendars: Awaited<ReturnType<typeof listConfiguredCalendarAccounts>>[number]['calendars']) {
@@ -168,7 +169,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const totalConnectedAccounts = calendarAccounts.length
   const readyToText = Boolean(manoaNumber && profile.calendarConnected)
   const connectedAccountLabel = `${totalConnectedAccounts} connected account${totalConnectedAccounts === 1 ? '' : 's'}`
-  let dashboardLede = 'Connect a calendar first. Then use the console below with your real calendars.'
+  let dashboardLede = 'Connect Google or Apple to start using Manoa.'
   if (profile.calendarConnected) {
     dashboardLede = 'Everything is set up. Use the console below while SMS approval finishes, or connect another calendar.'
   }
@@ -178,10 +179,12 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const calendarStageHeading = totalConnectedAccounts ? 'Calendars' : 'Connect a calendar'
   const calendarStageCopy = totalConnectedAccounts
     ? 'Most people can leave these settings alone. Open calendar settings only if you want to rename a calendar, stop conflict checks, or change where Manoa books.'
-    : 'Connect Google or Apple so Manoa can check availability and add events. Outlook is coming soon.'
+    : 'Choose one calendar provider. You can add more later.'
   const textingStageCopy = readyToText
     ? `Text ${displayNumber} from ${displayUserPhone}, or use this console.`
-    : 'SMS approval is still pending. Use this console now with your real calendars.'
+    : totalConnectedAccounts
+      ? 'SMS approval is still pending. Use this console now with your real calendars.'
+      : 'Once connected, you can test the real texting flow here.'
   const quickExamples = totalConnectedAccounts > 1
     ? [
         'Schedule lunch Tuesday on Personal',
@@ -300,24 +303,22 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
               <h2>{calendarStageHeading}</h2>
               <p>{calendarStageCopy}</p>
             </div>
-            <span className="dashboard-stage-status">
-              {totalConnectedAccounts ? connectedAccountLabel : 'Not connected yet'}
-            </span>
+            {totalConnectedAccounts ? (
+              <span className="dashboard-stage-status">{connectedAccountLabel}</span>
+            ) : null}
           </div>
 
           <div className="dashboard-stage-actions">
             <a className="button dashboard-button" href={`/api/calendar/google/start?profile_id=${profile.id}`}>
               {googleAccounts.length ? (canAddGoogleAccount ? 'Add Google account' : 'Reconnect Google') : 'Connect Google'}
             </a>
-            <span className="button dashboard-button secondary-button is-disabled" aria-disabled="true">
-              Outlook coming soon
-            </span>
             <a className="button dashboard-button secondary-button" href={appleConnectHref}>
               {appleAccounts.length ? 'Reconnect Apple' : 'Connect Apple'}
             </a>
+            <span className="dashboard-action-note">Outlook coming soon</span>
           </div>
           <p className="dashboard-stage-footnote">
-            Apple uses an app-specific password. Outlook is visible here, but not clickable until it is ready.
+            Apple uses an app-specific password. Google is the fastest setup.
           </p>
 
           {calendarAccounts.length ? (
@@ -394,12 +395,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                 </article>
               ))}
             </div>
-          ) : (
-            <div className="dashboard-empty-state">
-              <strong>No calendar connected yet.</strong>
-              <p>Start with Google or Apple above. You can adjust individual calendars later if needed.</p>
-            </div>
-          )}
+          ) : null}
         </section>
 
         <section className="dashboard-stage dashboard-stage-text">
@@ -411,18 +407,25 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             </div>
           </div>
 
-          <DashboardTextConsole
-            initialMessages={initialThreadMessages}
-            starterPrompts={quickExamples}
-          />
+          {totalConnectedAccounts ? (
+            <DashboardTextConsole
+              initialMessages={initialThreadMessages}
+              starterPrompts={quickExamples}
+            />
+          ) : (
+            <div className="dashboard-empty-state">
+              <strong>Connect a calendar first.</strong>
+              <p>Choose Google or Apple above to unlock the console.</p>
+            </div>
+          )}
 
           <div className="dashboard-stage-actions">
-            {manoaNumber ? (
+            {manoaNumber && totalConnectedAccounts ? (
               <a className="button dashboard-button" href={`sms:${manoaNumber}`}>
                 Text Manoa now
               </a>
             ) : null}
-            {manoaNumber ? (
+            {manoaNumber && totalConnectedAccounts ? (
               <a className="button dashboard-button secondary-button" href="/api/contact-card">
                 Save Manoa contact
               </a>
