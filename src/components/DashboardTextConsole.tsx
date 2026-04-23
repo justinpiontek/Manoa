@@ -100,7 +100,7 @@ export default function DashboardTextConsole({
       <div className="phone-preview dashboard-live-phone" aria-label="Live Manoa console">
         <div className="phone-header">
           <span>Manoa</span>
-          <small>Live console</small>
+          <small>Real calendars</small>
         </div>
         <div ref={threadRef} className="demo-thread dashboard-live-thread" aria-live="polite">
           {messages.length ? (
@@ -116,11 +116,30 @@ export default function DashboardTextConsole({
             ))
           ) : (
             <div className="dashboard-live-empty">
-              <strong>No texts yet.</strong>
-              <p>Send one below and Manoa will use your real account, calendars, and scheduling logic.</p>
+              <strong>Send a text to Manoa.</strong>
+              <p>This uses your real account, calendars, and scheduling logic.</p>
             </div>
           )}
         </div>
+
+        {!messages.length && starterPrompts.length ? (
+          <div className="dashboard-live-shortcuts" aria-label="Try one of these">
+            {starterPrompts.map((prompt) => (
+              <button
+                key={prompt}
+                className="demo-prompt"
+                type="button"
+                disabled={pending}
+                onClick={() => {
+                  setInput(prompt)
+                  void sendText(prompt)
+                }}
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         <form
           className="demo-form dashboard-live-form dashboard-live-composer"
@@ -144,7 +163,7 @@ export default function DashboardTextConsole({
         </form>
 
         <label className={`dashboard-photo-upload dashboard-photo-upload-compact ${pending || photoPending ? 'is-disabled' : ''}`}>
-          <span>{photoPending ? 'Reading photo...' : 'Read photo, screenshot, or flyer'}</span>
+          <span>{photoPending ? 'Reading photo...' : 'Add photo or screenshot'}</span>
           <input
             type="file"
             accept="image/jpeg,image/png,image/webp"
@@ -162,31 +181,6 @@ export default function DashboardTextConsole({
             {error}
           </p>
         ) : null}
-      </div>
-
-      <div className="dashboard-live-panel">
-        <p className="dashboard-label">Quick tries</p>
-        <h3>Real backend, real calendars.</h3>
-        <p>
-          Tap a shortcut or type in the phone. This is the same backend Manoa will use for SMS.
-        </p>
-
-        <div className="dashboard-live-prompts">
-          {starterPrompts.map((prompt) => (
-            <button
-              key={prompt}
-              className="demo-prompt"
-              type="button"
-              disabled={pending}
-              onClick={() => {
-                setInput(prompt)
-                void sendText(prompt)
-              }}
-            >
-              {prompt}
-            </button>
-          ))}
-        </div>
       </div>
     </div>
   )

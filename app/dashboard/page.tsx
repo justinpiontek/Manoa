@@ -159,27 +159,29 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   }
 
   const googleAccounts = calendarAccounts.filter((account) => account.provider === 'google')
-  const outlookAccounts = calendarAccounts.filter((account) => account.provider === 'outlook')
   const appleAccounts = calendarAccounts.filter((account) => account.provider === 'apple')
   const canAddGoogleAccount = googleAccounts.length < 2
-  const canAddOutlookAccount = outlookAccounts.length < 2
   const canAddAppleAccount = appleAccounts.length < 1
   const appleConnectHref = canAddAppleAccount
     ? `/setup/apple-calendar?profile_id=${profile.id}`
     : `/setup/apple-calendar?profile_id=${profile.id}&account_id=${appleAccounts[0]?.accountId || ''}`
   const totalConnectedAccounts = calendarAccounts.length
   const readyToText = Boolean(manoaNumber && profile.calendarConnected)
-  const firstTextExample = totalConnectedAccounts > 1
-    ? 'Schedule lunch Tuesday on Personal'
-    : "What's on my calendar tomorrow?"
   const connectedAccountLabel = `${totalConnectedAccounts} connected account${totalConnectedAccounts === 1 ? '' : 's'}`
-  const calendarStageHeading = totalConnectedAccounts ? 'Teach Manoa what each calendar means.' : 'Connect your calendar.'
+  let dashboardLede = 'Connect a calendar first. Then use the console below with your real calendars.'
+  if (profile.calendarConnected) {
+    dashboardLede = 'Everything is set up. Use the console below while SMS approval finishes, or connect another calendar.'
+  }
+  if (readyToText) {
+    dashboardLede = 'Everything is set up. Text Manoa, use the console below, or connect another calendar.'
+  }
+  const calendarStageHeading = totalConnectedAccounts ? 'Calendars' : 'Connect a calendar'
   const calendarStageCopy = totalConnectedAccounts
-    ? 'Most people can leave this alone. Manoa checks calendars marked for conflicts, then uses the calendar name you text when placing new events.'
-    : 'Connect Google, Outlook, or Apple Calendar first so Manoa can check availability, route events to the right calendar, and book by text.'
+    ? 'Most people can leave these settings alone. Open calendar settings only if you want to rename a calendar, stop conflict checks, or change where Manoa books.'
+    : 'Connect Google or Apple so Manoa can check availability and add events. Outlook is coming soon.'
   const textingStageCopy = readyToText
-    ? `Text from ${displayUserPhone} so Manoa recognizes you right away, or use the live console here.`
-    : 'Your texting number will show here as soon as approval finishes. Until then, use the live console here with your real account.'
+    ? `Text ${displayNumber} from ${displayUserPhone}, or use this console.`
+    : 'SMS approval is still pending. Use this console now with your real calendars.'
   const quickExamples = totalConnectedAccounts > 1
     ? [
         'Schedule lunch Tuesday on Personal',
@@ -211,10 +213,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         </div>
 
         <p className="legal-eyebrow">Dashboard</p>
-        <h1 className="dashboard-title">Your Manoa dashboard.</h1>
-        <p className="dashboard-lede">
-          Connect your calendar, then send your first text. The rest should feel as simple as the homepage.
-        </p>
+        <h1 className="dashboard-title">Use Manoa.</h1>
+        <p className="dashboard-lede">{dashboardLede}</p>
         <p className="dashboard-status-line">{statusLine({
           calendarConnected: profile.calendarConnected,
           manoaNumber,
@@ -296,7 +296,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         <section className="dashboard-stage dashboard-stage-connect">
           <div className="dashboard-stage-head">
             <div>
-              <p className="dashboard-stage-label">Step 1</p>
+              <p className="dashboard-stage-label">Calendars</p>
               <h2>{calendarStageHeading}</h2>
               <p>{calendarStageCopy}</p>
             </div>
@@ -317,7 +317,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             </a>
           </div>
           <p className="dashboard-stage-footnote">
-            Apple uses the manual iCloud path. One Apple account is supported right now.
+            Apple uses an app-specific password. Outlook is visible here, but not clickable until it is ready.
           </p>
 
           {calendarAccounts.length ? (
@@ -364,15 +364,14 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
                   {account.provider === 'apple' ? (
                     <p className="calendar-account-note">
-                      Apple may show many calendars from iCloud, Family Sharing, and app-created lists.
-                      You only need to edit a calendar if Manoa should stop checking it or should not
-                      place new events there.
+                      Apple may include iCloud, Family Sharing, and app-created calendars. Leave this closed
+                      unless Manoa should ignore one or stop booking there.
                     </p>
                   ) : null}
 
                   <details className="calendar-account-details">
                     <summary>
-                      <span>Advanced calendar settings</span>
+                      <span>Calendar settings</span>
                       <strong>{account.calendars.length}</strong>
                     </summary>
                     <div className="calendar-settings-grid">
@@ -398,7 +397,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           ) : (
             <div className="dashboard-empty-state">
               <strong>No calendar connected yet.</strong>
-              <p>Start with Google or Apple above, then come right back here to name calendars and choose how Manoa should use them.</p>
+              <p>Start with Google or Apple above. You can adjust individual calendars later if needed.</p>
             </div>
           )}
         </section>
@@ -406,20 +405,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         <section className="dashboard-stage dashboard-stage-text">
           <div className="dashboard-stage-head">
             <div>
-              <p className="dashboard-stage-label">Step 2</p>
-              <h2>Text Manoa.</h2>
+              <p className="dashboard-stage-label">Try Manoa</p>
+              <h2>Send a text here.</h2>
               <p>{textingStageCopy}</p>
             </div>
-          </div>
-
-          <div className="dashboard-number-card">
-            <span className="dashboard-number-label">Your Manoa number</span>
-            <strong>{displayNumber || 'Still being finalized'}</strong>
-          </div>
-
-          <div className="dashboard-example-card">
-            <span className="dashboard-example-label">First text to send</span>
-            <strong>{firstTextExample}</strong>
           </div>
 
           <DashboardTextConsole
@@ -444,38 +433,39 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </div>
 
           <p className="dashboard-stage-footnote">
-            Signed in as <strong>{profile.email}</strong> from <strong>{displayUserPhone}</strong>.
+            SMS: <strong>{displayNumber || 'pending approval'}</strong> • Account:{' '}
+            <strong>{profile.email}</strong> • Phone: <strong>{displayUserPhone}</strong>
           </p>
         </section>
 
-        <div className="dashboard-support-grid">
-          <article className="dashboard-support-card">
-            <p className="dashboard-label">Timezone</p>
-            <h3>Use the right local time</h3>
-            <p>Manoa reads texts like “11am” using this timezone.</p>
-            <TimezoneForm profileId={profile.id} currentTimezone={profile.timezone} />
-          </article>
+        <section className="dashboard-stage dashboard-stage-settings">
+          <div className="dashboard-stage-head">
+            <div>
+              <p className="dashboard-stage-label">Settings</p>
+              <h2>Defaults</h2>
+              <p>These keep texted times and new events predictable.</p>
+            </div>
+          </div>
 
-          <article className="dashboard-support-card">
-            <p className="dashboard-label">Scheduling defaults</p>
-            <h3>Default new-event length</h3>
-            <p>When your text does not include a duration, Manoa uses this length.</p>
-            <DefaultDurationForm
-              profileId={profile.id}
-              defaultDurationMinutes={profile.default_event_duration_minutes}
-            />
-          </article>
+          <div className="dashboard-support-grid">
+            <article className="dashboard-support-card">
+              <p className="dashboard-label">Timezone</p>
+              <h3>Use the right local time</h3>
+              <p>Manoa reads texts like “11am” using this timezone.</p>
+              <TimezoneForm profileId={profile.id} currentTimezone={profile.timezone} />
+            </article>
 
-          <article className="dashboard-support-card">
-            <p className="dashboard-label">Try one of these</p>
-            <h3>Good first texts</h3>
-            <ul className="dashboard-example-list">
-              {quickExamples.map((example) => (
-                <li key={example}>{example}</li>
-              ))}
-            </ul>
-          </article>
-        </div>
+            <article className="dashboard-support-card">
+              <p className="dashboard-label">Event length</p>
+              <h3>Default duration</h3>
+              <p>When your text does not include a duration, Manoa uses this length.</p>
+              <DefaultDurationForm
+                profileId={profile.id}
+                defaultDurationMinutes={profile.default_event_duration_minutes}
+              />
+            </article>
+          </div>
+        </section>
 
         <div className="dashboard-footer">
           <a className="nav-link" href="/">

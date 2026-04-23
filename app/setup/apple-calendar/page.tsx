@@ -1,5 +1,6 @@
 import ManoaWordmark from '@/src/components/ManoaWordmark'
 import AppleCalendarConnectForm from '@/src/components/AppleCalendarConnectForm'
+import Image from 'next/image'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -7,86 +8,83 @@ export const metadata: Metadata = {
   description: 'Prepare iCloud Calendar for Apple Calendar support in Manoa.',
 }
 
-const appleSteps = [
+type AppleStepScreenshot = {
+  src: string
+  width: number
+  height: number
+  alt: string
+}
+
+type AppleStep = {
+  title: string
+  body: string
+  href?: string
+  cta?: string
+  screenshots: AppleStepScreenshot[]
+}
+
+const appleSteps: AppleStep[] = [
   {
-    title: 'Open Apple Account in a new tab',
-    body: 'Sign in with the Apple Account that owns the calendars you want Manoa to use.',
+    title: 'Open Apple Account and sign in',
+    body: 'Go to Apple Account, sign in, and open Sign-In and Security.',
     href: 'https://account.apple.com',
     cta: 'Open Apple Account',
-    visual: 'account',
+    screenshots: [
+      {
+        src: '/images/apple-calendar/sign-in-security.png',
+        width: 1053,
+        height: 898,
+        alt: 'Apple Account Sign-In and Security page with the App-Specific Passwords card visible.',
+      },
+    ],
   },
   {
-    title: 'Go to Sign-In & Security',
-    body: 'Make sure Two-Factor Authentication is on. Apple requires it for this connection.',
-    visual: 'security',
+    title: 'Open App-Specific Passwords',
+    body: 'Choose App-Specific Passwords, then select Generate an app-specific password.',
+    screenshots: [
+      {
+        src: '/images/apple-calendar/app-specific-passwords.png',
+        width: 695,
+        height: 498,
+        alt: 'Apple App-Specific Passwords panel with a generate password button.',
+      },
+    ],
   },
   {
-    title: 'Create an app-specific password',
-    body: 'Choose App-Specific Passwords, name it Manoa, create it, then copy the generated password.',
-    visual: 'password',
+    title: 'Create and copy the Manoa password',
+    body: 'Type Manoa as the label, create it, then copy the password Apple shows.',
+    screenshots: [
+      {
+        src: '/images/apple-calendar/generate-password.png',
+        width: 470,
+        height: 371,
+        alt: 'Apple generate app-specific password dialog with a label field.',
+      },
+      {
+        src: '/images/apple-calendar/copy-password.png',
+        width: 449,
+        height: 300,
+        alt: 'Apple dialog showing the generated app-specific password to copy.',
+      },
+    ],
   },
-] as const
+]
 
-type AppleStepVisualKind = (typeof appleSteps)[number]['visual']
-
-function AppleStepVisual({ visual }: { visual: AppleStepVisualKind }) {
-  if (visual === 'account') {
-    return (
-      <div className="apple-step-visual" aria-hidden="true">
-        <div className="apple-browser-bar">
-          <span />
-          <strong>account.apple.com</strong>
-        </div>
-        <div className="apple-visual-panel">
-          <div className="apple-visual-avatar" />
-          <div>
-            <strong>Apple Account</strong>
-            <span>Sign in</span>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (visual === 'security') {
-    return (
-      <div className="apple-step-visual" aria-hidden="true">
-        <div className="apple-visual-apple-card">
-          <div>
-            <strong>Account Security</strong>
-            <span>Two-factor authentication</span>
-            <span>1 trusted phone number</span>
-            <span>Trusted devices</span>
-          </div>
-          <div className="apple-visual-security-icon">
-            <span />
-            <span />
-            <span />
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (visual === 'password') {
-    return (
-      <div className="apple-step-visual" aria-hidden="true">
-        <div className="apple-visual-apple-card">
-          <div>
-            <strong>App-Specific Passwords</strong>
-            <span>View details</span>
-          </div>
-          <div className="apple-visual-more-icon">
-            <span />
-            <span />
-            <span />
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  return null
+function AppleStepVisual({ screenshots }: { screenshots: AppleStepScreenshot[] }) {
+  return (
+    <div className={`apple-step-visual apple-step-screenshots${screenshots.length > 1 ? ' is-pair' : ''}`}>
+      {screenshots.map((screenshot) => (
+        <Image
+          key={screenshot.src}
+          src={screenshot.src}
+          width={screenshot.width}
+          height={screenshot.height}
+          alt={screenshot.alt}
+          sizes="(max-width: 700px) 100vw, 700px"
+        />
+      ))}
+    </div>
+  )
 }
 
 type AppleCalendarSetupPageProps = {
@@ -120,7 +118,7 @@ export default async function AppleCalendarSetupPage({ searchParams }: AppleCale
                 <li key={step.title}>
                   <span>{index + 1}</span>
                   <div>
-                    <AppleStepVisual visual={step.visual} />
+                    <AppleStepVisual screenshots={step.screenshots} />
                     <strong>{step.title}</strong>
                     <p>{step.body}</p>
                     {'href' in step && step.href ? (
@@ -134,9 +132,9 @@ export default async function AppleCalendarSetupPage({ searchParams }: AppleCale
               <li className="apple-form-step">
                 <span>4</span>
                 <div className="apple-form-step-card">
-                  <strong>Enter it here</strong>
+                  <strong>Enter it in Manoa</strong>
                   <p>
-                    Use your iCloud email and the app-specific password Apple generated for Manoa.
+                    Use the Apple email for your iCloud calendars and the app-specific password Apple generated.
                     Do not enter your normal Apple password.
                   </p>
                   {profileId ? (
@@ -161,7 +159,8 @@ export default async function AppleCalendarSetupPage({ searchParams }: AppleCale
           <div>
             <p>
               In Apple Account, open <strong>Sign-In & Security</strong>, then look for{' '}
-              <strong>App-Specific Passwords</strong>. Two-factor authentication must be on first.
+              <strong>App-Specific Passwords</strong>. If you do not see it, Apple may need
+              two-factor authentication turned on for your account first.
             </p>
             <ul className="dashboard-example-list">
               <li>
