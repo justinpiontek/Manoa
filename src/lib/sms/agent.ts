@@ -1695,9 +1695,35 @@ function recentEventFromPending(pending: PendingAction | null | undefined) {
   return pending.payload.events?.[0] || null
 }
 
+function eventContextFromPending(pending: PendingAction | null | undefined) {
+  if (!pending) return null
+
+  if (pending.kind === 'reschedule') {
+    return pending.payload.target || null
+  }
+
+  if (
+    pending.kind === 'invited_reschedule_action' ||
+    pending.kind === 'invited_reschedule_hold' ||
+    pending.kind === 'invited_cancel_action' ||
+    pending.kind === 'external_call_prep' ||
+    pending.kind === 'external_cancel_confirm' ||
+    pending.kind === 'external_reschedule_confirm' ||
+    pending.kind === 'save_business_contact_phone'
+  ) {
+    return pending.payload.target || null
+  }
+
+  if (pending.kind === 'select_reschedule_target') {
+    return pending.payload.events?.length === 1 ? pending.payload.events[0] : null
+  }
+
+  return recentEventFromPending(pending)
+}
+
 function contextualEventTarget(pending: PendingAction | null | undefined, query: string) {
   if (!isGenericEventReference(query)) return null
-  return recentEventFromPending(pending)
+  return eventContextFromPending(pending)
 }
 
 function rescheduleBaseDateForTarget({

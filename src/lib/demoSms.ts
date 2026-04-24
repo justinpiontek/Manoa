@@ -205,6 +205,37 @@ function pendingActionTitle(action: DemoPendingAction) {
   return action.options[0]?.title.replace(/\s*\(pending\)\s*$/i, '') || null
 }
 
+function isGenericDemoEventReference(query: string) {
+  return /^(?:it|that|this|event|that event|this event|the event|my event|time)$/.test(
+    normalizeText(query),
+  )
+}
+
+function contextualDemoEventFromPending(state: DemoState, query: string) {
+  if (!isGenericDemoEventReference(query)) return null
+  const action = state.pendingAction
+  if (!action) return null
+
+  if (action.kind === 'recent_created_event') {
+    return state.events.find((event) => event.id === action.eventId) || null
+  }
+
+  if (action.kind === 'reschedule' || action.kind === 'external_call_prep') {
+    return action.targetEventId
+      ? state.events.find((event) => event.id === action.targetEventId) || null
+      : null
+  }
+
+  if (action.kind === 'select_reschedule_target' && action.options.length === 1) {
+    const option = action.options[0]
+    return (
+      state.events.find((event) => event.title === option.title && event.start === option.start) || null
+    )
+  }
+
+  return null
+}
+
 function correctedDemoScheduleText(text: string, action: DemoPendingAction) {
   if (action.kind !== 'schedule' && action.kind !== 'external_call_prep') return null
   const fragment = correctionFragment(text)
@@ -731,7 +762,9 @@ function rescheduleReply(
         ? 'today'
         : null
 
-  const target = findMatchingEvent(state.events, intent.query, day)
+  const target =
+    contextualDemoEventFromPending(state, intent.query) ||
+    findMatchingEvent(state.events, intent.query, day)
   if (!target) {
     const candidates = buildTargetSelectionOptions(day ? agendaForDay(state.events, day) : state.events)
     if (!candidates.length) {
@@ -1104,7 +1137,7 @@ export function applyDemoTextForIntent(
   }
 
   if (intent.type === 'reschedule') {
-    return rescheduleReply({ ...withUserMessage, pendingAction: null }, trimmed, intent)
+    return rescheduleReply(withUserMessage, trimmed, intent)
   }
 
   if (intent.type === 'cancel') {

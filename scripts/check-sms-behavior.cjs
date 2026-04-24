@@ -257,6 +257,13 @@ assert.deepEqual(parseExistingEventInviteRequest('Can you add Stacey to it?'), {
   directInvitees: [],
 })
 
+let rescheduleDemoState = createDemoState()
+rescheduleDemoState = applyDemoText(rescheduleDemoState, 'reschedule school pickup')
+rescheduleDemoState = applyDemoText(rescheduleDemoState, 'move it to 5:15')
+assert.equal(rescheduleDemoState.messages.at(-1)?.role, 'manoa')
+assert.equal(rescheduleDemoState.messages.at(-1)?.lines[0], 'I can move School pickup to one of these:')
+assert.ok(rescheduleDemoState.messages.at(-1)?.lines.some((line) => /5:15 PM/.test(line)))
+
 const authorityBaseEvent = {
   id: 'event',
   title: 'Planning meeting',
