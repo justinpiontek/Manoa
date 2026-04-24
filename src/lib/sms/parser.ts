@@ -212,13 +212,26 @@ function isAgendaRequest(lower: string, day: 'today' | 'tomorrow') {
 
 export function parseSmsTime(text: string) {
   const lower = text.toLowerCase()
-  const match = lower.match(/\b(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)\b/)
-  const bareHourMatch = match || lower.match(/\b(?:at|@)\s*(1[0-2]|0?[1-9])(?::([0-5]\d))?\b/)
-  if (!bareHourMatch) return null
+  const explicitMatch = lower.match(/\b(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)\b/)
+  const prefixedMatch =
+    explicitMatch ||
+    lower.match(/\b(?:at|@|to|for|around|by)\s*(1[0-2]|0?[1-9])(?::([0-5]\d))?\b/)
 
-  let hour = Number(bareHourMatch[1])
-  const minute = Number(bareHourMatch[2] || '0')
-  const explicitPeriod = match?.[3]?.startsWith('a') ? 'am' : match?.[3]?.startsWith('p') ? 'pm' : null
+  const hasOtherWordsBesidesStandaloneTime = /[a-z]/i.test(
+    lower.replace(/\b(1[0-2]|0?[1-9]):([0-5]\d)\b/g, ' ').trim(),
+  )
+  const standaloneColonMatch =
+    prefixedMatch || (hasOtherWordsBesidesStandaloneTime ? lower.match(/\b(1[0-2]|0?[1-9]):([0-5]\d)\b/) : null)
+
+  if (!standaloneColonMatch) return null
+
+  let hour = Number(standaloneColonMatch[1])
+  const minute = Number(standaloneColonMatch[2] || '0')
+  const explicitPeriod = explicitMatch?.[3]?.startsWith('a')
+    ? 'am'
+    : explicitMatch?.[3]?.startsWith('p')
+      ? 'pm'
+      : null
   const period = explicitPeriod || (hour === 12 || (hour >= 1 && hour <= 8) ? 'pm' : 'am')
 
   if (period === 'pm' && hour !== 12) hour += 12
@@ -720,6 +733,8 @@ function stripSchedulingNoise(text: string) {
     .replace(/\b(?:this|next)\s+(?:week(?:'s|s)?|weekend|month)\b/g, ' ')
     .replace(/\b(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)\b/g, ' ')
     .replace(/\bat\s+(1[0-2]|0?[1-9])(?::[0-5]\d)?\b/g, ' ')
+    .replace(/\b(?:to|for|around|by)\s+(1[0-2]|0?[1-9])(?::[0-5]\d)?\b/g, ' ')
+    .replace(/\b(1[0-2]|0?[1-9]):([0-5]\d)\b/g, ' ')
     .replace(/\b(noon|midnight|morning|afternoon|evening|tonight|lunchtime)\b/g, ' ')
     .replace(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday|today|tomorrow|tmrw|tmmrw|tomorow|tommorow|tommorrow|next)\b/g, ' ')
     .replace(/\btomororws?\b/g, ' ')

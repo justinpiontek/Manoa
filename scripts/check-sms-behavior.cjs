@@ -117,6 +117,19 @@ assert.deepEqual(bareMorningEleven.exactTime, { hour: 11, minute: 0 })
 const bareNoon = assertScheduleTitle('schedule meeting at 12', 'meeting')
 assert.deepEqual(bareNoon.exactTime, { hour: 12, minute: 0 })
 
+const changeThatTo515 = parseSmsIntent('change that to 5:15', timeZone)
+assert.equal(changeThatTo515.type, 'reschedule')
+assert.deepEqual(changeThatTo515.exactTime, { hour: 17, minute: 15 })
+assert.equal(changeThatTo515.query, 'that')
+
+const moveItTo515 = parseSmsIntent('move it to 5:15', timeZone)
+assert.equal(moveItTo515.type, 'reschedule')
+assert.deepEqual(moveItTo515.exactTime, { hour: 17, minute: 15 })
+assert.equal(moveItTo515.query, 'it')
+
+const rawTimeOnly = parseSmsIntent('5:15', timeZone)
+assert.equal(rawTimeOnly.type, 'unknown')
+
 const thisWednesdayDinner = assertScheduleTitle(
   'this Wednesday, Salmon/Haddock for dinner',
   'salmon/haddock for dinner',

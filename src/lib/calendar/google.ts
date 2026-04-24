@@ -711,6 +711,39 @@ function basicUtcTimestamp(value: Date | string) {
     .replace(/\.\d{3}Z$/, 'Z')
 }
 
+function sameCalendarDay(left: Date, right: Date, timeZone?: string) {
+  const leftParts = dateTimePartsInTimeZone(left, timeZone)
+  const rightParts = dateTimePartsInTimeZone(right, timeZone)
+
+  return (
+    leftParts.year === rightParts.year &&
+    leftParts.month === rightParts.month &&
+    leftParts.day === rightParts.day
+  )
+}
+
+function exactScheduleCandidateStarts({
+  title,
+  baseDate,
+  exactTime,
+  timeZone,
+}: {
+  title: string
+  baseDate: Date
+  exactTime: { hour: number; minute: number }
+  timeZone: string
+}) {
+  const requestedStart = setTime(baseDate, exactTime, timeZone)
+  const laterStarts = [60, 120, 180, 240].map((minutes) => addMinutes(requestedStart, minutes))
+  const titleStarts = scheduleCandidateTimesForTitle(title).map((time) => setTime(baseDate, time, timeZone))
+
+  return [...new Map(
+    [requestedStart, ...laterStarts, ...titleStarts]
+      .filter((start) => sameCalendarDay(start, requestedStart, timeZone))
+      .map((start) => [start.getTime(), start] as const),
+  ).values()]
+}
+
 function parseIcsProperty(rawLine: string) {
   const separatorIndex = rawLine.indexOf(':')
   if (separatorIndex === -1) return null
@@ -2642,11 +2675,12 @@ export async function findScheduleOptions({
   if (!targetConnection) return []
 
   const candidateStarts = exactTime
-    ? [
-        setTime(baseDate, exactTime, resolvedTimeZone),
-        addMinutes(setTime(baseDate, exactTime, resolvedTimeZone), 60),
-        addMinutes(setTime(baseDate, exactTime, resolvedTimeZone), 120),
-      ]
+    ? exactScheduleCandidateStarts({
+        title,
+        baseDate,
+        exactTime,
+        timeZone: resolvedTimeZone,
+      })
     : scheduleCandidateTimesForTitle(title).map((time) => setTime(baseDate, time, resolvedTimeZone))
   const futureCandidateStarts = candidateStarts.filter((start) => {
     return start.getTime() > Date.now() + 5 * 60_000
