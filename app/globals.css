@@ -476,6 +476,11 @@ button {
   gap: 12px;
 }
 
+.field-label-note {
+  color: #7f8ca3;
+  font-weight: 600;
+}
+
 .pricing-consent {
   margin-top: 14px;
   color: #42526b;

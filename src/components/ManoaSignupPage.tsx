@@ -460,7 +460,9 @@ export default function ManoaSignupPage() {
                 />
               </div>
               <div className="field">
-                <label htmlFor="phone">Phone (optional — for texting features)</label>
+                <label htmlFor="phone">
+                  Phone <span className="field-label-note">(optional — for texting features)</span>
+                </label>
                 <input
                   id="phone"
                   name="phone"
@@ -471,6 +473,9 @@ export default function ManoaSignupPage() {
                 />
               </div>
             </div>
+            <button className="button pricing-button" type="submit">
+              Start setup
+            </button>
             <label className="consent-check pricing-consent" htmlFor="sms-consent">
               <input
                 id="sms-consent"
@@ -488,9 +493,6 @@ export default function ManoaSignupPage() {
             <p className="pricing-optional-note">
               You can use Manoa without texting. Add a phone and turn texts on later if you want.
             </p>
-            <button className="button pricing-button" type="submit">
-              Start setup
-            </button>
           </form>
 
           <p className="pricing-meta">Connect Google or Apple after checkout. Outlook coming soon.</p>
