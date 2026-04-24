@@ -8,6 +8,7 @@ export const metadata: Metadata = {
 
 type LoginPageProps = {
   searchParams: Promise<{
+    email?: string
     login?: string
   }>
 }
@@ -20,6 +21,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
   return (
     <LoginPageClient
+      initialEmail={params.email || ''}
       loginStatus={params.login}
       isSupabaseConfigured={isSupabaseConfigured}
       appUrl={process.env.NEXT_PUBLIC_APP_URL || null}

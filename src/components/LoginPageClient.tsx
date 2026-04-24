@@ -2,12 +2,13 @@
 
 import ManoaWordmark from '@/src/components/ManoaWordmark'
 import { getSupabaseBrowser } from '@/src/lib/supabase/browser'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 type LoginPageClientProps = {
   loginStatus?: string
   isSupabaseConfigured: boolean
   appUrl?: string | null
+  initialEmail?: string
 }
 
 function friendlyLoginError(message: string) {
@@ -28,13 +29,59 @@ export default function LoginPageClient({
   loginStatus,
   isSupabaseConfigured,
   appUrl,
+  initialEmail = '',
 }: LoginPageClientProps) {
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(initialEmail)
   const [pending, setPending] = useState(false)
   const [localMessage, setLocalMessage] = useState<{
     tone: 'success' | 'warning'
     text: string
   } | null>(null)
+
+  useEffect(() => {
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+    const accessToken = hash.get('access_token')
+    const refreshToken = hash.get('refresh_token')
+
+    if (!accessToken || !refreshToken) return
+    const recoveredAccessToken = accessToken
+    const recoveredRefreshToken = refreshToken
+
+    let cancelled = false
+
+    async function recoverHashSession() {
+      try {
+        const supabase = getSupabaseBrowser()
+        const { error } = await supabase.auth.setSession({
+          access_token: recoveredAccessToken,
+          refresh_token: recoveredRefreshToken,
+        })
+
+        if (cancelled) return
+        if (error) {
+          setLocalMessage({
+            tone: 'warning',
+            text: 'That login link did not work. Send yourself a fresh one below.',
+          })
+          return
+        }
+
+        window.location.replace('/dashboard')
+      } catch {
+        if (cancelled) return
+        setLocalMessage({
+          tone: 'warning',
+          text: 'That login link did not work. Send yourself a fresh one below.',
+        })
+      }
+    }
+
+    void recoverHashSession()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const statusMessage = useMemo(() => {
     if (loginStatus === 'error') {
@@ -100,7 +147,7 @@ export default function LoginPageClient({
         email: normalizedEmail,
         options: {
           shouldCreateUser: false,
-          emailRedirectTo: `${redirectBase}/auth/confirm?next=/dashboard`,
+          emailRedirectTo: `${redirectBase}/auth/callback?next=/dashboard`,
         },
       })
 

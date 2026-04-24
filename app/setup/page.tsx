@@ -1,6 +1,7 @@
 import { stripe } from '@/src/lib/stripeClient'
 import { formatPhoneForDisplay } from '@/src/lib/phone'
 import { getDashboardProfile } from '@/src/lib/profiles'
+import { getAuthenticatedDashboardProfile } from '@/src/lib/dashboardAuth'
 import ManoaWordmark from '@/src/components/ManoaWordmark'
 import type { Metadata } from 'next'
 
@@ -36,7 +37,16 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
   const displayNumber = manoaNumber ? formatPhoneForDisplay(manoaNumber) : ''
   const appleConnectHref = profileId ? `/setup/apple-calendar?profile_id=${profileId}` : '/setup/apple-calendar'
   const profile = profileId ? await getDashboardProfile(profileId) : null
+  const authenticatedProfile = await getAuthenticatedDashboardProfile()
   const displayUserPhone = profile?.phone_e164 ? formatPhoneForDisplay(profile.phone_e164) : ''
+  const authenticatedForThisSetup =
+    Boolean(authenticatedProfile) &&
+    (!profileId ||
+      authenticatedProfile?.id === profileId ||
+      (profile?.id ? authenticatedProfile?.id === profile.id : false))
+  const loginHref = profile?.email
+    ? `/login?email=${encodeURIComponent(profile.email)}`
+    : '/login'
 
   return (
     <main className="setup-shell">
@@ -73,11 +83,29 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
           </div>
         ) : null}
 
+        {!authenticatedForThisSetup ? (
+          <div className="notice warning" role="status" aria-live="polite">
+            {profile?.email ? (
+              <>
+                Payment is done. To open the dashboard, use the secure login link for{' '}
+                <strong>{profile.email}</strong>. If the last link bounced you back here, send a
+                fresh one below.
+              </>
+            ) : (
+              <>Payment is done. Use the secure email login link to open your dashboard.</>
+            )}
+          </div>
+        ) : null}
+
         <div className="setup-grid">
           <article className="setup-step">
             <span className="step-number">1</span>
             <h2>Subscription</h2>
-            <p>Your plan is set up. You can use Manoa in the dashboard right away, with or without texting.</p>
+            <p>
+              {authenticatedForThisSetup
+                ? 'Your plan is set up. You can use Manoa in the dashboard right away, with or without texting.'
+                : 'Your plan is set up. Next, open your dashboard with the secure email login link for this account.'}
+            </p>
           </article>
 
           <article className="setup-step">
@@ -132,9 +160,13 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
               Save Manoa contact
             </a>
           ) : null}
-          {profileId ? (
+          {authenticatedForThisSetup ? (
             <a className="button dashboard-link-button" href="/dashboard">
               Open dashboard
+            </a>
+          ) : profileId ? (
+            <a className="button dashboard-link-button" href={loginHref}>
+              Log in to open dashboard
             </a>
           ) : null}
           <a className="nav-link" href="/">
