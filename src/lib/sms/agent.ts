@@ -38,6 +38,7 @@ import {
   saveOrUpdatePersonContact,
 } from '../peopleContacts'
 import { isMissingDefaultDurationColumnError } from '../profiles'
+import { profileIdFromDashboardSender } from './sender'
 import {
   classifyEventAuthority,
   looksExternalAppointment,
@@ -60,7 +61,7 @@ import { parseSmsIntent, parseSmsTime, type DateWindow, type ParsedSmsIntent } f
 type SmsProfile = {
   id: string
   email: string
-  phone_e164: string
+  phone_e164: string | null
   timezone: string
   default_event_duration_minutes: number
   phone_confirmed_at: string | null
@@ -1775,15 +1776,19 @@ async function cancelCalendarTarget({
   }
 }
 
-async function profileForPhone(phoneE164: string) {
+async function profileForSender(sender: string) {
+  const dashboardProfileId = profileIdFromDashboardSender(sender)
+  const queryColumn = dashboardProfileId ? 'id' : 'phone_e164'
+  const queryValue = dashboardProfileId || sender
+
   const result = await supabaseAdmin
     .from('profiles')
     .select('id,email,phone_e164,timezone,default_event_duration_minutes,phone_confirmed_at,sms_opted_out_at')
-    .eq('phone_e164', phoneE164)
+    .eq(queryColumn, queryValue)
     .maybeSingle<{
       id: string
       email: string
-      phone_e164: string
+      phone_e164: string | null
       timezone: string
       default_event_duration_minutes: number
       phone_confirmed_at: string | null
@@ -1795,11 +1800,11 @@ async function profileForPhone(phoneE164: string) {
     const fallback = await supabaseAdmin
       .from('profiles')
       .select('id,email,phone_e164,timezone,phone_confirmed_at,sms_opted_out_at')
-      .eq('phone_e164', phoneE164)
+      .eq(queryColumn, queryValue)
       .maybeSingle<{
         id: string
         email: string
-        phone_e164: string
+        phone_e164: string | null
         timezone: string
         phone_confirmed_at: string | null
         sms_opted_out_at: string | null
@@ -1817,7 +1822,7 @@ async function profileForPhone(phoneE164: string) {
 
   if (!profile) return null
 
-  if (!profile.phone_confirmed_at) {
+  if (!dashboardProfileId && !profile.phone_confirmed_at) {
     await supabaseAdmin
       .from('profiles')
       .update({
@@ -1981,7 +1986,7 @@ async function queueReminderForEvent({
   timeZone,
 }: {
   profileId: string
-  phoneE164: string
+  phoneE164?: string | null
   calendarEventId?: string | null
   calendarId?: string | null
   title: string
@@ -1989,6 +1994,8 @@ async function queueReminderForEvent({
   leadMinutes?: number
   timeZone?: string
 }) {
+  if (!phoneE164) return
+
   const startsAt = new Date(start)
   if (Number.isNaN(startsAt.getTime())) return
 
@@ -3444,12 +3451,14 @@ export async function handleIncomingSms({
   body: string
   twilioMessageSid?: string
 }) {
-  const profile = await profileForPhone(from)
+  const dashboardProfileId = profileIdFromDashboardSender(from)
+  const isDashboardConsole = Boolean(dashboardProfileId)
+  const profile = await profileForSender(from)
   await logSms({ profileId: profile?.id, from, body, direction: 'inbound', twilioMessageSid })
 
   const lowerBody = body.trim().toLowerCase()
 
-  if (stopWords.has(lowerBody)) {
+  if (!isDashboardConsole && stopWords.has(lowerBody)) {
     if (profile) {
       await markSmsOptOut(profile.id, true)
     }
@@ -3458,7 +3467,7 @@ export async function handleIncomingSms({
     return reply
   }
 
-  if (startWords.has(lowerBody)) {
+  if (!isDashboardConsole && startWords.has(lowerBody)) {
     if (!profile) {
       const reply = "I don't recognize this number yet. Sign up for Manoa first, then text START from this phone."
       await logSms({ from, body: reply, direction: 'outbound' })
@@ -3485,7 +3494,7 @@ export async function handleIncomingSms({
     return reply
   }
 
-  if (profile.sms_opted_out_at) {
+  if (profile.sms_opted_out_at && !isDashboardConsole) {
     const reply = 'You are currently opted out. Reply START to turn Manoa texts back on.'
     await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
     return reply

@@ -124,7 +124,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     (profileId ? await getDashboardProfile(profileId) : null)
   const manoaNumber = process.env.TWILIO_FROM_NUMBER?.trim() || ''
   const displayNumber = manoaNumber ? formatPhoneForDisplay(manoaNumber) : ''
-  const displayUserPhone = profile ? formatPhoneForDisplay(profile.phone_e164) : ''
+  const displayUserPhone = profile?.phone_e164 ? formatPhoneForDisplay(profile.phone_e164) : ''
   const calendarConnected = params.calendar === 'connected'
   const calendarDisconnected = params.calendar === 'disconnected'
   const calendarRemoved = params.calendar === 'removed'
@@ -179,6 +179,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     smsEnabled = true
   }
 
+  const smsReady = smsEnabled && Boolean(profile.phone_e164)
   const googleAccounts = calendarAccounts.filter((account) => account.provider === 'google')
   const appleAccounts = calendarAccounts.filter((account) => account.provider === 'apple')
   const canAddGoogleAccount = googleAccounts.length < 2
@@ -187,23 +188,25 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     ? `/setup/apple-calendar?profile_id=${profile.id}`
     : `/setup/apple-calendar?profile_id=${profile.id}&account_id=${appleAccounts[0]?.accountId || ''}`
   const totalConnectedAccounts = calendarAccounts.length
-  const readyToText = Boolean(manoaNumber && profile.calendarConnected)
+  const readyToText = Boolean(manoaNumber && profile.calendarConnected && smsReady)
   const connectedAccountLabel = `${totalConnectedAccounts} connected account${totalConnectedAccounts === 1 ? '' : 's'}`
   let dashboardLede = 'Connect Google or Apple to start using Manoa.'
   if (profile.calendarConnected) {
-    dashboardLede = smsEnabled
+    dashboardLede = smsReady
       ? 'Everything is set up. Use the console below while SMS approval finishes, or connect another calendar.'
-      : 'Everything is set up. SMS is off for this account, so use the console below.'
+      : 'Everything is set up. Use the console below now, or add texting for this account.'
   }
-  if (readyToText && smsEnabled) {
+  if (readyToText) {
     dashboardLede = 'Everything is set up. Text Manoa, use the console below, or connect another calendar.'
   }
   const calendarStageHeading = totalConnectedAccounts ? 'Calendars' : 'Connect a calendar'
   const calendarStageCopy = totalConnectedAccounts
     ? 'Most people can leave these settings alone. Open calendar settings only if you want to rename a calendar, stop conflict checks, or change where Manoa books.'
     : 'Choose one calendar provider. You can add more later.'
-  const textingStageCopy = !smsEnabled
-    ? 'SMS is not turned on for this account. Use this console with your real calendars.'
+  const textingStageCopy = !smsReady
+    ? profile.phone_e164
+      ? 'SMS is not turned on for this account. Use this console with your real calendars.'
+      : 'Use this console with your real calendars. Add a phone above if you want texting later.'
     : readyToText
     ? `Text ${displayNumber} from ${displayUserPhone}, or use this console.`
     : totalConnectedAccounts
@@ -245,15 +248,30 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         <p className="dashboard-status-line">{statusLine({
           calendarConnected: profile.calendarConnected,
           manoaNumber,
-          smsEnabled,
+          smsEnabled: smsReady,
         })}</p>
 
-        {!smsEnabled ? (
+        {!smsReady ? (
           <div className="notice warning" role="status" aria-live="polite">
-            SMS is off for this account. If you skipped the signup consent box, Manoa will not text
-            this number. Use the live console below instead.
+            {profile.phone_e164
+              ? 'SMS is off for this account. If you skipped the signup consent box, Manoa will not text this number. Use the live console below instead, or turn texting on here.'
+              : 'Texting is not set up for this account yet. You can keep using the live console below, or add a phone number and turn texting on here.'}
             <form className="dashboard-inline-consent" action="/api/profile/sms-consent" method="post">
               <input type="hidden" name="profile_id" value={profile.id} />
+              {!profile.phone_e164 ? (
+                <div className="field">
+                  <label htmlFor="dashboard-phone">Phone for texting</label>
+                  <input
+                    id="dashboard-phone"
+                    name="phone"
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
+                    placeholder="+1 555 555 5555"
+                    required
+                  />
+                </div>
+              ) : null}
               <label className="consent-check pricing-consent" htmlFor="dashboard-sms-consent">
                 <input
                   id="dashboard-sms-consent"
@@ -262,11 +280,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                   value="yes"
                 />
                 <span>
-                  <strong>Optional:</strong> I agree to receive recurring service-related SMS
-                  messages from Manoa, including scheduling, reminders, and account notifications.
-                  Message frequency varies. Msg &amp; data rates may apply. Reply STOP to opt out
-                  and HELP for help. See <a href="/privacy">Privacy Policy</a> and{' '}
-                  <a href="/terms">Terms</a>.
+                  I agree to receive recurring service-related SMS messages from Manoa, including
+                  scheduling, reminders, and account notifications. Message frequency varies. Msg
+                  &amp; data rates may apply. Reply STOP to opt out and HELP for help. See{' '}
+                  <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms</a>.
                 </span>
               </label>
               <button className="button dashboard-button" type="submit">
@@ -348,6 +365,18 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </div>
         ) : null}
 
+        {params.settings === 'sms_phone_missing' ? (
+          <div className="notice warning" role="status" aria-live="polite">
+            Add a phone number before turning texting on for this account.
+          </div>
+        ) : null}
+
+        {params.settings === 'sms_phone_invalid' ? (
+          <div className="notice warning" role="status" aria-live="polite">
+            That phone number does not look valid yet. Try it again with area code.
+          </div>
+        ) : null}
+
         {params.settings === 'sms_consent_error' ? (
           <div className="notice warning" role="status" aria-live="polite">
             We could not turn SMS on yet. Try again in a minute.
@@ -357,7 +386,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         {billingMissing ? (
           <div className="notice warning" role="status" aria-live="polite">
             We could not find your billing record yet. Try again in a minute. If it still looks off,
-            use the same email and phone on the homepage to reopen your dashboard.
+            use the same email on the homepage to reopen your dashboard.
           </div>
         ) : null}
 
@@ -491,12 +520,12 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           )}
 
           <div className="dashboard-stage-actions">
-            {manoaNumber && totalConnectedAccounts && smsEnabled ? (
+            {manoaNumber && totalConnectedAccounts && smsReady ? (
               <a className="button dashboard-button" href={`sms:${manoaNumber}`}>
                 Text Manoa now
               </a>
             ) : null}
-            {manoaNumber && totalConnectedAccounts && smsEnabled ? (
+            {manoaNumber && totalConnectedAccounts && smsReady ? (
               <a className="button dashboard-button secondary-button" href="/api/contact-card">
                 Save Manoa contact
               </a>
@@ -508,8 +537,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
           <p className="dashboard-stage-footnote">
             SMS: <strong>{displayNumber || 'pending approval'}</strong> • Account:{' '}
-            <strong>{profile.email}</strong> • Phone: <strong>{displayUserPhone}</strong>
-            {!smsEnabled ? ' • SMS consent not enabled' : ''}
+            <strong>{profile.email}</strong> • Phone: <strong>{displayUserPhone || 'not added'}</strong>
+            {!smsReady ? ' • Texting not enabled' : ''}
           </p>
         </section>
 

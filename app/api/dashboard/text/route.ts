@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDashboardProfileByEmail } from '@/src/lib/profiles'
 import { handleIncomingSms } from '@/src/lib/sms/agent'
+import { dashboardSender } from '@/src/lib/sms/sender'
 import { listSmsThreadEntries, toSmsThreadMessages } from '@/src/lib/sms/thread'
 import { createSupabaseRouteHandlerClient } from '@/src/lib/supabase/server'
 
@@ -84,8 +85,9 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const from = profile.phone_e164 || dashboardSender(profile.id)
     await handleIncomingSms({
-      from: profile.phone_e164,
+      from,
       body,
     })
 

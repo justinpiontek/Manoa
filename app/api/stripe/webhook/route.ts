@@ -54,7 +54,7 @@ async function sendWelcomeTextIfEligible({
     .from('profiles')
     .select('phone_e164,sms_opted_out_at')
     .eq('id', profileId)
-    .maybeSingle<{ phone_e164: string; sms_opted_out_at: string | null }>()
+    .maybeSingle<{ phone_e164: string | null; sms_opted_out_at: string | null }>()
 
   if (error) throw error
   if (!profile?.phone_e164 || profile.sms_opted_out_at) return

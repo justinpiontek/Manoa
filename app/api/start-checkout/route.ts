@@ -11,6 +11,18 @@ function paymentLinkUrl(baseUrl: string, email: string, profileId: string) {
   return url.toString()
 }
 
+function isOptionalPhoneMigrationError(error: unknown) {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'object' && error && 'message' in error
+        ? String((error as { message?: unknown }).message || '')
+        : ''
+
+  const lower = message.toLowerCase()
+  return lower.includes('phone_e164') && (lower.includes('null value') || lower.includes('not-null'))
+}
+
 export async function POST(request: NextRequest) {
   const paymentLink = process.env.STRIPE_PAYMENT_LINK_URL?.trim()
   const missing = missingEnv(
@@ -36,16 +48,36 @@ export async function POST(request: NextRequest) {
     return new Response('A valid email is required.', { status: 400 })
   }
 
-  const phoneE164 = normalizePhone(phone)
-  if (phoneE164.length < 8) {
-    return new Response('A valid phone number is required.', { status: 400 })
+  const phoneE164 = phone ? normalizePhone(phone) : ''
+  if (phone && phoneE164.length < 8) {
+    return new Response('If you add a phone number, it needs to be valid.', { status: 400 })
   }
 
   if (plan !== 'personal_monthly_1999') {
     return new Response('Unknown plan.', { status: 400 })
   }
   const smsConsentGranted = smsConsent === 'yes'
-  const profile = await findOrCreateProfile({ email, phoneE164, smsConsentGranted })
+  if (smsConsentGranted && phoneE164.length < 8) {
+    return new Response('Add a phone number to turn texting on.', { status: 400 })
+  }
+
+  let profile
+  try {
+    profile = await findOrCreateProfile({
+      email,
+      phoneE164: phoneE164 || null,
+      smsConsentGranted,
+    })
+  } catch (error) {
+    if (isOptionalPhoneMigrationError(error)) {
+      return new Response(
+        'Signup can work without a phone, but the latest Supabase migration still needs to be run first.',
+        { status: 503 },
+      )
+    }
+
+    throw error
+  }
   const baseUrl = appUrl()
 
   if (paymentLink) {
@@ -64,9 +96,9 @@ export async function POST(request: NextRequest) {
     ],
     metadata: {
       profile_id: profile.id,
-      phone_e164: phoneE164,
       plan,
       sms_consent: smsConsentGranted ? 'yes' : 'no',
+      ...(phoneE164 ? { phone_e164: phoneE164 } : {}),
       ...(smsConsentGranted
         ? {
             sms_consent_source: 'website_signup',

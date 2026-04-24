@@ -16,7 +16,7 @@ import type { CalendarImageEvent, CalendarImageResult } from './calendarImage'
 
 type CalendarImageBatchProfile = {
   id: string
-  phone_e164: string
+  phone_e164: string | null
   timezone: string
   default_event_duration_minutes: number
 }
@@ -150,7 +150,7 @@ async function queueBatchReminder({
 }) {
   const start = new Date(option.start)
   const dueAt = addMinutes(start, -30)
-  if (dueAt <= new Date()) return
+  if (!profile.phone_e164 || dueAt <= new Date()) return
 
   const { error } = await supabaseAdmin.from('reminders').insert({
     profile_id: profile.id,

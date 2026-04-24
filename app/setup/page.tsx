@@ -1,5 +1,6 @@
 import { stripe } from '@/src/lib/stripeClient'
 import { formatPhoneForDisplay } from '@/src/lib/phone'
+import { getDashboardProfile } from '@/src/lib/profiles'
 import ManoaWordmark from '@/src/components/ManoaWordmark'
 import type { Metadata } from 'next'
 
@@ -34,6 +35,8 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
   const manoaNumber = process.env.TWILIO_FROM_NUMBER?.trim() || ''
   const displayNumber = manoaNumber ? formatPhoneForDisplay(manoaNumber) : ''
   const appleConnectHref = profileId ? `/setup/apple-calendar?profile_id=${profileId}` : '/setup/apple-calendar'
+  const profile = profileId ? await getDashboardProfile(profileId) : null
+  const displayUserPhone = profile?.phone_e164 ? formatPhoneForDisplay(profile.phone_e164) : ''
 
   return (
     <main className="setup-shell">
@@ -74,16 +77,15 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
           <article className="setup-step">
             <span className="step-number">1</span>
             <h2>Subscription</h2>
-            <p>Your plan is set up. Manoa now knows which account and phone number belong together.</p>
+            <p>Your plan is set up. You can use Manoa in the dashboard right away, with or without texting.</p>
           </article>
 
           <article className="setup-step">
             <span className="step-number">2</span>
             <h2>Calendar connection</h2>
             <p>
-              Connect Google or Outlook so Manoa can find open times, book events, send daily agendas,
-              and keep reminders accurate. Apple Calendar still uses the longer manual iCloud path,
-              but it can be connected here too.
+              Connect Google or Apple so Manoa can find open times, book events, send daily agendas,
+              and keep reminders accurate. Apple Calendar still uses the longer manual iCloud path.
             </p>
             {profileId ? (
               <div className="dashboard-hero-actions">
@@ -107,15 +109,14 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
           <article className="setup-step">
             <span className="step-number">3</span>
             <h2>Text Manoa</h2>
-            {displayNumber ? (
+            {displayNumber && displayUserPhone ? (
               <p>
-                Text <strong>{displayNumber}</strong> from the phone you signed up with. Try things like
+                Text <strong>{displayNumber}</strong> from <strong>{displayUserPhone}</strong>. Try things like
                 “9am meeting Tuesday on work calendar” or “what&apos;s on my calendar tomorrow?”
               </p>
             ) : (
               <p>
-                Once Manoa&apos;s number is live, you&apos;ll text it things like “9am meeting Tuesday on work
-                calendar” or “what&apos;s on my calendar tomorrow?”
+                Texting is optional. If you want it later, add your phone and turn on SMS from the dashboard.
               </p>
             )}
             <p className="setup-note">

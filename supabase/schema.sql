@@ -3,7 +3,7 @@ create extension if not exists pgcrypto;
 create table if not exists public.profiles (
   id uuid primary key default gen_random_uuid(),
   email text not null,
-  phone_e164 text not null unique,
+  phone_e164 text unique,
   timezone text not null default 'America/Chicago',
   default_event_duration_minutes integer not null default 30,
   phone_confirmed_at timestamptz,

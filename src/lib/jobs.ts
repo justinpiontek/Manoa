@@ -48,6 +48,7 @@ export async function activeSubscriberProfiles() {
     .from('profiles')
     .select('id,phone_e164')
     .in('id', profileIds)
+    .not('phone_e164', 'is', null)
     .is('sms_opted_out_at', null)
     .returns<ActiveProfile[]>()
 

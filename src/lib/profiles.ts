@@ -5,7 +5,7 @@ import { syncStripeSubscriptionForProfile } from './subscriptions'
 export type Profile = {
   id: string
   email: string
-  phone_e164: string
+  phone_e164: string | null
   timezone: string
   default_event_duration_minutes: number
 }
@@ -13,7 +13,7 @@ export type Profile = {
 type ProfileRow = {
   id: string
   email: string
-  phone_e164: string
+  phone_e164: string | null
   timezone: string
   default_event_duration_minutes?: number | null
 }
@@ -149,29 +149,36 @@ export async function findOrCreateProfile({
   smsConsentGranted = false,
 }: {
   email: string
-  phoneE164: string
+  phoneE164?: string | null
   smsConsentGranted?: boolean
 }) {
+  const normalizedPhone = phoneE164?.trim() || null
   const consentUpdate = smsConsentGranted
     ? { sms_opted_out_at: null, updated_at: new Date().toISOString() }
     : { updated_at: new Date().toISOString() }
 
-  const byPhone = await selectProfileMaybeSingle((columns) =>
-    supabaseAdmin.from('profiles').select(columns).eq('phone_e164', phoneE164).maybeSingle<ProfileRow>(),
-  )
-
-  if (byPhone) {
-    const updated = await selectProfileSingle((columns) =>
+  if (normalizedPhone) {
+    const byPhone = await selectProfileMaybeSingle((columns) =>
       supabaseAdmin
         .from('profiles')
-        .update({ email, ...consentUpdate })
-        .eq('id', byPhone.id)
         .select(columns)
-        .single<ProfileRow>(),
+        .eq('phone_e164', normalizedPhone)
+        .maybeSingle<ProfileRow>(),
     )
 
-    await ensureAuthUserForEmail(email)
-    return updated
+    if (byPhone) {
+      const updated = await selectProfileSingle((columns) =>
+        supabaseAdmin
+          .from('profiles')
+          .update({ email, ...consentUpdate })
+          .eq('id', byPhone.id)
+          .select(columns)
+          .single<ProfileRow>(),
+      )
+
+      await ensureAuthUserForEmail(email)
+      return updated
+    }
   }
 
   const byEmail = await selectProfileMaybeSingle((columns) =>
@@ -179,10 +186,13 @@ export async function findOrCreateProfile({
   )
 
   if (byEmail) {
+    const update = normalizedPhone
+      ? { phone_e164: normalizedPhone, ...consentUpdate }
+      : consentUpdate
     const updated = await selectProfileSingle((columns) =>
       supabaseAdmin
         .from('profiles')
-        .update({ phone_e164: phoneE164, ...consentUpdate })
+        .update(update)
         .eq('id', byEmail.id)
         .select(columns)
         .single<ProfileRow>(),
@@ -196,7 +206,7 @@ export async function findOrCreateProfile({
     .from('profiles')
       .insert({
         email,
-        phone_e164: phoneE164,
+        phone_e164: normalizedPhone,
         timezone: defaultTimezone(),
         default_event_duration_minutes: 30,
         sms_opted_out_at: smsConsentGranted ? null : new Date().toISOString(),
@@ -210,7 +220,7 @@ export async function findOrCreateProfile({
       .from('profiles')
       .insert({
         email,
-        phone_e164: phoneE164,
+        phone_e164: normalizedPhone,
         timezone: defaultTimezone(),
         sms_opted_out_at: smsConsentGranted ? null : new Date().toISOString(),
       })

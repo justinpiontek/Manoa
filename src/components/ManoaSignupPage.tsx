@@ -460,7 +460,7 @@ export default function ManoaSignupPage() {
                 />
               </div>
               <div className="field">
-                <label htmlFor="phone">Phone</label>
+                <label htmlFor="phone">Phone (optional — for texting features)</label>
                 <input
                   id="phone"
                   name="phone"
@@ -468,7 +468,6 @@ export default function ManoaSignupPage() {
                   inputMode="tel"
                   autoComplete="tel"
                   placeholder="+1 555 555 5555"
-                  required
                 />
               </div>
             </div>
@@ -480,15 +479,14 @@ export default function ManoaSignupPage() {
                 value="yes"
               />
               <span>
-                <strong>Optional:</strong> I agree to receive recurring service-related SMS
-                messages from Manoa, including scheduling, reminders, and account notifications.
-                Message frequency varies. Msg &amp; data rates may apply. Reply STOP to opt out
-                and HELP for help. See{' '}
+                I agree to receive recurring service-related SMS messages from Manoa, including
+                scheduling, reminders, and account notifications. Message frequency varies. Msg
+                &amp; data rates may apply. Reply STOP to opt out and HELP for help. See{' '}
                 <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms</a>.
               </span>
             </label>
             <p className="pricing-optional-note">
-              You can continue without SMS consent and turn texts on later.
+              You can use Manoa without texting. Add a phone and turn texts on later if you want.
             </p>
             <button className="button pricing-button" type="submit">
               Start setup
