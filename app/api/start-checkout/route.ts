@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { appUrl, missingEnv, requiredEnv } from '@/src/lib/env'
-import { findOrCreateProfile } from '@/src/lib/profiles'
+import { findOrCreateProfile, isPhoneOwnershipConflictError } from '@/src/lib/profiles'
 import { normalizePhone } from '@/src/lib/phone'
 import { stripe } from '@/src/lib/stripeClient'
 
@@ -69,6 +69,13 @@ export async function POST(request: NextRequest) {
       smsConsentGranted,
     })
   } catch (error) {
+    if (isPhoneOwnershipConflictError(error)) {
+      return new Response(
+        'That phone number is already connected to another Manoa account. Use the original email for that number, or leave the phone field blank and finish setup without texting.',
+        { status: 409 },
+      )
+    }
+
     if (isOptionalPhoneMigrationError(error)) {
       return new Response(
         'Signup can work without a phone, but the latest Supabase migration still needs to be run first.',

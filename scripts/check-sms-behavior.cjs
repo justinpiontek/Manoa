@@ -99,6 +99,21 @@ assert.deepEqual(bareAfternoonHour.exactTime, { hour: 14, minute: 0 })
 const bareMorningHour = assertScheduleTitle('schedule meeting at 9', 'meeting')
 assert.deepEqual(bareMorningHour.exactTime, { hour: 9, minute: 0 })
 
+const bareEveningSix = assertScheduleTitle('schedule meeting at 6', 'meeting')
+assert.deepEqual(bareEveningSix.exactTime, { hour: 18, minute: 0 })
+
+const bareEveningSeven = assertScheduleTitle('schedule meeting at 7', 'meeting')
+assert.deepEqual(bareEveningSeven.exactTime, { hour: 19, minute: 0 })
+
+const bareEveningEight = assertScheduleTitle('schedule meeting at 8', 'meeting')
+assert.deepEqual(bareEveningEight.exactTime, { hour: 20, minute: 0 })
+
+const bareMorningTen = assertScheduleTitle('schedule meeting at 10', 'meeting')
+assert.deepEqual(bareMorningTen.exactTime, { hour: 10, minute: 0 })
+
+const bareMorningEleven = assertScheduleTitle('schedule meeting at 11', 'meeting')
+assert.deepEqual(bareMorningEleven.exactTime, { hour: 11, minute: 0 })
+
 const bareNoon = assertScheduleTitle('schedule meeting at 12', 'meeting')
 assert.deepEqual(bareNoon.exactTime, { hour: 12, minute: 0 })
 

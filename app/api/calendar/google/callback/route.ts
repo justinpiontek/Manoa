@@ -43,13 +43,13 @@ export async function GET(request: NextRequest) {
       reconnectAccountId,
     })
 
-    return Response.redirect(`${appUrl()}/dashboard?profile_id=${profileId}&calendar=connected`, 303)
+    return Response.redirect(`${appUrl()}/dashboard?calendar=connected`, 303)
   } catch (error) {
     console.error('Google calendar callback failed', error)
     const code = calendarErrorCode(error)
     const detail = calendarErrorDetail(error)
     return Response.redirect(
-      `${appUrl()}/dashboard?profile_id=${profileId}&calendar=error&calendar_error=${encodeURIComponent(code)}&calendar_error_detail=${encodeURIComponent(detail)}`,
+      `${appUrl()}/dashboard?calendar=error&calendar_error=${encodeURIComponent(code)}&calendar_error_detail=${encodeURIComponent(detail)}`,
       303,
     )
   }

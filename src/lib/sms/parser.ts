@@ -219,7 +219,7 @@ export function parseSmsTime(text: string) {
   let hour = Number(bareHourMatch[1])
   const minute = Number(bareHourMatch[2] || '0')
   const explicitPeriod = match?.[3]?.startsWith('a') ? 'am' : match?.[3]?.startsWith('p') ? 'pm' : null
-  const period = explicitPeriod || (hour === 12 || (hour >= 1 && hour <= 5) ? 'pm' : 'am')
+  const period = explicitPeriod || (hour === 12 || (hour >= 1 && hour <= 8) ? 'pm' : 'am')
 
   if (period === 'pm' && hour !== 12) hour += 12
   if (period === 'am' && hour === 12) hour = 0

@@ -2,6 +2,7 @@
 
 import ManoaWordmark from '@/src/components/ManoaWordmark'
 import { DEMO_STARTER_INPUT, applyDemoText, createDemoState } from '@/src/lib/demoSms'
+import { siteSupportEmail } from '@/src/lib/siteMetadata'
 import { useEffect, useRef, useState } from 'react'
 
 const homepageUseCases = [
@@ -516,9 +517,12 @@ export default function ManoaSignupPage() {
         </div>
       </section>
 
-      <footer>
-        Manoa. Text your calendar back into shape. <a href="/use-cases">Use cases</a> ·{' '}
-        <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a>
+      <footer className="home-footer">
+        <p>Manoa. Text your calendar back into shape.</p>
+        <p className="home-footer-links">
+          <a href="/use-cases">Use cases</a> · <a href="/privacy">Privacy</a> ·{' '}
+          <a href="/terms">Terms</a> · <a href={`mailto:${siteSupportEmail}`}>Support</a>
+        </p>
       </footer>
     </main>
   )

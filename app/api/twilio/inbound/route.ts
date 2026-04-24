@@ -85,7 +85,6 @@ async function logDirectTwilioReply({
   outboundBody: string
   twilioMessageSid?: string
 }) {
-  const now = new Date().toISOString()
   await supabaseAdmin.from('sms_messages').insert([
     {
       profile_id: profileId,
@@ -93,14 +92,12 @@ async function logDirectTwilioReply({
       body: inboundBody,
       direction: 'inbound',
       twilio_message_sid: twilioMessageSid || null,
-      created_at: now,
     },
     {
       profile_id: profileId,
       from_e164: from,
       body: outboundBody,
       direction: 'outbound',
-      created_at: new Date(Date.now() + 1).toISOString(),
     },
   ])
 }

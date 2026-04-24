@@ -1,23 +1,17 @@
 import { NextRequest } from 'next/server'
 import { appUrl } from '@/src/lib/env'
-import { getDashboardProfile } from '@/src/lib/profiles'
+import { getAuthenticatedDashboardProfileForRoute } from '@/src/lib/dashboardAuth'
 import { stripe } from '@/src/lib/stripeClient'
 import { findStripeCustomerIdForProfile } from '@/src/lib/subscriptions'
 
 export async function GET(request: NextRequest) {
-  const profileId = request.nextUrl.searchParams.get('profile_id') || ''
-
-  if (!profileId) {
-    return Response.redirect(`${appUrl()}/#access`, 303)
-  }
-
-  const profile = await getDashboardProfile(profileId)
+  const profile = await getAuthenticatedDashboardProfileForRoute()
 
   if (!profile) {
-    return Response.redirect(`${appUrl()}/#access`, 303)
+    return Response.redirect(`${appUrl()}/login`, 303)
   }
 
-  let customerId = await findStripeCustomerIdForProfile(profileId)
+  let customerId = await findStripeCustomerIdForProfile(profile.id)
 
   if (!customerId) {
     const customers = await stripe.customers.list({
@@ -30,12 +24,12 @@ export async function GET(request: NextRequest) {
   }
 
   if (!customerId) {
-    return Response.redirect(`${appUrl()}/dashboard?profile_id=${profileId}&billing=missing`, 303)
+    return Response.redirect(`${appUrl()}/dashboard?billing=missing`, 303)
   }
 
   const session = await stripe.billingPortal.sessions.create({
     customer: customerId,
-    return_url: `${appUrl()}/dashboard?profile_id=${profileId}&billing=returned`,
+    return_url: `${appUrl()}/dashboard?billing=returned`,
   })
 
   return Response.redirect(session.url, 303)

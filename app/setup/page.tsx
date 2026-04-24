@@ -133,7 +133,7 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
             </a>
           ) : null}
           {profileId ? (
-            <a className="button dashboard-link-button" href={`/dashboard?profile_id=${profileId}`}>
+            <a className="button dashboard-link-button" href="/dashboard">
               Open dashboard
             </a>
           ) : null}

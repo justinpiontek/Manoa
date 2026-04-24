@@ -39,6 +39,8 @@ const weekdayNumbers: Record<NonNullable<AiIntentPayload['weekday']>, number> = 
   saturday: 6,
 }
 
+const aiIntentTimeoutMs = 12_000
+
 function hasAiSmsUnderstanding() {
   return Boolean(process.env.OPENAI_API_KEY)
 }
@@ -47,6 +49,11 @@ export type AiParseResult = {
   intent: ParsedSmsIntent | null
   understoodBy: 'AI' | 'Fallback parser'
   reason?: string
+}
+
+export type AiConversationTurn = {
+  role: 'user' | 'assistant'
+  content: string
 }
 
 function parseExactTime(value: string | null) {
@@ -134,6 +141,37 @@ function parseTopLevelOutputText(response: unknown) {
   return null
 }
 
+function aiIntentBodyPreview(body: string) {
+  return body.replace(/\s+/g, ' ').trim().slice(0, 120)
+}
+
+function compactConversation(conversation: AiConversationTurn[]) {
+  return conversation
+    .map((turn) => ({
+      role: turn.role,
+      content: turn.content.trim(),
+    }))
+    .filter((turn) => turn.content)
+    .slice(-4)
+}
+
+function logAiIntentFallback({
+  body,
+  timeZone,
+  reason,
+}: {
+  body: string
+  timeZone: string
+  reason?: string
+}) {
+  console.warn('[sms-ai-intent] Falling back to parser', {
+    reason: reason || 'Unknown fallback reason.',
+    timeZone,
+    bodyLength: body.length,
+    bodyPreview: aiIntentBodyPreview(body),
+  })
+}
+
 function toParsedSmsIntent(payload: AiIntentPayload, timeZone: string, originalText: string): ParsedSmsIntent {
   switch (payload.intent_type) {
     case 'choice':
@@ -189,17 +227,21 @@ function toParsedSmsIntent(payload: AiIntentPayload, timeZone: string, originalT
 export async function parseSmsIntentWithAIResult(
   body: string,
   timeZone = defaultTimezone(),
+  conversation: AiConversationTurn[] = [],
 ): Promise<AiParseResult> {
   if (!hasAiSmsUnderstanding()) {
-    return {
+    const result: AiParseResult = {
       intent: null,
       understoodBy: 'Fallback parser',
       reason: 'OPENAI_API_KEY is missing on the server.',
     }
+    logAiIntentFallback({ body, timeZone, reason: result.reason })
+    return result
   }
 
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 6000)
+  const timeout = setTimeout(() => controller.abort(), aiIntentTimeoutMs)
+  const recentConversation = compactConversation(conversation)
 
   try {
     const response = await fetch('https://api.openai.com/v1/responses', {
@@ -242,8 +284,11 @@ export async function parseSmsIntentWithAIResult(
               `- Keep event titles short. Strip date, time, calendar, and location details from title/query when possible.\n` +
               `- Put obvious location phrases into location, like "at Mary's house", "at Starbucks", "near Union Square", or "in conference room B". Do not put times like "at 10am" in location.\n` +
               `- Preserve the user's calendar label when they name one, like "Personal", "Metonga Media", or "Part-time job". Use "Calendar" only if they did not name one.\n` +
-              `- Strip invitee names/emails from the title/query if possible.`,
+              `- Strip invitee names/emails from the title/query if possible.\n` +
+              `- Use the recent conversation turns as context for follow-ups like "actually make it an hour", "change it to Thursday instead", "cancel that", or "book the second one".\n` +
+              `- Treat the final user turn as the message to parse right now. Earlier turns are only context.`,
           },
+          ...recentConversation,
           {
             role: 'user',
             content: body,
@@ -361,20 +406,24 @@ export async function parseSmsIntentWithAIResult(
 
     if (!response.ok) {
       const errorText = await response.text()
-      return {
+      const result: AiParseResult = {
         intent: null,
         understoodBy: 'Fallback parser',
         reason: `OpenAI returned ${response.status}: ${errorText.slice(0, 220)}`,
       }
+      logAiIntentFallback({ body, timeZone, reason: result.reason })
+      return result
     }
     const json = (await response.json()) as unknown
     const outputText = parseTopLevelOutputText(json)
     if (!outputText) {
-      return {
+      const result: AiParseResult = {
         intent: null,
         understoodBy: 'Fallback parser',
         reason: 'OpenAI returned no structured output text.',
       }
+      logAiIntentFallback({ body, timeZone, reason: result.reason })
+      return result
     }
 
     const parsed = JSON.parse(outputText) as AiIntentPayload
@@ -383,12 +432,19 @@ export async function parseSmsIntentWithAIResult(
         understoodBy: 'AI',
       }
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown AI parsing error.'
-    return {
+    const message =
+      error instanceof DOMException && error.name === 'AbortError'
+        ? `OpenAI intent parsing timed out after ${Math.round(aiIntentTimeoutMs / 1000)}s.`
+        : error instanceof Error
+          ? error.message
+          : 'Unknown AI parsing error.'
+    const result: AiParseResult = {
       intent: null,
       understoodBy: 'Fallback parser',
       reason: message,
     }
+    logAiIntentFallback({ body, timeZone, reason: result.reason })
+    return result
   } finally {
     clearTimeout(timeout)
   }
@@ -397,7 +453,8 @@ export async function parseSmsIntentWithAIResult(
 export async function parseSmsIntentWithAI(
   body: string,
   timeZone = defaultTimezone(),
+  conversation: AiConversationTurn[] = [],
 ): Promise<ParsedSmsIntent | null> {
-  const result = await parseSmsIntentWithAIResult(body, timeZone)
+  const result = await parseSmsIntentWithAIResult(body, timeZone, conversation)
   return result.intent
 }

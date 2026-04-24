@@ -1,29 +1,27 @@
 import type { Metadata } from 'next'
 import ManoaSignupPage from '@/src/components/ManoaSignupPage'
 import { appUrl } from '@/src/lib/env'
+import { siteDescription, siteTitle } from '@/src/lib/siteMetadata'
 
 const baseUrl = appUrl()
 
 export const metadata: Metadata = {
-  title: 'Manoa | Text to schedule anything',
-  description:
-    'Manoa is a calendar assistant you text. Book meetings, read screenshots and flyers, get reminders, and manage your calendar by text.',
+  title: siteTitle,
+  description: siteDescription,
   alternates: {
     canonical: '/',
   },
   openGraph: {
-    title: 'Manoa | Text to schedule anything',
-    description:
-      'Manoa is a calendar assistant you text. Book meetings, read screenshots and flyers, get reminders, and manage your calendar by text.',
+    title: siteTitle,
+    description: siteDescription,
     url: baseUrl,
     siteName: 'Manoa',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Manoa | Text to schedule anything',
-    description:
-      'Manoa is a calendar assistant you text. Book meetings, read screenshots and flyers, get reminders, and manage your calendar by text.',
+    title: siteTitle,
+    description: siteDescription,
   },
   icons: {
     icon: [

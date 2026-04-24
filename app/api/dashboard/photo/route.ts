@@ -40,21 +40,18 @@ async function logDashboardPhotoReply({
   caption?: string | null
   reply: string
 }) {
-  const now = new Date().toISOString()
   await supabaseAdmin.from('sms_messages').insert([
     {
       profile_id: profileId,
       from_e164: from,
       body: caption?.trim() ? `Photo upload: ${caption.trim()}` : 'Photo upload with calendar details',
       direction: 'inbound',
-      created_at: now,
     },
     {
       profile_id: profileId,
       from_e164: from,
       body: reply,
       direction: 'outbound',
-      created_at: new Date(Date.now() + 1).toISOString(),
     },
   ])
 }

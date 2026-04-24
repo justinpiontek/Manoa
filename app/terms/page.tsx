@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import ManoaWordmark from '@/src/components/ManoaWordmark'
+import { siteSupportEmail } from '@/src/lib/siteMetadata'
 
 export const metadata: Metadata = {
   title: 'Terms and Conditions | Manoa',
@@ -100,7 +101,7 @@ export default function TermsPage() {
           <h2>Questions</h2>
           <p>
             For questions about these terms, contact Manoa support at{' '}
-            <a href="mailto:justin.piontek@gmail.com">justin.piontek@gmail.com</a>.
+            <a href={`mailto:${siteSupportEmail}`}>{siteSupportEmail}</a>.
           </p>
         </section>
       </div>

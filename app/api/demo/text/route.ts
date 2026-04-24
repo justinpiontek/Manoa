@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { applyDemoTextForIntent, createDemoState, type DemoState } from '@/src/lib/demoSms'
-import { parseSmsIntentWithAIResult } from '@/src/lib/sms/aiIntent'
+import { parseSmsIntentWithAIResult, type AiConversationTurn } from '@/src/lib/sms/aiIntent'
 import { parseSmsIntent } from '@/src/lib/sms/parser'
 
 export const runtime = 'nodejs'
@@ -19,7 +19,12 @@ export async function POST(request: NextRequest) {
   const currentState =
     payload?.state && typeof payload.state === 'object' ? payload.state : createDemoState()
 
-  const aiResult = await parseSmsIntentWithAIResult(body)
+  const aiConversation: AiConversationTurn[] = currentState.messages.slice(-4).map((message) => ({
+    role: message.role === 'user' ? 'user' : 'assistant',
+    content: message.lines.join('\n'),
+  }))
+
+  const aiResult = await parseSmsIntentWithAIResult(body, undefined, aiConversation)
   const intent = aiResult.intent || parseSmsIntent(body)
   const state = applyDemoTextForIntent(currentState, body, intent)
 

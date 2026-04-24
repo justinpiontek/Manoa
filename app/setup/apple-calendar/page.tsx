@@ -181,7 +181,7 @@ export default async function AppleCalendarSetupPage({ searchParams }: AppleCale
         <div className="setup-footer">
           <a
             className="button dashboard-link-button"
-            href={profileId ? `/dashboard?profile_id=${profileId}` : '/dashboard'}
+            href="/dashboard"
           >
             Back to dashboard
           </a>

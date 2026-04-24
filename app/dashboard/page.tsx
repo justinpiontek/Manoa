@@ -2,9 +2,8 @@ import { stripe } from '@/src/lib/stripeClient'
 import { appUrl } from '@/src/lib/env'
 import { formatPhoneForDisplay } from '@/src/lib/phone'
 import { listConfiguredCalendarAccounts, type CalendarProvider } from '@/src/lib/calendar/google'
-import { getDashboardProfile, getDashboardProfileByEmail } from '@/src/lib/profiles'
+import { getAuthenticatedDashboardProfile } from '@/src/lib/dashboardAuth'
 import { listSmsThreadEntries, toSmsThreadMessages } from '@/src/lib/sms/thread'
-import { createSupabaseServerClient } from '@/src/lib/supabase/server'
 import { supabaseAdmin } from '@/src/lib/supabaseAdmin'
 import ManoaWordmark from '@/src/components/ManoaWordmark'
 import CalendarSettingsForm from '@/src/components/CalendarSettingsForm'
@@ -104,24 +103,15 @@ function calendarErrorMessage(code: string | undefined, detail?: string) {
 
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
   const params = await searchParams
-  let profileId = params.profile_id || ''
-  const supabase = await createSupabaseServerClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!profileId && params.session_id && process.env.STRIPE_SECRET_KEY) {
+  if (params.session_id && process.env.STRIPE_SECRET_KEY) {
     try {
-      const session = await stripe.checkout.sessions.retrieve(params.session_id)
-      profileId = session.client_reference_id || session.metadata?.profile_id || ''
+      await stripe.checkout.sessions.retrieve(params.session_id)
     } catch {
-      profileId = ''
+      // Keep page behavior stable when old success URLs still include session_id.
     }
   }
 
-  const profile =
-    (user?.email ? await getDashboardProfileByEmail(user.email) : null) ||
-    (profileId ? await getDashboardProfile(profileId) : null)
+  const profile = await getAuthenticatedDashboardProfile()
   const manoaNumber = process.env.TWILIO_FROM_NUMBER?.trim() || ''
   const displayNumber = manoaNumber ? formatPhoneForDisplay(manoaNumber) : ''
   const displayUserPhone = profile?.phone_e164 ? formatPhoneForDisplay(profile.phone_e164) : ''
@@ -231,14 +221,12 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         <div className="dashboard-topbar">
           <ManoaWordmark className="legal-back compact" href="/" />
           <div className="dashboard-topbar-actions">
-            <a className="nav-link" href={`${appUrl()}/dashboard${profileId ? `?profile_id=${profile.id}` : ''}`}>
+            <a className="nav-link" href={`${appUrl()}/dashboard`}>
               Refresh
             </a>
-            {user ? (
-              <a className="nav-link secondary" href="/auth/signout">
-                Sign out
-              </a>
-            ) : null}
+            <a className="nav-link secondary" href="/auth/signout">
+              Sign out
+            </a>
           </div>
         </div>
 
@@ -530,7 +518,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                 Save Manoa contact
               </a>
             ) : null}
-            <a className="button dashboard-button secondary-button" href={`/api/billing-portal?profile_id=${profile.id}`}>
+            <a className="button dashboard-button secondary-button" href="/api/billing-portal">
               Manage billing
             </a>
           </div>

@@ -54,7 +54,8 @@ import {
   type ExistingEventInviteRequest,
   type Invitee,
 } from './invitees'
-import { parseSmsIntentWithAI } from './aiIntent'
+import { parseSmsIntentWithAI, type AiConversationTurn } from './aiIntent'
+import { listSmsAiIntentContext } from './thread'
 import { resolvePendingChoice } from './pendingChoice'
 import { parseSmsIntent, parseSmsTime, type DateWindow, type ParsedSmsIntent } from './parser'
 
@@ -779,6 +780,12 @@ function isSingleScheduleDecline(text: string) {
 
 function isCancelPendingRequest(text: string) {
   return /^(?:actually\s+)?(?:cancel that|cancel it|cancel this|never mind|nevermind|scratch that|forget it|drop that|stop that|leave it)[.!]*$/i.test(
+    text.trim(),
+  )
+}
+
+function isPendingEscapeRequest(text: string) {
+  return /^(?:start over|start fresh|reset|oops|never mind|nevermind|nvm|forget it|forget that|scratch that|drop it|drop that|leave it)[.!]*$/i.test(
     text.trim(),
   )
 }
@@ -3711,6 +3718,13 @@ export async function handleIncomingSms({
     intentOverride = correctedSchedule.intent
   }
 
+  if (activePending && isPendingEscapeRequest(body)) {
+    await clearPendingAction(activePending.id)
+    const reply = 'Got it, starting fresh. What would you like to do?'
+    await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+    return reply
+  }
+
   if (activePending?.kind === 'save_business_contact_phone') {
     const reply = await handleSaveBusinessPhoneReply({ profile, from, body, pending: activePending })
     await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
@@ -3944,9 +3958,20 @@ export async function handleIncomingSms({
     }
   }
 
-  const aiIntent = intentOverride || (await parseSmsIntentWithAI(intentBody, profile.timezone))
-  const intent =
-    aiIntent && aiIntent.type !== 'unknown'
+  let aiConversation: AiConversationTurn[] = []
+  if (!intentOverride) {
+    try {
+      aiConversation = await listSmsAiIntentContext(profile.id, body)
+    } catch (error) {
+      console.error('Could not load SMS AI context', error)
+    }
+  }
+
+  const aiIntent = intentOverride ? null : await parseSmsIntentWithAI(intentBody, profile.timezone, aiConversation)
+  const usedAiIntent = Boolean(aiIntent && aiIntent.type !== 'unknown')
+  const intent: ParsedSmsIntent = intentOverride
+    ? intentOverride
+    : usedAiIntent && aiIntent
       ? aiIntent
       : parseSmsIntent(intentBody, profile.timezone)
 
@@ -4023,7 +4048,7 @@ export async function handleIncomingSms({
   if (intent.type === 'schedule') {
     const inviteeContext = await resolveScheduleInvitees(profile.id, intentBody)
     const cleanedIntent =
-      inviteeContext.cleanedText && inviteeContext.cleanedText !== intentBody
+      !usedAiIntent && inviteeContext.cleanedText && inviteeContext.cleanedText !== intentBody
         ? parseSmsIntent(inviteeContext.cleanedText, profile.timezone)
         : intent
     const scheduleIntent =
@@ -4320,8 +4345,9 @@ export async function handleIncomingSms({
     return reply
   }
 
-  const reply =
-    'I can schedule, reschedule, cancel, or send your agenda. Try: 9am meeting Tuesday on work calendar.'
+  const reply = activePending
+    ? `I didn't quite follow that. You can say things like "schedule a call Thursday at 2pm" or "what's on my calendar today?"\nIf you want to drop the current request and start fresh, say "start over."`
+    : `I didn't quite follow that. You can say things like "schedule a call Thursday at 2pm" or "what's on my calendar today?"`
   await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
   return reply
 }

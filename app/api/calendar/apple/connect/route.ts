@@ -54,11 +54,10 @@ export async function POST(request: NextRequest) {
       { reconnectAccountId: accountId },
     )
 
-    return Response.redirect(`${appUrl()}/dashboard?profile_id=${profileId}&calendar=connected`, 303)
+    return Response.redirect(`${appUrl()}/dashboard?calendar=connected`, 303)
   } catch (error) {
     const classified = classifyAppleError(error)
     const redirect = new URL(`${appUrl()}/dashboard`)
-    redirect.searchParams.set('profile_id', profileId)
     redirect.searchParams.set('calendar', 'error')
     redirect.searchParams.set('calendar_error', classified.code)
     redirect.searchParams.set('calendar_error_detail', classified.detail)

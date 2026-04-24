@@ -104,6 +104,23 @@ async function resolveDashboardSubscriptionStatus(profile: Profile) {
   }
 }
 
+async function resolveDashboardCalendarFlags(profileId: string) {
+  const { data: calendarConnections, error: calendarError } = await supabaseAdmin
+    .from('calendar_connections')
+    .select('provider')
+    .eq('profile_id', profileId)
+    .eq('status', 'active')
+    .returns<Array<{ provider: string }>>()
+
+  if (calendarError) throw calendarError
+
+  const connections = calendarConnections || []
+  return {
+    calendarConnected: connections.length > 0,
+    googleCalendarConnected: connections.some((connection) => connection.provider === 'google'),
+  }
+}
+
 function duplicateAuthUserError(message: string) {
   const lower = message.toLowerCase()
   return (
@@ -114,23 +131,20 @@ function duplicateAuthUserError(message: string) {
   )
 }
 
+export class PhoneOwnershipConflictError extends Error {
+  constructor() {
+    super('That phone number is already connected to another Manoa account.')
+    this.name = 'PhoneOwnershipConflictError'
+  }
+}
+
+export function isPhoneOwnershipConflictError(error: unknown) {
+  return error instanceof PhoneOwnershipConflictError
+}
+
 export async function ensureAuthUserForEmail(email: string) {
   const normalizedEmail = email.trim().toLowerCase()
   if (!normalizedEmail) return
-
-  const { data: listedUsers, error: listError } = await supabaseAdmin.auth.admin.listUsers({
-    page: 1,
-    perPage: 1000,
-  })
-
-  if (listError) {
-    throw listError
-  }
-
-  const existingUser = listedUsers.users.find((user) => user.email?.toLowerCase() === normalizedEmail)
-  if (existingUser) {
-    return
-  }
 
   const { error } = await supabaseAdmin.auth.admin.createUser({
     email: normalizedEmail,
@@ -152,40 +166,31 @@ export async function findOrCreateProfile({
   phoneE164?: string | null
   smsConsentGranted?: boolean
 }) {
+  const normalizedEmail = email.trim().toLowerCase()
   const normalizedPhone = phoneE164?.trim() || null
   const consentUpdate = smsConsentGranted
     ? { sms_opted_out_at: null, updated_at: new Date().toISOString() }
     : { updated_at: new Date().toISOString() }
 
-  if (normalizedPhone) {
-    const byPhone = await selectProfileMaybeSingle((columns) =>
-      supabaseAdmin
-        .from('profiles')
-        .select(columns)
-        .eq('phone_e164', normalizedPhone)
-        .maybeSingle<ProfileRow>(),
-    )
-
-    if (byPhone) {
-      const updated = await selectProfileSingle((columns) =>
-        supabaseAdmin
-          .from('profiles')
-          .update({ email, ...consentUpdate })
-          .eq('id', byPhone.id)
-          .select(columns)
-          .single<ProfileRow>(),
-      )
-
-      await ensureAuthUserForEmail(email)
-      return updated
-    }
-  }
-
   const byEmail = await selectProfileMaybeSingle((columns) =>
-    supabaseAdmin.from('profiles').select(columns).eq('email', email).maybeSingle<ProfileRow>(),
+    supabaseAdmin.from('profiles').select(columns).eq('email', normalizedEmail).maybeSingle<ProfileRow>(),
   )
 
+  const byPhone = normalizedPhone
+    ? await selectProfileMaybeSingle((columns) =>
+        supabaseAdmin
+          .from('profiles')
+          .select(columns)
+          .eq('phone_e164', normalizedPhone)
+          .maybeSingle<ProfileRow>(),
+      )
+    : null
+
   if (byEmail) {
+    if (byPhone && byPhone.id !== byEmail.id) {
+      throw new PhoneOwnershipConflictError()
+    }
+
     const update = normalizedPhone
       ? { phone_e164: normalizedPhone, ...consentUpdate }
       : consentUpdate
@@ -198,14 +203,32 @@ export async function findOrCreateProfile({
         .single<ProfileRow>(),
     )
 
-    await ensureAuthUserForEmail(email)
+    await ensureAuthUserForEmail(normalizedEmail)
+    return updated
+  }
+
+  if (byPhone) {
+    if (byPhone.email.trim().toLowerCase() !== normalizedEmail) {
+      throw new PhoneOwnershipConflictError()
+    }
+
+    const updated = await selectProfileSingle((columns) =>
+      supabaseAdmin
+        .from('profiles')
+        .update({ ...consentUpdate })
+        .eq('id', byPhone.id)
+        .select(columns)
+        .single<ProfileRow>(),
+    )
+
+    await ensureAuthUserForEmail(normalizedEmail)
     return updated
   }
 
   const created = await supabaseAdmin
     .from('profiles')
       .insert({
-        email,
+        email: normalizedEmail,
         phone_e164: normalizedPhone,
         timezone: defaultTimezone(),
         default_event_duration_minutes: 30,
@@ -219,7 +242,7 @@ export async function findOrCreateProfile({
     const legacyCreated = await supabaseAdmin
       .from('profiles')
       .insert({
-        email,
+        email: normalizedEmail,
         phone_e164: normalizedPhone,
         timezone: defaultTimezone(),
         sms_opted_out_at: smsConsentGranted ? null : new Date().toISOString(),
@@ -236,7 +259,7 @@ export async function findOrCreateProfile({
     createdProfile = normalizeProfileRow(created.data)
   }
 
-  await ensureAuthUserForEmail(email)
+  await ensureAuthUserForEmail(normalizedEmail)
   return createdProfile
 }
 
@@ -275,22 +298,12 @@ export async function getDashboardProfileByEmail(email: string) {
   if (!profile) return null
 
   const subscriptionStatus = await resolveDashboardSubscriptionStatus(profile)
-
-  const { data: calendarConnection, error: calendarError } = await supabaseAdmin
-    .from('calendar_connections')
-    .select('id')
-    .eq('profile_id', profile.id)
-    .eq('status', 'active')
-    .limit(1)
-    .maybeSingle<{ id: string }>()
-
-  if (calendarError) throw calendarError
+  const calendarFlags = await resolveDashboardCalendarFlags(profile.id)
 
   return {
     ...profile,
     subscriptionStatus,
-    calendarConnected: Boolean(calendarConnection?.id),
-    googleCalendarConnected: Boolean(calendarConnection?.id),
+    ...calendarFlags,
   } satisfies DashboardProfile
 }
 
@@ -302,21 +315,11 @@ export async function getDashboardProfile(profileId: string) {
   if (!profile) return null
 
   const subscriptionStatus = await resolveDashboardSubscriptionStatus(profile)
-
-  const { data: calendarConnection, error: calendarError } = await supabaseAdmin
-    .from('calendar_connections')
-    .select('id')
-    .eq('profile_id', profileId)
-    .eq('status', 'active')
-    .limit(1)
-    .maybeSingle<{ id: string }>()
-
-  if (calendarError) throw calendarError
+  const calendarFlags = await resolveDashboardCalendarFlags(profileId)
 
   return {
     ...profile,
     subscriptionStatus,
-    calendarConnected: Boolean(calendarConnection?.id),
-    googleCalendarConnected: Boolean(calendarConnection?.id),
+    ...calendarFlags,
   } satisfies DashboardProfile
 }
