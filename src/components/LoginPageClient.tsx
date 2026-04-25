@@ -1,7 +1,7 @@
 'use client'
 
 import ManoaWordmark from '@/src/components/ManoaWordmark'
-import { createSupabaseMagicLinkBrowser, getSupabaseBrowser } from '@/src/lib/supabase/browser'
+import { createSupabaseMagicLinkBrowser } from '@/src/lib/supabase/browser'
 import { useEffect, useMemo, useState } from 'react'
 
 type LoginPageClientProps = {
@@ -51,14 +51,20 @@ export default function LoginPageClient({
 
     async function recoverHashSession() {
       try {
-        const supabase = getSupabaseBrowser()
-        const { error } = await supabase.auth.setSession({
-          access_token: recoveredAccessToken,
-          refresh_token: recoveredRefreshToken,
+        const response = await fetch('/api/auth/finalize-login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            next: '/dashboard',
+            accessToken: recoveredAccessToken,
+            refreshToken: recoveredRefreshToken,
+          }),
         })
 
         if (cancelled) return
-        if (error) {
+        if (!response.ok) {
           setLocalMessage({
             tone: 'warning',
             text: 'That login link did not work. Send yourself a fresh one below.',
