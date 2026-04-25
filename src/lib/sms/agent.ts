@@ -25,6 +25,7 @@ import {
   startOfDay,
 } from '../calendar/dates'
 import { parseGoogleRecurrence, recurrenceSummary, type RecurrenceSpec } from '../calendar/recurrence'
+import { scheduleCandidateTimesForTitle } from '../calendar/schedulingPreferences'
 import {
   buildBusinessAliases,
   extractPhoneFromText,
@@ -476,6 +477,170 @@ function hardConflictScheduleReply({
   }
 
   return lines.join('\n')
+}
+
+function genericNoOpeningReply({
+  calendarLabel,
+  dateLabel,
+}: {
+  calendarLabel?: string | null
+  dateLabel?: string | null
+}) {
+  return `I couldn't find an opening${calendarLabel ? ` on ${calendarLabel}` : ''}${dateLabel ? ` for ${dateLabel}` : ''}. Try a specific weekday or a different calendar.`
+}
+
+function blockedDayNoOpeningReply({
+  calendarLabel,
+  dateLabel,
+  conflict,
+  pendingInvite,
+}: {
+  calendarLabel?: string | null
+  dateLabel?: string | null
+  conflict: EventSummary
+  pendingInvite: boolean
+}) {
+  const prefix = `I couldn't find an opening${calendarLabel ? ` on ${calendarLabel}` : ''}${dateLabel ? ` for ${dateLabel}` : ''}`
+
+  if (pendingInvite) {
+    return `${prefix} because you have a pending invite for "${conflict.title}" at ${conflict.timeLabel} on ${conflict.calendarName}. Text a specific time if you want to book over it anyway, or choose a different day or calendar.`
+  }
+
+  return `${prefix} because that day is already reserved for "${conflict.title}" at ${conflict.timeLabel} on ${conflict.calendarName}. Text a specific time if you want to book anyway, or choose a different day or calendar.`
+}
+
+async function explainNoOpeningDayConflict({
+  profile,
+  title,
+  baseDate,
+  exactTime,
+  durationMinutes,
+  dateWindow,
+  calendarLabel,
+}: {
+  profile: SmsProfile
+  title: string
+  baseDate: Date
+  exactTime: { hour: number; minute: number } | null | undefined
+  durationMinutes: number
+  dateWindow?: DateWindow | null
+  calendarLabel?: string | null
+}) {
+  if (exactTime) return null
+
+  const anchorDate =
+    dateWindow && sameCalendarDay(dateWindow.start, dateWindow.end, profile.timezone)
+      ? dateWindow.start
+      : null
+
+  if (!anchorDate) return null
+
+  const dayStart = setTime(anchorDate, { hour: 0, minute: 0 }, profile.timezone)
+  const nextDayStart = addDays(dayStart, 1, profile.timezone)
+  const dayWindowMinutes = Math.max(
+    1,
+    Math.round((nextDayStart.getTime() - dayStart.getTime()) / 60_000),
+  )
+
+  const candidateStarts = scheduleCandidateTimesForTitle(title)
+    .map((time) => setTime(dayStart, time, profile.timezone))
+    .filter((start) => start.getTime() > Date.now() + 5 * 60_000)
+
+  if (!candidateStarts.length) return null
+
+  const events = await listUpcomingEvents({
+    profileId: profile.id,
+    startAt: dayStart,
+    windowMinutes: dayWindowMinutes,
+    maxResults: 50,
+    timeZone: profile.timezone,
+  })
+
+  const slotConflicts = candidateStarts.map((start) => {
+    const end = addMinutes(start, durationMinutes)
+    const pendingInviteConflict = events.find(
+      (event) => overlapsOption(event, start, end) && isPendingInviteConflict(event, profile.email),
+    )
+
+    if (pendingInviteConflict) {
+      return {
+        event: pendingInviteConflict,
+        pendingInvite: true,
+      }
+    }
+
+    const hardConflict = events.find(
+      (event) => overlapsOption(event, start, end) && !isPendingInviteConflict(event, profile.email),
+    )
+
+    if (hardConflict) {
+      return {
+        event: hardConflict,
+        pendingInvite: false,
+      }
+    }
+
+    return null
+  })
+
+  if (slotConflicts.some((item) => !item)) return null
+
+  const allDayConflict = slotConflicts.find((item) => item?.event.timeLabel === 'All day')
+  if (allDayConflict) {
+    return blockedDayNoOpeningReply({
+      calendarLabel,
+      dateLabel: dateWindow?.label || formatSmsDate(dayStart, profile.timezone),
+      conflict: allDayConflict.event,
+      pendingInvite: allDayConflict.pendingInvite,
+    })
+  }
+
+  const uniqueConflictIds = new Set(slotConflicts.map((item) => item?.event.id))
+  if (uniqueConflictIds.size === 1 && slotConflicts[0]) {
+    return blockedDayNoOpeningReply({
+      calendarLabel,
+      dateLabel: dateWindow?.label || formatSmsDate(dayStart, profile.timezone),
+      conflict: slotConflicts[0].event,
+      pendingInvite: slotConflicts[0].pendingInvite,
+    })
+  }
+
+  return null
+}
+
+async function noOpeningScheduleReply({
+  profile,
+  title,
+  baseDate,
+  exactTime,
+  durationMinutes,
+  dateWindow,
+  calendarLabel,
+}: {
+  profile: SmsProfile
+  title: string
+  baseDate: Date
+  exactTime: { hour: number; minute: number } | null | undefined
+  durationMinutes: number
+  dateWindow?: DateWindow | null
+  calendarLabel?: string | null
+}) {
+  const conflictReply = await explainNoOpeningDayConflict({
+    profile,
+    title,
+    baseDate,
+    exactTime,
+    durationMinutes,
+    dateWindow,
+    calendarLabel,
+  })
+
+  if (conflictReply) return conflictReply
+
+  return genericNoOpeningReply({
+    calendarLabel,
+    dateLabel: dateWindow?.label || null,
+  })
 }
 
 function requestedExactScheduleOption({
@@ -2791,7 +2956,15 @@ async function handleChoice({
     })
 
     if (!options.length) {
-      return `I couldn't find an opening on ${pickedCalendar.calendarLabel}${scheduleRequest.dateWindow?.label ? ` for ${scheduleRequest.dateWindow.label}` : ''}. Try a specific weekday or a different calendar.`
+      return noOpeningScheduleReply({
+        profile,
+        title: scheduleRequest.title,
+        baseDate: new Date(scheduleRequest.baseDate),
+        exactTime: scheduleRequest.exactTime,
+        durationMinutes: scheduleRequest.durationMinutes,
+        dateWindow: deserializeDateWindow(scheduleRequest.dateWindow),
+        calendarLabel: pickedCalendar.calendarLabel,
+      })
     }
 
     await storeScheduleOptionsPending({
@@ -3827,7 +4000,15 @@ export async function handleIncomingSms({
       })
 
       if (!options.length) {
-        const reply = `I couldn't find an opening on ${pickedCalendar.calendarLabel}${scheduleRequest.dateWindow?.label ? ` for ${scheduleRequest.dateWindow.label}` : ''}. Try a specific weekday or a different calendar.`
+        const reply = await noOpeningScheduleReply({
+          profile,
+          title: scheduleRequest.title,
+          baseDate: new Date(scheduleRequest.baseDate),
+          exactTime: scheduleRequest.exactTime,
+          durationMinutes: scheduleRequest.durationMinutes,
+          dateWindow: deserializeDateWindow(scheduleRequest.dateWindow),
+          calendarLabel: pickedCalendar.calendarLabel,
+        })
         await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
         return reply
       }
@@ -4193,7 +4374,15 @@ export async function handleIncomingSms({
     })
 
     if (!options.length) {
-      const reply = `I could not find an opening${scheduleIntent.dateWindow?.label ? ` for ${scheduleIntent.dateWindow.label}` : ''}. Try a specific weekday or a different calendar.`
+      const reply = await noOpeningScheduleReply({
+        profile,
+        title: scheduleIntent.title,
+        baseDate: scheduleIntent.baseDate,
+        exactTime: scheduleIntent.exactTime,
+        durationMinutes: scheduleDurationMinutes,
+        dateWindow: scheduleIntent.dateWindow,
+        calendarLabel: chosenCalendar?.calendarLabel || null,
+      })
       await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
       return reply
     }

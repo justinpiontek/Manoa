@@ -2,7 +2,6 @@
 
 import type { EmailOtpType } from '@supabase/supabase-js'
 import ManoaWordmark from '@/src/components/ManoaWordmark'
-import { getSupabaseBrowser } from '@/src/lib/supabase/browser'
 import { useEffect, useState } from 'react'
 
 type AuthCallbackClientProps = {
@@ -23,7 +22,6 @@ export default function AuthCallbackClient({ nextPath }: AuthCallbackClientProps
       const next = safeNextPath(nextPath)
 
       try {
-        const supabase = getSupabaseBrowser()
         const url = new URL(window.location.href)
         const query = url.searchParams
         const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
@@ -45,30 +43,24 @@ export default function AuthCallbackClient({ nextPath }: AuthCallbackClientProps
 
         setMessage('Signing you in...')
 
-        let error: Error | null = null
-
-        if (code) {
-          const result = await supabase.auth.exchangeCodeForSession(code)
-          error = result.error
-        } else if (tokenHash && type) {
-          const result = await supabase.auth.verifyOtp({
+        const finalizeResponse = await fetch('/api/auth/finalize-login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            next,
+            code,
+            tokenHash,
             type,
-            token_hash: tokenHash,
-          })
-          error = result.error
-        } else if (accessToken && refreshToken) {
-          const result = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          })
-          error = result.error
-        } else {
-          error = new Error('Missing login data.')
-        }
+            accessToken,
+            refreshToken,
+          }),
+        })
 
         if (cancelled) return
 
-        if (error) {
+        if (!finalizeResponse.ok) {
           window.location.replace('/login?login=error')
           return
         }

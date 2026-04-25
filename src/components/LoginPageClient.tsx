@@ -1,7 +1,7 @@
 'use client'
 
 import ManoaWordmark from '@/src/components/ManoaWordmark'
-import { getSupabaseBrowser } from '@/src/lib/supabase/browser'
+import { createSupabaseMagicLinkBrowser, getSupabaseBrowser } from '@/src/lib/supabase/browser'
 import { useEffect, useMemo, useState } from 'react'
 
 type LoginPageClientProps = {
@@ -141,7 +141,7 @@ export default function LoginPageClient({
         return
       }
 
-      const supabase = getSupabaseBrowser()
+      const supabase = createSupabaseMagicLinkBrowser()
       const redirectBase = window.location.origin.replace(/\/$/, '') || (appUrl || '').replace(/\/$/, '')
       const { error } = await supabase.auth.signInWithOtp({
         email: normalizedEmail,
