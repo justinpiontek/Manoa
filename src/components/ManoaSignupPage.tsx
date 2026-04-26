@@ -59,7 +59,7 @@ const homepageFaqs = [
   {
     question: 'What calendars work with Manoa?',
     answer:
-      'Right now Manoa connects to Google Calendar and Apple Calendar. Outlook support is coming soon.',
+      'Manoa connects to Google Calendar, Outlook, and Apple Calendar.',
   },
   {
     question: 'Will Manoa change things without me knowing?',
@@ -496,7 +496,7 @@ export default function ManoaSignupPage() {
             </p>
           </form>
 
-          <p className="pricing-meta">Connect Google or Apple after checkout. Outlook coming soon.</p>
+          <p className="pricing-meta">Connect Google, Outlook, or Apple after checkout.</p>
           <p className="fine-print pricing-fine-print">
             Manoa only sends service-related account texts. Message frequency varies. Msg &amp;
             data rates may apply.

@@ -490,23 +490,48 @@ function genericNoOpeningReply({
 }
 
 function blockedDayNoOpeningReply({
-  calendarLabel,
-  dateLabel,
   conflict,
   pendingInvite,
+  options,
+  attendees,
+  unresolvedInvitees,
 }: {
-  calendarLabel?: string | null
-  dateLabel?: string | null
   conflict: EventSummary
   pendingInvite: boolean
+  options: ScheduleOption[]
+  attendees: Invitee[]
+  unresolvedInvitees: string[]
 }) {
-  const prefix = `I couldn't find an opening${calendarLabel ? ` on ${calendarLabel}` : ''}${dateLabel ? ` for ${dateLabel}` : ''}`
+  const lines = [
+    pendingInvite
+      ? `You have a pending invite for "${conflict.title}" at ${conflict.timeLabel} on ${conflict.calendarName}.`
+      : `That day is already reserved for "${conflict.title}" at ${conflict.timeLabel} on ${conflict.calendarName}.`,
+    ...options.map(
+      (option, index) =>
+        `${index + 1}. Book anyway: ${option.dayLabel} at ${option.timeLabel} on ${option.calendarName}`,
+    ),
+  ]
 
-  if (pendingInvite) {
-    return `${prefix} because you have a pending invite for "${conflict.title}" at ${conflict.timeLabel} on ${conflict.calendarName}. Text a specific time if you want to book over it anyway, or choose a different day or calendar.`
+  if (options.length >= 3) {
+    lines.push('Reply 1, 2, or 3.')
+  } else if (options.length === 2) {
+    lines.push('Reply 1 or 2.')
+  } else {
+    lines.push('Reply 1 to book anyway, or text a different day or time.')
   }
 
-  return `${prefix} because that day is already reserved for "${conflict.title}" at ${conflict.timeLabel} on ${conflict.calendarName}. Text a specific time if you want to book anyway, or choose a different day or calendar.`
+  if (attendees.length) {
+    lines.push(`Ready to invite: ${inviteeSummary(attendees)}.`)
+  }
+  if (unresolvedInvitees.length) {
+    lines.push(
+      `I still need email${unresolvedInvitees.length > 1 ? 's' : ''} for ${unresolvedInviteeSummary(
+        unresolvedInvitees,
+      )}.`,
+    )
+  }
+
+  return lines.join('\n')
 }
 
 async function explainNoOpeningDayConflict({
@@ -587,22 +612,16 @@ async function explainNoOpeningDayConflict({
 
   const allDayConflict = slotConflicts.find((item) => item?.event.timeLabel === 'All day')
   if (allDayConflict) {
-    return blockedDayNoOpeningReply({
-      calendarLabel,
-      dateLabel: dateWindow?.label || formatSmsDate(dayStart, profile.timezone),
-      conflict: allDayConflict.event,
-      pendingInvite: allDayConflict.pendingInvite,
-    })
+    return allDayConflict.pendingInvite
+      ? `I couldn't find an opening${calendarLabel ? ` on ${calendarLabel}` : ''}${dateWindow?.label ? ` for ${dateWindow.label}` : ''} because you have a pending invite for "${allDayConflict.event.title}" at ${allDayConflict.event.timeLabel} on ${allDayConflict.event.calendarName}. Text a specific time if you want to book over it anyway, or choose a different day or calendar.`
+      : `I couldn't find an opening${calendarLabel ? ` on ${calendarLabel}` : ''}${dateWindow?.label ? ` for ${dateWindow.label}` : ''} because that day is already reserved for "${allDayConflict.event.title}" at ${allDayConflict.event.timeLabel} on ${allDayConflict.event.calendarName}. Text a specific time if you want to book anyway, or choose a different day or calendar.`
   }
 
   const uniqueConflictIds = new Set(slotConflicts.map((item) => item?.event.id))
   if (uniqueConflictIds.size === 1 && slotConflicts[0]) {
-    return blockedDayNoOpeningReply({
-      calendarLabel,
-      dateLabel: dateWindow?.label || formatSmsDate(dayStart, profile.timezone),
-      conflict: slotConflicts[0].event,
-      pendingInvite: slotConflicts[0].pendingInvite,
-    })
+    return slotConflicts[0].pendingInvite
+      ? `I couldn't find an opening${calendarLabel ? ` on ${calendarLabel}` : ''}${dateWindow?.label ? ` for ${dateWindow.label}` : ''} because you have a pending invite for "${slotConflicts[0].event.title}" at ${slotConflicts[0].event.timeLabel} on ${slotConflicts[0].event.calendarName}. Text a specific time if you want to book over it anyway, or choose a different day or calendar.`
+      : `I couldn't find an opening${calendarLabel ? ` on ${calendarLabel}` : ''}${dateWindow?.label ? ` for ${dateWindow.label}` : ''} because that day is already reserved for "${slotConflicts[0].event.title}" at ${slotConflicts[0].event.timeLabel} on ${slotConflicts[0].event.calendarName}. Text a specific time if you want to book anyway, or choose a different day or calendar.`
   }
 
   return null
@@ -610,19 +629,31 @@ async function explainNoOpeningDayConflict({
 
 async function noOpeningScheduleReply({
   profile,
+  smsFrom,
   title,
   baseDate,
   exactTime,
   durationMinutes,
   dateWindow,
+  chosenCalendar,
+  location,
+  recurrence,
+  attendees,
+  unresolvedInvitees,
   calendarLabel,
 }: {
   profile: SmsProfile
+  smsFrom: string
   title: string
   baseDate: Date
   exactTime: { hour: number; minute: number } | null | undefined
   durationMinutes: number
   dateWindow?: DateWindow | null
+  chosenCalendar?: CalendarPlacementOption | null
+  location?: string | null
+  recurrence?: RecurrenceSpec | null
+  attendees: Invitee[]
+  unresolvedInvitees: string[]
   calendarLabel?: string | null
 }) {
   const conflictReply = await explainNoOpeningDayConflict({
@@ -634,6 +665,85 @@ async function noOpeningScheduleReply({
     dateWindow,
     calendarLabel,
   })
+
+  if (
+    conflictReply &&
+    chosenCalendar &&
+    !exactTime &&
+    !recurrence &&
+    dateWindow &&
+    sameCalendarDay(dateWindow.start, dateWindow.end, profile.timezone)
+  ) {
+    const anchorDate = dateWindow.start
+    const bookAnywayOptions = scheduleCandidateTimesForTitle(title)
+      .map((time) => {
+        const start = setTime(anchorDate, time, profile.timezone)
+        return {
+          title,
+          start: start.toISOString(),
+          end: addMinutes(start, durationMinutes).toISOString(),
+          location,
+          provider: chosenCalendar.provider,
+          calendarId: chosenCalendar.calendarId,
+          calendarName: chosenCalendar.calendarLabel,
+          dayLabel: formatSmsDate(start, profile.timezone),
+          timeLabel: formatSmsTime(start, profile.timezone),
+          timeZone: profile.timezone,
+          ownerEmail: chosenCalendar.accountEmail || chosenCalendar.accountId || null,
+          recurrence: null,
+        } satisfies ScheduleOption
+      })
+      .filter((option) => new Date(option.start).getTime() > Date.now() + 5 * 60_000)
+      .slice(0, 3)
+
+    if (bookAnywayOptions.length) {
+      const events = await listUpcomingEvents({
+        profileId: profile.id,
+        startAt: setTime(anchorDate, { hour: 0, minute: 0 }, profile.timezone),
+        windowMinutes: 24 * 60,
+        maxResults: 50,
+        timeZone: profile.timezone,
+      })
+
+      const firstOption = bookAnywayOptions[0]
+      const firstStart = new Date(firstOption.start)
+      const firstEnd = new Date(firstOption.end)
+      const pendingInviteConflict = events.find(
+        (event) => overlapsOption(event, firstStart, firstEnd) && isPendingInviteConflict(event, profile.email),
+      )
+      const hardConflict = events.find(
+        (event) => overlapsOption(event, firstStart, firstEnd) && !isPendingInviteConflict(event, profile.email),
+      )
+      const representativeConflict = pendingInviteConflict || hardConflict
+
+      if (representativeConflict) {
+        await storeScheduleOptionsPending({
+          profileId: profile.id,
+          smsFrom,
+          options: bookAnywayOptions,
+          attendees,
+          unresolvedInvitees,
+          scheduleRequest: {
+            title,
+            baseDate: baseDate.toISOString(),
+            dateWindow: serializeDateWindow(dateWindow),
+            exactTime: exactTime ?? null,
+            durationMinutes,
+            recurrence: recurrence || null,
+            location: location || null,
+          },
+        })
+
+        return blockedDayNoOpeningReply({
+          conflict: representativeConflict,
+          pendingInvite: Boolean(pendingInviteConflict),
+          options: bookAnywayOptions,
+          attendees,
+          unresolvedInvitees,
+        })
+      }
+    }
+  }
 
   if (conflictReply) return conflictReply
 
@@ -2958,11 +3068,17 @@ async function handleChoice({
     if (!options.length) {
       return noOpeningScheduleReply({
         profile,
+        smsFrom,
         title: scheduleRequest.title,
         baseDate: new Date(scheduleRequest.baseDate),
         exactTime: scheduleRequest.exactTime,
         durationMinutes: scheduleRequest.durationMinutes,
         dateWindow: deserializeDateWindow(scheduleRequest.dateWindow),
+        chosenCalendar: pickedCalendar,
+        location: scheduleRequest.location || null,
+        recurrence: scheduleRequest.recurrence,
+        attendees,
+        unresolvedInvitees,
         calendarLabel: pickedCalendar.calendarLabel,
       })
     }
@@ -3713,7 +3829,7 @@ export async function handleIncomingSms({
   }
 
   if (!(await hasConnectedCalendar(profile.id))) {
-    const reply = 'Your subscription is active. Connect Google or Outlook from your setup page, then text me again.'
+    const reply = 'Your subscription is active. Connect Google, Outlook, or Apple from your setup page, then text me again.'
     await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
     return reply
   }
@@ -4002,11 +4118,17 @@ export async function handleIncomingSms({
       if (!options.length) {
         const reply = await noOpeningScheduleReply({
           profile,
+          smsFrom: from,
           title: scheduleRequest.title,
           baseDate: new Date(scheduleRequest.baseDate),
           exactTime: scheduleRequest.exactTime,
           durationMinutes: scheduleRequest.durationMinutes,
           dateWindow: deserializeDateWindow(scheduleRequest.dateWindow),
+          chosenCalendar: pickedCalendar,
+          location: scheduleRequest.location || null,
+          recurrence: scheduleRequest.recurrence,
+          attendees,
+          unresolvedInvitees,
           calendarLabel: pickedCalendar.calendarLabel,
         })
         await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
@@ -4376,11 +4498,17 @@ export async function handleIncomingSms({
     if (!options.length) {
       const reply = await noOpeningScheduleReply({
         profile,
+        smsFrom: from,
         title: scheduleIntent.title,
         baseDate: scheduleIntent.baseDate,
         exactTime: scheduleIntent.exactTime,
         durationMinutes: scheduleDurationMinutes,
         dateWindow: scheduleIntent.dateWindow,
+        chosenCalendar,
+        location: scheduleIntent.location,
+        recurrence: scheduleIntent.recurrence,
+        attendees: inviteeContext.invitees,
+        unresolvedInvitees: inviteeContext.unresolvedNames,
         calendarLabel: chosenCalendar?.calendarLabel || null,
       })
       await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })

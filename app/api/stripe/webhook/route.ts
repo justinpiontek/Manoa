@@ -10,7 +10,7 @@ export const runtime = 'nodejs'
 
 const activeWelcomeStatuses = new Set<Stripe.Subscription.Status>(['active', 'trialing'])
 const welcomeText =
-  'Welcome to Manoa. Your account is set up. Connect Google or Apple in your dashboard to get started. Reply STOP to opt out or HELP for help.'
+  'Welcome to Manoa. Your account is set up. Connect Google, Outlook, or Apple in your dashboard to get started. Reply STOP to opt out or HELP for help.'
 
 async function handleSubscription(subscription: Stripe.Subscription) {
   const profileId =

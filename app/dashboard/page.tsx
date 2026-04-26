@@ -47,7 +47,7 @@ function statusLine({
   smsEnabled: boolean
 }) {
   if (!calendarConnected) {
-    return 'Calendar not connected • Connect Google or Apple'
+    return 'Calendar not connected • Connect Google, Outlook, or Apple'
   }
 
   if (!smsEnabled) {
@@ -171,8 +171,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   const smsReady = smsEnabled && Boolean(profile.phone_e164)
   const googleAccounts = calendarAccounts.filter((account) => account.provider === 'google')
+  const outlookAccounts = calendarAccounts.filter((account) => account.provider === 'outlook')
   const appleAccounts = calendarAccounts.filter((account) => account.provider === 'apple')
   const canAddGoogleAccount = googleAccounts.length < 2
+  const canAddOutlookAccount = outlookAccounts.length < 2
   const canAddAppleAccount = appleAccounts.length < 1
   const appleConnectHref = canAddAppleAccount
     ? `/setup/apple-calendar?profile_id=${profile.id}`
@@ -180,7 +182,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const totalConnectedAccounts = calendarAccounts.length
   const readyToText = Boolean(manoaNumber && profile.calendarConnected && smsReady)
   const connectedAccountLabel = `${totalConnectedAccounts} connected account${totalConnectedAccounts === 1 ? '' : 's'}`
-  let dashboardLede = 'Connect Google or Apple to start using Manoa.'
+  let dashboardLede = 'Connect Google, Outlook, or Apple to start using Manoa.'
   if (profile.calendarConnected) {
     dashboardLede = smsReady
       ? 'Everything is set up. Use the console below while SMS approval finishes, or connect another calendar.'
@@ -400,13 +402,15 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             <a className="button dashboard-button" href={`/api/calendar/google/start?profile_id=${profile.id}`}>
               {googleAccounts.length ? (canAddGoogleAccount ? 'Add Google account' : 'Reconnect Google') : 'Connect Google'}
             </a>
+            <a className="button dashboard-button secondary-button" href={`/api/calendar/outlook/start?profile_id=${profile.id}`}>
+              {outlookAccounts.length ? (canAddOutlookAccount ? 'Add Outlook account' : 'Reconnect Outlook') : 'Connect Outlook'}
+            </a>
             <a className="button dashboard-button secondary-button" href={appleConnectHref}>
               {appleAccounts.length ? 'Reconnect Apple' : 'Connect Apple'}
             </a>
-            <span className="dashboard-action-note">Outlook coming soon</span>
           </div>
           <p className="dashboard-stage-footnote">
-            Apple uses an app-specific password. Google is the fastest setup.
+            Apple uses an app-specific password. Google and Outlook use sign-in redirects.
           </p>
 
           {calendarAccounts.length ? (
@@ -422,22 +426,18 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                       </p>
                     </div>
                     <div className="calendar-account-actions">
-                      {account.provider === 'outlook' ? (
-                        <span className="nav-link is-disabled" aria-disabled="true">
-                          Coming soon
-                        </span>
-                      ) : (
-                        <a
-                          className="nav-link"
-                          href={
-                            account.provider === 'apple'
-                              ? `/setup/apple-calendar?profile_id=${profile.id}&account_id=${account.accountId}`
+                      <a
+                        className="nav-link"
+                        href={
+                          account.provider === 'apple'
+                            ? `/setup/apple-calendar?profile_id=${profile.id}&account_id=${account.accountId}`
+                            : account.provider === 'outlook'
+                              ? `/api/calendar/outlook/start?profile_id=${profile.id}&account_id=${account.accountId}`
                               : `/api/calendar/google/start?profile_id=${profile.id}&account_id=${account.accountId}`
-                          }
-                        >
-                          Reconnect
-                        </a>
-                      )}
+                        }
+                      >
+                        Reconnect
+                      </a>
                       <DisconnectCalendarAccountForm
                         profileId={profile.id}
                         provider={account.provider}
@@ -503,7 +503,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           ) : (
             <div className="dashboard-empty-state">
               <strong>Connect a calendar first.</strong>
-              <p>Choose Google or Apple above to unlock the console.</p>
+              <p>Choose Google, Outlook, or Apple above to unlock the console.</p>
             </div>
           )}
 
