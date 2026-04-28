@@ -1768,14 +1768,40 @@ function queryWordVariants(word: string) {
   return variants
 }
 
-function eventMatchScore(event: EventSummary, words: string[]) {
+function normalizeSearchText(value: string) {
+  return tokenizeText(value).join(' ')
+}
+
+function containsVariant(text: string, word: string) {
+  return queryWordVariants(word).some((variant) => text.includes(variant))
+}
+
+function eventMatchScore(event: EventSummary, words: string[], normalizedQuery?: string) {
   if (!words.length) return 0
-  const haystack = [event.title, event.location, event.description].join(' ').toLowerCase()
-  return words.reduce(
-    (score, word) =>
-      queryWordVariants(word).some((variant) => haystack.includes(variant)) ? score + 1 : score,
-    0,
-  )
+
+  const normalizedTitle = normalizeSearchText(event.title)
+  const normalizedLocation = normalizeSearchText(event.location)
+  const normalizedDescription = normalizeSearchText(event.description)
+
+  let score = 0
+
+  if (normalizedQuery) {
+    if (normalizedTitle === normalizedQuery) score += 1000
+    else if (normalizedTitle.includes(normalizedQuery)) score += 250
+
+    if (normalizedLocation === normalizedQuery) score += 120
+    else if (normalizedLocation.includes(normalizedQuery)) score += 40
+
+    if (normalizedDescription.includes(normalizedQuery)) score += 20
+  }
+
+  for (const word of words) {
+    if (containsVariant(normalizedTitle, word)) score += 8
+    else if (containsVariant(normalizedLocation, word)) score += 3
+    else if (containsVariant(normalizedDescription, word)) score += 2
+  }
+
+  return score
 }
 
 function sortEventsByStart<T extends { start: string }>(events: T[]) {
@@ -1797,11 +1823,12 @@ function uniqueEvents(events: EventSummary[]) {
 function matchingEventsByQuery(events: EventSummary[], query: string) {
   const words = queryWords(query)
   if (!words.length) return []
+  const normalizedQuery = normalizeSearchText(query)
 
   const scored = events
     .map((event) => ({
       event,
-      score: eventMatchScore(event, words),
+      score: eventMatchScore(event, words, normalizedQuery),
     }))
     .filter((item) => item.score > 0)
     .sort((left, right) => {
@@ -1818,8 +1845,9 @@ function bestEventByQuery(events: EventSummary[], query: string) {
   if (matches.length === 1) return matches[0]
 
   const words = queryWords(query)
-  const topScore = eventMatchScore(matches[0], words)
-  const topMatches = matches.filter((event) => eventMatchScore(event, words) === topScore)
+  const normalizedQuery = normalizeSearchText(query)
+  const topScore = eventMatchScore(matches[0], words, normalizedQuery)
+  const topMatches = matches.filter((event) => eventMatchScore(event, words, normalizedQuery) === topScore)
   return topMatches.length === 1 ? topMatches[0] : null
 }
 
@@ -4332,14 +4360,14 @@ export async function handleIncomingSms({
       intent.dateWindow ||
       {
         start: startOfDay(0, profile.timezone),
-        end: addDays(startOfDay(0, profile.timezone), 90, profile.timezone),
+        end: addDays(startOfDay(0, profile.timezone), 365, profile.timezone),
         label: 'upcoming',
       }
     const events = await listUpcomingEvents({
       profileId: profile.id,
       startAt: dateWindow.start,
       windowMinutes: windowMinutes(dateWindow),
-      maxResults: 80,
+      maxResults: 250,
       timeZone: profile.timezone,
     })
     const reply = eventLookupText(intent.query, matchingEventsByQuery(events, intent.query), profile.timezone)
