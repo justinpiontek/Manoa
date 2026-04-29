@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { appUrl } from '@/src/lib/env'
+import { getAuthenticatedDashboardProfileForRoute } from '@/src/lib/dashboardAuth'
 import { storeAppleConnection } from '@/src/lib/calendar/google'
 
 function classifyAppleError(error: unknown) {
@@ -34,19 +35,23 @@ function classifyAppleError(error: unknown) {
 }
 
 export async function POST(request: NextRequest) {
+  const profile = await getAuthenticatedDashboardProfileForRoute()
+  if (!profile) {
+    return Response.redirect(`${appUrl()}/login`, 303)
+  }
+
   const formData = await request.formData()
-  const profileId = String(formData.get('profile_id') || '').trim()
   const accountId = String(formData.get('account_id') || '').trim() || null
   const email = String(formData.get('apple_email') || '').trim()
   const appSpecificPassword = String(formData.get('app_specific_password') || '').trim()
 
-  if (!profileId || !email || !appSpecificPassword) {
+  if (!email || !appSpecificPassword) {
     return new Response('Missing Apple Calendar details.', { status: 400 })
   }
 
   try {
     await storeAppleConnection(
-      profileId,
+      profile.id,
       {
         email,
         appSpecificPassword,

@@ -979,7 +979,12 @@ function agendaWindowText(label: string, events: EventSummary[], timeZone?: stri
     .join('\n')}`
 }
 
-function eventLookupText(query: string, matches: EventSummary[], timeZone?: string) {
+function eventLookupText(
+  query: string,
+  matches: EventSummary[],
+  timeZone?: string,
+  mode: 'when' | 'where' | 'time' = 'when',
+) {
   const cleanedQuery = query.trim()
   if (!matches.length) {
     return `I couldn't find ${cleanedQuery || 'that'} on your upcoming calendar. Try the event name plus a day or time.`
@@ -988,12 +993,17 @@ function eventLookupText(query: string, matches: EventSummary[], timeZone?: stri
   const topMatches = sortAgendaEvents(matches).slice(0, 3)
   if (topMatches.length === 1) {
     const event = topMatches[0]
+    if (mode === 'where') {
+      return event.location
+        ? `${event.title} is at ${event.location} on ${eventDateLabel(event, timeZone)}.`
+        : `${event.title} is ${eventDateLabel(event, timeZone)} on ${event.calendarName}. I don't have a location saved for it.`
+    }
     return `${event.title} is ${eventDateLabel(event, timeZone)} on ${event.calendarName}.`
   }
 
   return `I found a few matches:\n${topMatches
     .map((event, index) => `${index + 1}. ${eventDateLabel(event, timeZone)} ${event.title} (${event.calendarName})`)
-    .join('\n')}`
+    .join('\n')}\nText more of the title, or add the month or day to narrow it down.`
 }
 
 function windowMinutes(window: DateWindow) {
@@ -1758,6 +1768,7 @@ function queryWords(query: string) {
     .toLowerCase()
     .split(/[^a-z0-9]+/)
     .filter(Boolean)
+    .filter((word) => word.length > 1)
     .filter((word) => !queryNoiseWords.has(word))
 }
 
@@ -2056,8 +2067,8 @@ async function searchUpcomingEvents(profileId: string, timeZone?: string) {
   return listUpcomingEvents({
     profileId,
     startAt: startOfDay(0, timeZone),
-    windowMinutes: 90 * 24 * 60,
-    maxResults: 80,
+    windowMinutes: 365 * 24 * 60,
+    maxResults: 250,
     timeZone,
   })
 }
@@ -4370,7 +4381,12 @@ export async function handleIncomingSms({
       maxResults: 250,
       timeZone: profile.timezone,
     })
-    const reply = eventLookupText(intent.query, matchingEventsByQuery(events, intent.query), profile.timezone)
+    const reply = eventLookupText(
+      intent.query,
+      matchingEventsByQuery(events, intent.query),
+      profile.timezone,
+      intent.mode,
+    )
     await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
     return reply
   }

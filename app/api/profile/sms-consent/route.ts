@@ -1,15 +1,12 @@
 import { NextRequest } from 'next/server'
 import { appUrl } from '@/src/lib/env'
-import {
-  assertMatchingDashboardProfile,
-  getAuthenticatedDashboardProfileForRoute,
-} from '@/src/lib/dashboardAuth'
+import { getAuthenticatedDashboardProfileForRoute } from '@/src/lib/dashboardAuth'
 import { normalizePhone } from '@/src/lib/phone'
 import { supabaseAdmin } from '@/src/lib/supabaseAdmin'
 
 export async function POST(request: NextRequest) {
   const formData = await request.formData()
-  const profileId = String(formData.get('profile_id') || '').trim()
+  const intent = String(formData.get('intent') || 'enable').trim().toLowerCase()
   const phone = String(formData.get('phone') || '').trim()
   const smsConsent = String(formData.get('sms_consent') || '').trim().toLowerCase()
   const profile = await getAuthenticatedDashboardProfileForRoute()
@@ -18,8 +15,26 @@ export async function POST(request: NextRequest) {
     return Response.redirect(`${appUrl()}/login`, 303)
   }
 
-  if (!assertMatchingDashboardProfile(profileId, profile)) {
-    return new Response('Profile mismatch.', { status: 403 })
+  if (intent === 'disable') {
+    const { error } = await supabaseAdmin
+      .from('profiles')
+      .update({
+        sms_opted_out_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', profile.id)
+
+    if (error) {
+      return Response.redirect(
+        `${appUrl()}/dashboard?settings=sms_consent_error`,
+        303,
+      )
+    }
+
+    return Response.redirect(
+      `${appUrl()}/dashboard?settings=sms_consent_disabled`,
+      303,
+    )
   }
 
   if (smsConsent !== 'yes') {

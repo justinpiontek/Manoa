@@ -1,5 +1,6 @@
 import ManoaWordmark from '@/src/components/ManoaWordmark'
 import AppleCalendarConnectForm from '@/src/components/AppleCalendarConnectForm'
+import { getAuthenticatedDashboardProfile } from '@/src/lib/dashboardAuth'
 import Image from 'next/image'
 import type { Metadata } from 'next'
 
@@ -89,15 +90,14 @@ function AppleStepVisual({ screenshots }: { screenshots: AppleStepScreenshot[] }
 
 type AppleCalendarSetupPageProps = {
   searchParams: Promise<{
-    profile_id?: string
     account_id?: string
   }>
 }
 
 export default async function AppleCalendarSetupPage({ searchParams }: AppleCalendarSetupPageProps) {
   const params = await searchParams
-  const profileId = params.profile_id || ''
   const reconnectAccountId = params.account_id || ''
+  const profile = await getAuthenticatedDashboardProfile()
 
   return (
     <main className="setup-shell">
@@ -137,15 +137,13 @@ export default async function AppleCalendarSetupPage({ searchParams }: AppleCale
                     Use the Apple email for your iCloud calendars and the app-specific password Apple generated.
                     Do not enter your normal Apple password.
                   </p>
-                  {profileId ? (
+                  {profile ? (
                     <AppleCalendarConnectForm
-                      profileId={profileId}
                       reconnectAccountId={reconnectAccountId || null}
                     />
                   ) : (
                     <p className="setup-note">
-                      Open this page from your dashboard so Manoa knows which account should receive the Apple
-                      calendars.
+                      Log in to your dashboard first so Manoa knows which account should receive the Apple calendars.
                     </p>
                   )}
                 </div>
@@ -179,11 +177,8 @@ export default async function AppleCalendarSetupPage({ searchParams }: AppleCale
         </div>
 
         <div className="setup-footer">
-          <a
-            className="button dashboard-link-button"
-            href="/dashboard"
-          >
-            Back to dashboard
+          <a className="button dashboard-link-button" href={profile ? '/dashboard' : '/login'}>
+            {profile ? 'Back to dashboard' : 'Log in to continue'}
           </a>
           <a className="nav-link" href="/">
             Back to the site

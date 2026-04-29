@@ -1,6 +1,5 @@
 import { stripe } from '@/src/lib/stripeClient'
 import { formatPhoneForDisplay } from '@/src/lib/phone'
-import { getDashboardProfile } from '@/src/lib/profiles'
 import { getAuthenticatedDashboardProfile } from '@/src/lib/dashboardAuth'
 import ManoaWordmark from '@/src/components/ManoaWordmark'
 import type { Metadata } from 'next'
@@ -20,33 +19,26 @@ type SetupPageProps = {
 
 export default async function SetupPage({ searchParams }: SetupPageProps) {
   const params = await searchParams
-  let profileId = params.profile_id || ''
+  let checkoutComplete = false
   const calendarConnected = params.calendar === 'connected'
 
-  if (!profileId && params.session_id && process.env.STRIPE_SECRET_KEY) {
+  if (params.session_id && process.env.STRIPE_SECRET_KEY) {
     try {
-      const session = await stripe.checkout.sessions.retrieve(params.session_id)
-      profileId =
-        session.client_reference_id || session.metadata?.profile_id || ''
+      await stripe.checkout.sessions.retrieve(params.session_id)
+      checkoutComplete = true
     } catch {
-      profileId = ''
+      checkoutComplete = false
     }
   }
 
   const manoaNumber = process.env.TWILIO_FROM_NUMBER?.trim() || ''
   const displayNumber = manoaNumber ? formatPhoneForDisplay(manoaNumber) : ''
-  const appleConnectHref = profileId ? `/setup/apple-calendar?profile_id=${profileId}` : '/setup/apple-calendar'
-  const profile = profileId ? await getDashboardProfile(profileId) : null
   const authenticatedProfile = await getAuthenticatedDashboardProfile()
-  const displayUserPhone = profile?.phone_e164 ? formatPhoneForDisplay(profile.phone_e164) : ''
-  const authenticatedForThisSetup =
-    Boolean(authenticatedProfile) &&
-    (!profileId ||
-      authenticatedProfile?.id === profileId ||
-      (profile?.id ? authenticatedProfile?.id === profile.id : false))
-  const loginHref = profile?.email
-    ? `/login?email=${encodeURIComponent(profile.email)}`
-    : '/login'
+  const displayUserPhone = authenticatedProfile?.phone_e164
+    ? formatPhoneForDisplay(authenticatedProfile.phone_e164)
+    : ''
+  const authenticatedForThisSetup = Boolean(authenticatedProfile)
+  const appleConnectHref = '/setup/apple-calendar'
 
   return (
     <main className="setup-shell">
@@ -85,15 +77,9 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
 
         {!authenticatedForThisSetup ? (
           <div className="notice warning" role="status" aria-live="polite">
-            {profile?.email ? (
-              <>
-                Payment is done. To open the dashboard, use the secure login link for{' '}
-                <strong>{profile.email}</strong>. If the last link bounced you back here, send a
-                fresh one below.
-              </>
-            ) : (
-              <>Payment is done. Use the secure email login link to open your dashboard.</>
-            )}
+            {checkoutComplete
+              ? 'Payment is done. Use the secure email login link to open your dashboard before connecting a calendar.'
+              : 'Use the secure email login link to open your dashboard before connecting a calendar.'}
           </div>
         ) : null}
 
@@ -104,7 +90,7 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
             <p>
               {authenticatedForThisSetup
                 ? 'Your plan is set up. You can use Manoa in the dashboard right away, with or without texting.'
-                : 'Your plan is set up. Next, open your dashboard with the secure email login link for this account.'}
+                : 'Your plan is set up. Next, open your dashboard with your secure email login link.'}
             </p>
           </article>
 
@@ -116,12 +102,12 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
               agendas, and keep reminders accurate. Apple Calendar still uses the longer manual iCloud
               path.
             </p>
-            {profileId ? (
+            {authenticatedForThisSetup ? (
               <div className="dashboard-hero-actions">
-                <a className="button setup-action" href={`/api/calendar/google/start?profile_id=${profileId}`}>
+                <a className="button setup-action" href="/api/calendar/google/start">
                   {calendarConnected ? 'Connect or reconnect Google' : 'Connect Google Calendar'}
                 </a>
-                <a className="button setup-action secondary-button" href={`/api/calendar/outlook/start?profile_id=${profileId}`}>
+                <a className="button setup-action secondary-button" href="/api/calendar/outlook/start">
                   Connect Outlook Calendar
                 </a>
                 <a className="button setup-action secondary-button" href={appleConnectHref}>
@@ -130,7 +116,7 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
               </div>
             ) : (
               <p className="setup-note">
-                Missing setup link. Head back to the signup page and restart checkout.
+                Log in first, then connect your calendar from here or from the dashboard.
               </p>
             )}
           </article>
@@ -165,11 +151,11 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
             <a className="button dashboard-link-button" href="/dashboard">
               Open dashboard
             </a>
-          ) : profileId ? (
-            <a className="button dashboard-link-button" href={loginHref}>
+          ) : (
+            <a className="button dashboard-link-button" href="/login">
               Log in to open dashboard
             </a>
-          ) : null}
+          )}
           <a className="nav-link" href="/">
             Back to the site
           </a>

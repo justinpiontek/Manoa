@@ -177,8 +177,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const canAddOutlookAccount = outlookAccounts.length < 2
   const canAddAppleAccount = appleAccounts.length < 1
   const appleConnectHref = canAddAppleAccount
-    ? `/setup/apple-calendar?profile_id=${profile.id}`
-    : `/setup/apple-calendar?profile_id=${profile.id}&account_id=${appleAccounts[0]?.accountId || ''}`
+    ? '/setup/apple-calendar'
+    : `/setup/apple-calendar?account_id=${appleAccounts[0]?.accountId || ''}`
   const totalConnectedAccounts = calendarAccounts.length
   const readyToText = Boolean(manoaNumber && profile.calendarConnected && smsReady)
   const connectedAccountLabel = `${totalConnectedAccounts} connected account${totalConnectedAccounts === 1 ? '' : 's'}`
@@ -244,42 +244,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         {!smsReady ? (
           <div className="notice warning" role="status" aria-live="polite">
             {profile.phone_e164
-              ? 'SMS is off for this account. If you skipped the signup consent box, Manoa will not text this number. Use the live console below instead, or turn texting on here.'
-              : 'Texting is not set up for this account yet. You can keep using the live console below, or add a phone number and turn texting on here.'}
-            <form className="dashboard-inline-consent" action="/api/profile/sms-consent" method="post">
-              <input type="hidden" name="profile_id" value={profile.id} />
-              {!profile.phone_e164 ? (
-                <div className="field">
-                  <label htmlFor="dashboard-phone">Phone for texting</label>
-                  <input
-                    id="dashboard-phone"
-                    name="phone"
-                    type="tel"
-                    inputMode="tel"
-                    autoComplete="tel"
-                    placeholder="+1 555 555 5555"
-                    required
-                  />
-                </div>
-              ) : null}
-              <label className="consent-check pricing-consent" htmlFor="dashboard-sms-consent">
-                <input
-                  id="dashboard-sms-consent"
-                  name="sms_consent"
-                  type="checkbox"
-                  value="yes"
-                />
-                <span>
-                  I agree to receive recurring service-related SMS messages from Manoa, including
-                  scheduling, reminders, and account notifications. Message frequency varies. Msg
-                  &amp; data rates may apply. Reply STOP to opt out and HELP for help. See{' '}
-                  <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms</a>.
-                </span>
-              </label>
-              <button className="button dashboard-button" type="submit">
-                Turn on SMS for this account
-              </button>
-            </form>
+              ? 'SMS is off for this account. You can still use the live console below, or turn texting on in Settings.'
+              : 'Texting is not set up for this account yet. You can keep using the live console below, or add a phone in Settings if you want SMS later.'}
           </div>
         ) : null}
 
@@ -349,6 +315,12 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </div>
         ) : null}
 
+        {params.settings === 'sms_consent_disabled' ? (
+          <div className="notice success" role="status" aria-live="polite">
+            SMS turned off for this account. You can still use Manoa in the dashboard console any time.
+          </div>
+        ) : null}
+
         {params.settings === 'sms_consent_missing' ? (
           <div className="notice warning" role="status" aria-live="polite">
             Check the SMS consent box before turning texts on for this account.
@@ -399,10 +371,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </div>
 
           <div className="dashboard-stage-actions">
-            <a className="button dashboard-button" href={`/api/calendar/google/start?profile_id=${profile.id}`}>
+            <a className="button dashboard-button" href="/api/calendar/google/start">
               {googleAccounts.length ? (canAddGoogleAccount ? 'Add Google account' : 'Reconnect Google') : 'Connect Google'}
             </a>
-            <a className="button dashboard-button secondary-button" href={`/api/calendar/outlook/start?profile_id=${profile.id}`}>
+            <a className="button dashboard-button secondary-button" href="/api/calendar/outlook/start">
               {outlookAccounts.length ? (canAddOutlookAccount ? 'Add Outlook account' : 'Reconnect Outlook') : 'Connect Outlook'}
             </a>
             <a className="button dashboard-button secondary-button" href={appleConnectHref}>
@@ -430,10 +402,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                         className="nav-link"
                         href={
                           account.provider === 'apple'
-                            ? `/setup/apple-calendar?profile_id=${profile.id}&account_id=${account.accountId}`
+                            ? `/setup/apple-calendar?account_id=${account.accountId}`
                             : account.provider === 'outlook'
-                              ? `/api/calendar/outlook/start?profile_id=${profile.id}&account_id=${account.accountId}`
-                              : `/api/calendar/google/start?profile_id=${profile.id}&account_id=${account.accountId}`
+                              ? `/api/calendar/outlook/start?account_id=${account.accountId}`
+                              : `/api/calendar/google/start?account_id=${account.accountId}`
                         }
                       >
                         Reconnect
@@ -540,6 +512,88 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </div>
 
           <div className="dashboard-support-grid">
+            <article className="dashboard-support-card">
+              <p className="dashboard-label">Texting</p>
+              <h3>{smsReady ? 'Texting is on' : 'Texting is optional'}</h3>
+              <p>
+                {smsReady
+                  ? `Manoa can text ${displayUserPhone} for scheduling, reminders, and account updates.`
+                  : 'You can use Manoa without texting. Turn SMS on here if you want Manoa to text this account too.'}
+              </p>
+
+              {smsReady ? (
+                <>
+                  <div className="dashboard-sms-meta">
+                    <p>
+                      <strong>Phone</strong>
+                      <span>{displayUserPhone}</span>
+                    </p>
+                    <p>
+                      <strong>How to opt out</strong>
+                      <span>Reply STOP at any time, or turn texting off here.</span>
+                    </p>
+                    <p>
+                      <strong>Help</strong>
+                      <span>Reply HELP any time for help.</span>
+                    </p>
+                  </div>
+                  <form className="dashboard-inline-consent" action="/api/profile/sms-consent" method="post">
+                    <input type="hidden" name="intent" value="disable" />
+                    <button className="button dashboard-button secondary-button" type="submit">
+                      Turn off texting
+                    </button>
+                  </form>
+                </>
+              ) : (
+                <>
+                  <p className="dashboard-sms-helper">
+                    Turn texting on to receive scheduling, reminder, and account messages from Manoa.
+                  </p>
+                  <form className="dashboard-inline-consent" action="/api/profile/sms-consent" method="post">
+                    <input type="hidden" name="intent" value="enable" />
+                    {!profile.phone_e164 ? (
+                      <div className="field">
+                        <label htmlFor="dashboard-phone">Phone for texting</label>
+                        <input
+                          id="dashboard-phone"
+                          name="phone"
+                          type="tel"
+                          inputMode="tel"
+                          autoComplete="tel"
+                          placeholder="+1 555 555 5555"
+                          required
+                        />
+                      </div>
+                    ) : (
+                      <div className="dashboard-sms-meta">
+                        <p>
+                          <strong>Phone</strong>
+                          <span>{displayUserPhone}</span>
+                        </p>
+                      </div>
+                    )}
+                    <label className="consent-check pricing-consent" htmlFor="dashboard-sms-consent">
+                      <input
+                        id="dashboard-sms-consent"
+                        name="sms_consent"
+                        type="checkbox"
+                        value="yes"
+                      />
+                      <span>
+                        I agree to receive recurring service-related SMS messages from Manoa, including
+                        scheduling, reminders, and account notifications. Message frequency varies. Msg
+                        &amp; data rates may apply. Reply STOP to opt out and HELP for help. See{' '}
+                        <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms</a>.
+                      </span>
+                    </label>
+                    <button className="button dashboard-button" type="submit">
+                      Turn on texting
+                    </button>
+                  </form>
+                </>
+              )}
+            </article>
+
             <article className="dashboard-support-card">
               <p className="dashboard-label">Timezone</p>
               <h3>Use the right local time</h3>

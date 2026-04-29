@@ -16,7 +16,7 @@ export type DateWindow = {
 export type ParsedSmsIntent =
   | { type: 'choice'; choice: number }
   | { type: 'agenda'; day: 'today' | 'tomorrow'; dateWindow?: DateWindow | null; label?: string }
-  | { type: 'lookup'; query: string; dateWindow?: DateWindow | null }
+  | { type: 'lookup'; query: string; dateWindow?: DateWindow | null; mode?: 'when' | 'where' | 'time' }
   | {
       type: 'schedule'
       title: string
@@ -755,19 +755,19 @@ function stripSchedulingNoise(text: string) {
 function parseLookupQuery(text: string) {
   const cleaned = text.trim().replace(/[?!.]+$/g, '')
   const patterns = [
-    /^when(?:['’]s|\s+is|\s+are)?\s+(?:is\s+|are\s+)?(?:my\s+|the\s+)?(.+)$/i,
-    /^what\s+time(?:\s+is|\s+are)?\s+(?:my\s+|the\s+)?(.+)$/i,
-    /^where(?:['’]s|\s+is|\s+are)?\s+(?:is\s+|are\s+)?(?:my\s+|the\s+)?(.+)$/i,
-    /^when\s+do\s+i\s+have\s+(?:my\s+|the\s+)?(.+)$/i,
+    { mode: 'when' as const, pattern: /^when(?:['’]s|\s+is|\s+are)?\s+(?:is\s+|are\s+)?(?:my\s+|the\s+)?(.+)$/i },
+    { mode: 'time' as const, pattern: /^what\s+time(?:\s+is|\s+are)?\s+(?:my\s+|the\s+)?(.+)$/i },
+    { mode: 'where' as const, pattern: /^where(?:['’]s|\s+is|\s+are)?\s+(?:is\s+|are\s+)?(?:my\s+|the\s+)?(.+)$/i },
+    { mode: 'when' as const, pattern: /^when\s+do\s+i\s+have\s+(?:my\s+|the\s+)?(.+)$/i },
   ]
 
-  for (const pattern of patterns) {
+  for (const { mode, pattern } of patterns) {
     const match = cleaned.match(pattern)
     const query = match?.[1]
       ?.replace(/\b(?:scheduled|happening|coming up)\b/gi, ' ')
       .replace(/\s+/g, ' ')
       .trim()
-    if (query) return query
+    if (query) return { query, mode }
   }
 
   return null
@@ -782,7 +782,7 @@ export function parseSmsIntent(body: string, timeZone?: string): ParsedSmsIntent
   if (choice) return { type: 'choice', choice }
 
   const lookupQuery = parseLookupQuery(text)
-  if (lookupQuery) return { type: 'lookup', query: lookupQuery, dateWindow }
+  if (lookupQuery) return { type: 'lookup', query: lookupQuery.query, dateWindow, mode: lookupQuery.mode }
 
   const startsWithScheduleCommand = /^(schedule|scheudle|chedule|book|add|set up|put|throw|save|plan|pencil in|block off|already scheduled|already booked|they scheduled|they booked)\b/.test(lower)
   const isTomorrowAgenda =

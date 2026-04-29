@@ -1,6 +1,8 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { appUrl } from '@/src/lib/env'
+import { getAuthenticatedDashboardProfileForRoute } from '@/src/lib/dashboardAuth'
 import { storeOutlookConnection } from '@/src/lib/calendar/google'
+import { clearCalendarOAuthCookie, readCalendarOAuthState } from '@/src/lib/calendar/oauthState'
 
 function calendarErrorCode(error: unknown) {
   const message = error instanceof Error ? error.message.toLowerCase() : ''
@@ -29,12 +31,27 @@ function calendarErrorDetail(error: unknown) {
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get('code')
   const rawState = request.nextUrl.searchParams.get('state')
-  const state = new URLSearchParams(rawState || '')
-  const profileId = state.get('profile_id') || rawState
-  const reconnectAccountId = state.get('account_id')
+  const authedProfile = await getAuthenticatedDashboardProfileForRoute()
+  const cookieState = readCalendarOAuthState(
+    'outlook',
+    request.cookies.get('manoa_outlook_oauth')?.value,
+    rawState,
+  )
+
+  const legacyState = new URLSearchParams(rawState || '')
+  const legacyProfileId = legacyState.get('profile_id') || rawState
+  const legacyReconnectAccountId = legacyState.get('account_id')
+
+  const profileId =
+    cookieState?.profileId ||
+    (authedProfile && legacyProfileId && authedProfile.id === legacyProfileId ? legacyProfileId : '')
+  const reconnectAccountId = cookieState?.accountId || legacyReconnectAccountId
+  const clearCookie = clearCalendarOAuthCookie('outlook')
 
   if (!code || !profileId) {
-    return new Response('Missing Outlook OAuth code or state.', { status: 400 })
+    const response = NextResponse.redirect(`${appUrl()}/login?login=error`, 303)
+    response.cookies.set(clearCookie.name, clearCookie.value, clearCookie.options)
+    return response
   }
 
   try {
@@ -42,14 +59,18 @@ export async function GET(request: NextRequest) {
       reconnectAccountId,
     })
 
-    return Response.redirect(`${appUrl()}/dashboard?calendar=connected`, 303)
+    const response = NextResponse.redirect(`${appUrl()}/dashboard?calendar=connected`, 303)
+    response.cookies.set(clearCookie.name, clearCookie.value, clearCookie.options)
+    return response
   } catch (error) {
     console.error('Outlook calendar callback failed', error)
     const code = calendarErrorCode(error)
     const detail = calendarErrorDetail(error)
-    return Response.redirect(
+    const response = NextResponse.redirect(
       `${appUrl()}/dashboard?calendar=error&calendar_error=${encodeURIComponent(code)}&calendar_error_detail=${encodeURIComponent(detail)}`,
       303,
     )
+    response.cookies.set(clearCookie.name, clearCookie.value, clearCookie.options)
+    return response
   }
 }

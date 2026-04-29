@@ -3,12 +3,10 @@
 import { useState } from 'react'
 
 type AppleCalendarConnectFormProps = {
-  profileId: string
   reconnectAccountId?: string | null
 }
 
 export default function AppleCalendarConnectForm({
-  profileId,
   reconnectAccountId,
 }: AppleCalendarConnectFormProps) {
   const [pending, setPending] = useState(false)
@@ -21,7 +19,6 @@ export default function AppleCalendarConnectForm({
 
   return (
     <form action="/api/calendar/apple/connect" method="post" className="apple-connect-form" onSubmit={handleSubmit}>
-      <input type="hidden" name="profile_id" value={profileId} />
       {reconnectAccountId ? <input type="hidden" name="account_id" value={reconnectAccountId} /> : null}
 
       <label className="calendar-field">

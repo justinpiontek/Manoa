@@ -122,12 +122,41 @@ button {
   margin-top: 14px;
 }
 
+.dashboard-inline-consent .field {
+  margin-top: 0;
+}
+
 .dashboard-inline-consent .pricing-consent {
   margin-top: 0;
 }
 
 .dashboard-inline-consent .dashboard-button {
   margin-top: 12px;
+}
+
+.dashboard-sms-helper {
+  margin-top: 12px;
+}
+
+.dashboard-sms-meta {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.dashboard-sms-meta p {
+  margin: 0;
+}
+
+.dashboard-sms-meta strong,
+.dashboard-sms-meta span {
+  display: block;
+}
+
+.dashboard-sms-meta span {
+  margin-top: 4px;
+  color: var(--muted);
+  line-height: 1.6;
 }
 
 .notice.warning {

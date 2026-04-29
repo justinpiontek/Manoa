@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
           : {}),
       },
     },
-    success_url: `${baseUrl}/setup?profile_id=${profile.id}`,
+    success_url: `${baseUrl}/setup?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${baseUrl}/?checkout=cancelled`,
   })
 

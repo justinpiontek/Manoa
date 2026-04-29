@@ -1,16 +1,22 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { appUrl } from '@/src/lib/env'
+import { getAuthenticatedDashboardProfileForRoute } from '@/src/lib/dashboardAuth'
 import { googleAuthUrl } from '@/src/lib/calendar/google'
+import { createCalendarOAuthState } from '@/src/lib/calendar/oauthState'
 
 export async function GET(request: NextRequest) {
-  const profileId = request.nextUrl.searchParams.get('profile_id')
-  const accountId = request.nextUrl.searchParams.get('account_id')
-  if (!profileId) {
-    return new Response('Missing profile_id.', { status: 400 })
+  const profile = await getAuthenticatedDashboardProfileForRoute()
+  if (!profile) {
+    return Response.redirect(`${appUrl()}/login`, 303)
   }
 
-  const state = new URLSearchParams()
-  state.set('profile_id', profileId)
-  if (accountId) state.set('account_id', accountId)
+  const accountId = request.nextUrl.searchParams.get('account_id')
+  const oauthState = createCalendarOAuthState('google', {
+    profileId: profile.id,
+    accountId,
+  })
 
-  return Response.redirect(googleAuthUrl(state.toString()), 303)
+  const response = NextResponse.redirect(googleAuthUrl(oauthState.state), 303)
+  response.cookies.set(oauthState.cookie.name, oauthState.cookie.value, oauthState.cookie.options)
+  return response
 }

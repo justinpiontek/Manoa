@@ -196,6 +196,12 @@ assertAgendaWindow("what's coming up", 'coming up')
 const lookup = parseSmsIntent("When's Oakleys appointment", timeZone)
 assert.equal(lookup.type, 'lookup')
 assert.equal(lookup.query, 'Oakleys appointment')
+assert.equal(lookup.mode, 'when')
+
+const whereLookup = parseSmsIntent("Where is Oakleys appointment", timeZone)
+assert.equal(whereLookup.type, 'lookup')
+assert.equal(whereLookup.query, 'Oakleys appointment')
+assert.equal(whereLookup.mode, 'where')
 
 const staceyInvite = assertInviteParse('meeting with Stacey tomorrow at 2', 'meeting tomorrow at 2', ['Stacey'])
 assert.equal(staceyInvite.directInvitees.length, 0)
