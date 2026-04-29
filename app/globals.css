@@ -126,8 +126,20 @@ button {
   margin-top: 0;
 }
 
+.dashboard-inline-consent .consent-check {
+  color: var(--ink);
+}
+
 .dashboard-inline-consent .pricing-consent {
   margin-top: 0;
+}
+
+.dashboard-inline-consent .consent-check strong {
+  color: var(--ink);
+}
+
+.dashboard-inline-consent .consent-check a {
+  color: var(--blue);
 }
 
 .dashboard-inline-consent .dashboard-button {
