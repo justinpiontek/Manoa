@@ -38,7 +38,6 @@ import {
   findPersonContact,
   saveOrUpdatePersonContact,
 } from '../peopleContacts'
-import { isMissingDefaultDurationColumnError } from '../profiles'
 import { profileIdFromDashboardSender } from './sender'
 import {
   classifyEventAuthority,
@@ -71,6 +70,16 @@ type SmsProfile = {
   subscriptionStatus: string
 }
 
+type SmsProfileRow = {
+  id: string
+  email: string
+  phone_e164: string | null
+  timezone: string
+  default_event_duration_minutes?: number | null
+  phone_confirmed_at?: string | null
+  sms_opted_out_at?: string | null
+}
+
 type PendingKind =
   | 'schedule'
   | 'choose_calendar'
@@ -85,6 +94,13 @@ type PendingKind =
   | 'external_cancel_confirm'
   | 'external_reschedule_confirm'
   | 'save_business_contact_phone'
+
+const smsProfileSelectVariants = [
+  'id,email,phone_e164,timezone,default_event_duration_minutes,phone_confirmed_at,sms_opted_out_at',
+  'id,email,phone_e164,timezone,phone_confirmed_at,sms_opted_out_at',
+  'id,email,phone_e164,timezone,default_event_duration_minutes',
+  'id,email,phone_e164,timezone',
+] as const
 
 type SerializedDateWindow = {
   start: string
@@ -2123,60 +2139,101 @@ async function cancelCalendarTarget({
   }
 }
 
+function errorMessage(error: unknown) {
+  return error instanceof Error
+    ? error.message
+    : typeof error === 'object' && error && 'message' in error
+      ? String((error as { message?: unknown }).message || '')
+      : ''
+}
+
+function isMissingSmsProfileColumnError(error: unknown) {
+  const lower = errorMessage(error).toLowerCase()
+  return (
+    lower.includes('does not exist') &&
+    ['default_event_duration_minutes', 'phone_confirmed_at', 'sms_opted_out_at'].some((column) =>
+      lower.includes(column),
+    )
+  )
+}
+
+function isMissingProfileUpdateColumnError(error: unknown, columns: string[]) {
+  const lower = errorMessage(error).toLowerCase()
+  return lower.includes('does not exist') && columns.some((column) => lower.includes(column.toLowerCase()))
+}
+
+function normalizeSmsProfileRow(row: SmsProfileRow) {
+  return {
+    ...row,
+    default_event_duration_minutes: row.default_event_duration_minutes ?? 30,
+    phone_confirmed_at: row.phone_confirmed_at ?? null,
+    sms_opted_out_at: row.sms_opted_out_at ?? null,
+  }
+}
+
+async function selectSmsProfileMaybeSingle(
+  build: (columns: string) => PromiseLike<{ data: SmsProfileRow | null; error: unknown }>,
+) {
+  let lastMissingColumnError: unknown = null
+
+  for (const columns of smsProfileSelectVariants) {
+    const result = await build(columns)
+    if (!result.error) {
+      return result.data ? normalizeSmsProfileRow(result.data) : null
+    }
+
+    if (!isMissingSmsProfileColumnError(result.error)) {
+      throw result.error
+    }
+
+    lastMissingColumnError = result.error
+  }
+
+  if (lastMissingColumnError) {
+    throw lastMissingColumnError
+  }
+
+  return null
+}
+
+async function markPhoneConfirmed(profileId: string) {
+  const now = new Date().toISOString()
+  const attemptedUpdates = [
+    {
+      phone_confirmed_at: now,
+      updated_at: now,
+    },
+    {
+      phone_confirmed_at: now,
+    },
+  ]
+
+  for (const update of attemptedUpdates) {
+    const { error } = await supabaseAdmin.from('profiles').update(update).eq('id', profileId)
+    if (!error) return
+    if (!isMissingProfileUpdateColumnError(error, Object.keys(update))) {
+      throw error
+    }
+  }
+}
+
 async function profileForSender(sender: string) {
   const dashboardProfileId = profileIdFromDashboardSender(sender)
   const queryColumn = dashboardProfileId ? 'id' : 'phone_e164'
   const queryValue = dashboardProfileId || sender
 
-  const result = await supabaseAdmin
-    .from('profiles')
-    .select('id,email,phone_e164,timezone,default_event_duration_minutes,phone_confirmed_at,sms_opted_out_at')
-    .eq(queryColumn, queryValue)
-    .maybeSingle<{
-      id: string
-      email: string
-      phone_e164: string | null
-      timezone: string
-      default_event_duration_minutes: number
-      phone_confirmed_at: string | null
-      sms_opted_out_at: string | null
-    }>()
-
-  let profile = result.data
-  if (result.error && isMissingDefaultDurationColumnError(result.error)) {
-    const fallback = await supabaseAdmin
+  const profile = await selectSmsProfileMaybeSingle((columns) =>
+    supabaseAdmin
       .from('profiles')
-      .select('id,email,phone_e164,timezone,phone_confirmed_at,sms_opted_out_at')
+      .select(columns)
       .eq(queryColumn, queryValue)
-      .maybeSingle<{
-        id: string
-        email: string
-        phone_e164: string | null
-        timezone: string
-        phone_confirmed_at: string | null
-        sms_opted_out_at: string | null
-      }>()
-
-    if (fallback.error) throw fallback.error
-    if (!fallback.data) return null
-    profile = {
-      ...fallback.data,
-      default_event_duration_minutes: 30,
-    }
-  } else if (result.error) {
-    throw result.error
-  }
+      .maybeSingle<SmsProfileRow>(),
+  )
 
   if (!profile) return null
 
   if (!dashboardProfileId && !profile.phone_confirmed_at) {
-    await supabaseAdmin
-      .from('profiles')
-      .update({
-        phone_confirmed_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', profile.id)
+    await markPhoneConfirmed(profile.id)
   }
 
   const { data: subscription, error: subscriptionError } = await supabaseAdmin
@@ -2295,15 +2352,24 @@ async function clearPendingAction(id: string) {
 }
 
 async function markSmsOptOut(profileId: string, optedOut: boolean) {
-  const { error } = await supabaseAdmin
-    .from('profiles')
-    .update({
-      sms_opted_out_at: optedOut ? new Date().toISOString() : null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', profileId)
+  const now = new Date().toISOString()
+  const attemptedUpdates = [
+    {
+      sms_opted_out_at: optedOut ? now : null,
+      updated_at: now,
+    },
+    {
+      sms_opted_out_at: optedOut ? now : null,
+    },
+  ]
 
-  if (error) throw error
+  for (const update of attemptedUpdates) {
+    const { error } = await supabaseAdmin.from('profiles').update(update).eq('id', profileId)
+    if (!error) return
+    if (!isMissingProfileUpdateColumnError(error, Object.keys(update))) {
+      throw error
+    }
+  }
 }
 
 async function clearPendingRemindersForEvent(profileId: string, calendarEventId?: string | null) {
