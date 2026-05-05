@@ -2217,6 +2217,17 @@ async function markPhoneConfirmed(profileId: string) {
   }
 }
 
+async function safeMarkPhoneConfirmed(profileId: string) {
+  try {
+    await markPhoneConfirmed(profileId)
+  } catch (error) {
+    console.error('Could not mark phone as confirmed for inbound SMS sender.', {
+      profileId,
+      error,
+    })
+  }
+}
+
 async function profileForSender(sender: string) {
   const dashboardProfileId = profileIdFromDashboardSender(sender)
   const queryColumn = dashboardProfileId ? 'id' : 'phone_e164'
@@ -2233,7 +2244,7 @@ async function profileForSender(sender: string) {
   if (!profile) return null
 
   if (!dashboardProfileId && !profile.phone_confirmed_at) {
-    await markPhoneConfirmed(profile.id)
+    await safeMarkPhoneConfirmed(profile.id)
   }
 
   const { data: subscription, error: subscriptionError } = await supabaseAdmin
@@ -2265,13 +2276,43 @@ async function logSms({
   direction: 'inbound' | 'outbound'
   twilioMessageSid?: string
 }) {
-  await supabaseAdmin.from('sms_messages').insert({
-    profile_id: profileId || null,
-    from_e164: from,
-    body,
-    direction,
-    twilio_message_sid: twilioMessageSid || null,
-  })
+  try {
+    await supabaseAdmin.from('sms_messages').insert({
+      profile_id: profileId || null,
+      from_e164: from,
+      body,
+      direction,
+      twilio_message_sid: twilioMessageSid || null,
+    })
+  } catch (error) {
+    console.error('Could not log SMS message.', {
+      profileId: profileId || null,
+      from,
+      direction,
+      twilioMessageSid: twilioMessageSid || null,
+      error,
+    })
+  }
+}
+
+async function safeLogSms(params: {
+  profileId?: string
+  from: string
+  body: string
+  direction: 'inbound' | 'outbound'
+  twilioMessageSid?: string
+}) {
+  try {
+    await logSms(params)
+  } catch (error) {
+    console.error('Could not log SMS message.', {
+      profileId: params.profileId || null,
+      from: params.from,
+      direction: params.direction,
+      twilioMessageSid: params.twilioMessageSid || null,
+      error,
+    })
+  }
 }
 
 async function loadPendingAction(
@@ -3881,7 +3922,7 @@ export async function handleIncomingSms({
   const dashboardProfileId = profileIdFromDashboardSender(from)
   const isDashboardConsole = Boolean(dashboardProfileId)
   const profile = await profileForSender(from)
-  await logSms({ profileId: profile?.id, from, body, direction: 'inbound', twilioMessageSid })
+  await safeLogSms({ profileId: profile?.id, from, body, direction: 'inbound', twilioMessageSid })
 
   const lowerBody = body.trim().toLowerCase()
 
@@ -3890,20 +3931,20 @@ export async function handleIncomingSms({
       await markSmsOptOut(profile.id, true)
     }
     const reply = "You won't receive Manoa texts anymore. Reply START to turn them back on."
-    await logSms({ profileId: profile?.id, from, body: reply, direction: 'outbound' })
+    await safeLogSms({ profileId: profile?.id, from, body: reply, direction: 'outbound' })
     return reply
   }
 
   if (!isDashboardConsole && startWords.has(lowerBody)) {
     if (!profile) {
       const reply = "I don't recognize this number yet. Sign up for Manoa first, then text START from this phone."
-      await logSms({ from, body: reply, direction: 'outbound' })
+      await safeLogSms({ from, body: reply, direction: 'outbound' })
       return reply
     }
 
     await markSmsOptOut(profile.id, false)
     const reply = 'Manoa texts are back on.'
-    await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+    await safeLogSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
     return reply
   }
 
@@ -3911,31 +3952,31 @@ export async function handleIncomingSms({
     const reply = profile
       ? 'Manoa can schedule, reschedule, cancel, and send your agenda. Reply STOP to opt out or START to opt back in.'
       : 'Sign up for Manoa first, then text this number from your saved phone.'
-    await logSms({ profileId: profile?.id, from, body: reply, direction: 'outbound' })
+    await safeLogSms({ profileId: profile?.id, from, body: reply, direction: 'outbound' })
     return reply
   }
 
   if (!profile) {
     const reply = "I don't recognize this number yet. Sign up for Manoa first, then text START from this phone."
-    await logSms({ from, body: reply, direction: 'outbound' })
+    await safeLogSms({ from, body: reply, direction: 'outbound' })
     return reply
   }
 
   if (profile.sms_opted_out_at && !isDashboardConsole) {
     const reply = 'You are currently opted out. Reply START to turn Manoa texts back on.'
-    await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+    await safeLogSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
     return reply
   }
 
   if (!activeSubscriptionStatuses.has(profile.subscriptionStatus)) {
     const reply = 'Your Manoa subscription is not active yet. Finish checkout, then text me again.'
-    await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+    await safeLogSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
     return reply
   }
 
   if (!(await hasConnectedCalendar(profile.id))) {
     const reply = 'Your subscription is active. Connect Google, Outlook, or Apple from your setup page, then text me again.'
-    await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+    await safeLogSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
     return reply
   }
 
