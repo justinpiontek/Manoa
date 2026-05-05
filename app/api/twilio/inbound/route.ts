@@ -103,79 +103,102 @@ async function logDirectTwilioReply({
 }
 
 export async function POST(request: NextRequest) {
-  const rawBody = await request.text()
-  const params = Object.fromEntries(new URLSearchParams(rawBody).entries())
-  const signature = request.headers.get('x-twilio-signature')
+  let rawBody = ''
+  let params: Record<string, string> = {}
 
-  const isValid = validateTwilioWebhook({
-    signature,
-    url: publicRequestUrl(request),
-    params,
-  })
+  try {
+    rawBody = await request.text()
+    params = Object.fromEntries(new URLSearchParams(rawBody).entries())
+    const signature = request.headers.get('x-twilio-signature')
+    const requestUrl = publicRequestUrl(request)
 
-  if (!isValid) {
-    return twilioXmlResponse(messageXml('Invalid Twilio signature.'), { status: 403 })
-  }
+    const isValid = validateTwilioWebhook({
+      signature,
+      url: requestUrl,
+      params,
+    })
 
-  const from = normalizePhone(params.From || '')
-  const body = params.Body || ''
-  const twilioMessageSid = params.MessageSid
-
-  if (!from) {
-    return twilioXmlResponse(messageXml('Missing SMS sender.'), { status: 400 })
-  }
-
-  let finalBody = body.trim()
-  if (Number(params.NumMedia || '0') > 0) {
-    const profile = await findProfileByPhone(from)
-    if (!profile) {
-      const reply = await handleIncomingSms({
-        from,
-        body: finalBody || 'photo with event details',
-        twilioMessageSid,
+    if (!isValid) {
+      console.error('Invalid Twilio signature on inbound SMS webhook.', {
+        requestUrl,
+        from: params.From || null,
+        messageSid: params.MessageSid || null,
       })
-      return twilioXmlResponse(messageXml(reply))
+      return twilioXmlResponse(messageXml('Invalid Twilio signature.'), { status: 403 })
     }
 
-    try {
-      const imageResult = await mediaCalendarResult(params, profile.timezone)
-      if (!imageResult?.smsText) {
-        return twilioXmlResponse(
-          messageXml('I can read JPEG, PNG, or WebP images with one clear event. Try a closer crop or type the details.'),
-          { status: 200 },
-        )
-      }
+    const from = normalizePhone(params.From || '')
+    const body = params.Body || ''
+    const twilioMessageSid = params.MessageSid
 
-      if (imageResult.events.length > 1) {
-        const batch = await createCalendarImageBatch({
-          profile,
-          result: imageResult,
-          calendarHint: calendarHintFromImageCaption(finalBody),
-        })
-        await logDirectTwilioReply({
-          profileId: profile.id,
+    if (!from) {
+      return twilioXmlResponse(messageXml('Missing SMS sender.'), { status: 400 })
+    }
+
+    let finalBody = body.trim()
+    if (Number(params.NumMedia || '0') > 0) {
+      const profile = await findProfileByPhone(from)
+      if (!profile) {
+        const reply = await handleIncomingSms({
           from,
-          inboundBody: finalBody || 'Photo with calendar schedule',
-          outboundBody: batch.reply,
+          body: finalBody || 'photo with event details',
           twilioMessageSid,
         })
-        return twilioXmlResponse(messageXml(batch.reply), { status: 200 })
+        return twilioXmlResponse(messageXml(reply))
       }
 
-      finalBody = finalBody ? `${finalBody}\n${imageResult.smsText}` : imageResult.smsText
-    } catch (error) {
-      const message = error instanceof Error ? error.message : ''
-      const reply = /openai|api key|image reading/i.test(message)
-        ? message
-        : 'I could not read one clear calendar event from that photo. Try a closer crop or type the details.'
-      return twilioXmlResponse(messageXml(reply), { status: 200 })
+      try {
+        const imageResult = await mediaCalendarResult(params, profile.timezone)
+        if (!imageResult?.smsText) {
+          return twilioXmlResponse(
+            messageXml('I can read JPEG, PNG, or WebP images with one clear event. Try a closer crop or type the details.'),
+            { status: 200 },
+          )
+        }
+
+        if (imageResult.events.length > 1) {
+          const batch = await createCalendarImageBatch({
+            profile,
+            result: imageResult,
+            calendarHint: calendarHintFromImageCaption(finalBody),
+          })
+          await logDirectTwilioReply({
+            profileId: profile.id,
+            from,
+            inboundBody: finalBody || 'Photo with calendar schedule',
+            outboundBody: batch.reply,
+            twilioMessageSid,
+          })
+          return twilioXmlResponse(messageXml(batch.reply), { status: 200 })
+        }
+
+        finalBody = finalBody ? `${finalBody}\n${imageResult.smsText}` : imageResult.smsText
+      } catch (error) {
+        const message = error instanceof Error ? error.message : ''
+        const reply = /openai|api key|image reading/i.test(message)
+          ? message
+          : 'I could not read one clear calendar event from that photo. Try a closer crop or type the details.'
+        return twilioXmlResponse(messageXml(reply), { status: 200 })
+      }
     }
-  }
 
-  if (!finalBody) {
-    return twilioXmlResponse(messageXml('Text me an event, agenda request, or photo with event details.'), { status: 400 })
-  }
+    if (!finalBody) {
+      return twilioXmlResponse(messageXml('Text me an event, agenda request, or photo with event details.'), { status: 400 })
+    }
 
-  const reply = await handleIncomingSms({ from, body: finalBody, twilioMessageSid })
-  return twilioXmlResponse(messageXml(reply))
+    const reply = await handleIncomingSms({ from, body: finalBody, twilioMessageSid })
+    return twilioXmlResponse(messageXml(reply))
+  } catch (error) {
+    console.error('Twilio inbound route failed.', {
+      error,
+      requestUrl: publicRequestUrl(request),
+      from: params.From || null,
+      messageSid: params.MessageSid || null,
+      bodyPreview: (params.Body || '').slice(0, 160),
+    })
+    return twilioXmlResponse(
+      messageXml('Manoa hit a snag reading that text. Try again in a minute.'),
+      { status: 200 },
+    )
+  }
 }
