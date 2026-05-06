@@ -14,7 +14,7 @@ export default function PrivacyPage() {
         <ManoaWordmark className="legal-back compact" href="/" />
         <p className="legal-eyebrow">Privacy Policy</p>
         <h1 className="legal-title">Privacy Policy</h1>
-        <p className="legal-updated">Last updated: April 8, 2026</p>
+        <p className="legal-updated">Last updated: May 5, 2026</p>
 
         <section className="legal-section">
           <h2>What Manoa collects</h2>
@@ -51,6 +51,20 @@ export default function PrivacyPage() {
         </section>
 
         <section className="legal-section">
+          <h2>Google user data</h2>
+          <p>
+            If you connect Google Calendar, Manoa accesses only the Google user
+            data needed to provide calendar features you request. This may
+            include your connected Google account email address, calendar names
+            and calendar IDs, calendar availability, and the event details
+            needed to read, create, update, or delete events on your behalf.
+            Manoa also stores the authorization tokens needed to keep your
+            Google Calendar connection working until you disconnect it or the
+            connection is otherwise removed.
+          </p>
+        </section>
+
+        <section className="legal-section">
           <h2>SMS consent</h2>
           <p>
             If you choose to opt in to Manoa text messages, you agree to
@@ -74,6 +88,17 @@ export default function PrivacyPage() {
             enforce agreements. Reasonable technical and organizational measures
             are used to protect account, billing, and calendar data.
           </p>
+          <p>
+            Google user data connected through Google Calendar is retained only
+            for as long as needed to provide the calendar features you enable.
+            If you disconnect your Google Calendar account from Manoa, Manoa
+            removes the stored Google Calendar connection data and tokens from
+            active use in the service. If you request account deletion, Manoa
+            will delete stored Google Calendar connection data associated with
+            your account, except where retention is required for legal,
+            security, fraud-prevention, billing, or dispute-resolution
+            purposes.
+          </p>
         </section>
 
         <section className="legal-section">
@@ -84,6 +109,13 @@ export default function PrivacyPage() {
             <strong> HELP</strong> for assistance. Message frequency varies and
             message and data rates may apply. You may also disconnect your
             calendar accounts or cancel your subscription through Manoa support.
+          </p>
+          <p>
+            If you connected Google Calendar, you can disconnect it from your
+            Manoa dashboard at any time. You can also revoke Manoa&apos;s access
+            from your Google account permissions. For account or Google user
+            data deletion requests, contact{' '}
+            <a href={`mailto:${siteSupportEmail}`}>{siteSupportEmail}</a>.
           </p>
         </section>
 
