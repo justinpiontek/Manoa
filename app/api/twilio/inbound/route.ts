@@ -13,7 +13,8 @@ import { messageXml, twilioXmlResponse, validateTwilioWebhook } from '@/src/lib/
 export const runtime = 'nodejs'
 
 const maxImageBytes = 8 * 1024 * 1024
-const supportedMediaTypes = new Set(['image/jpeg', 'image/png', 'image/webp'])
+const supportedMediaTypes = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp'])
+const heicMediaTypes = new Set(['image/heic', 'image/heif'])
 
 function publicRequestUrl(request: NextRequest) {
   const url = new URL(request.url)
@@ -56,17 +57,29 @@ async function twilioMediaToDataUrl(mediaUrl: string, contentType: string) {
 async function mediaCalendarResult(params: Record<string, string>, timeZone?: string): Promise<CalendarImageResult | null> {
   const mediaCount = Number(params.NumMedia || '0')
   if (!Number.isFinite(mediaCount) || mediaCount < 1) return null
+  let sawUnsupportedType: string | null = null
 
   for (let index = 0; index < mediaCount; index += 1) {
     const mediaUrl = params[`MediaUrl${index}`]
     const contentType = params[`MediaContentType${index}`]
-    if (!mediaUrl || !contentType || !supportedMediaTypes.has(contentType)) continue
+    if (!mediaUrl || !contentType) continue
+    if (!supportedMediaTypes.has(contentType)) {
+      sawUnsupportedType ||= contentType
+      continue
+    }
 
     const dataUrl = await twilioMediaToDataUrl(mediaUrl, contentType)
     return calendarImageToSmsText({
       dataUrl,
       timeZone,
     })
+  }
+
+  if (sawUnsupportedType) {
+    if (heicMediaTypes.has(sawUnsupportedType)) {
+      throw new Error('Unsupported photo type: HEIC')
+    }
+    throw new Error(`Unsupported photo type: ${sawUnsupportedType}`)
   }
 
   return null
@@ -175,9 +188,14 @@ export async function POST(request: NextRequest) {
         finalBody = finalBody ? `${finalBody}\n${imageResult.smsText}` : imageResult.smsText
       } catch (error) {
         const message = error instanceof Error ? error.message : ''
-        const reply = /openai|api key|image reading/i.test(message)
-          ? message
-          : 'I could not read one clear calendar event from that photo. Try a closer crop or type the details.'
+        const reply =
+          message === 'Unsupported photo type: HEIC'
+            ? 'I cannot read HEIC photos yet. On iPhone, send it as Most Compatible or send a screenshot instead.'
+            : /Unsupported photo type:/i.test(message)
+              ? 'I can read JPEG, PNG, or WebP photos right now. Try a screenshot or a different image type.'
+              : /openai|api key|image reading/i.test(message)
+                ? message
+                : 'I could not read one clear calendar event from that photo. Try a closer crop or type the details.'
         return twilioXmlResponse(messageXml(reply), { status: 200 })
       }
     }

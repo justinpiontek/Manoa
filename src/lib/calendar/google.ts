@@ -827,72 +827,122 @@ function parseAppleCalendarData(
   connection: Pick<CalendarConnection, 'calendar_id' | 'calendar_name' | 'calendar_label' | 'account_email'>,
   eventHref: string,
   timeZone = defaultTimezone(),
+  timeRange?: { timeMin: Date; timeMax: Date },
 ): EventSummary | null {
   const unfolded = unfoldIcs(calendarData)
-  const eventBlock = unfolded.match(/BEGIN:VEVENT\r?\n([\s\S]*?)\r?\nEND:VEVENT/i)?.[1]
-  if (!eventBlock) return null
+  const eventBlocks = [...unfolded.matchAll(/BEGIN:VEVENT\r?\n([\s\S]*?)\r?\nEND:VEVENT/gi)].map(
+    (match) => match[1],
+  )
+  if (!eventBlocks.length) return null
 
-  const lines = eventBlock.split(/\r?\n/)
-  let title = 'Untitled event'
-  let start = ''
-  let end = ''
-  let location = ''
-  let description = ''
-  let organizerEmail = ''
-  let attendeeCount = 0
-  let selfResponseStatus: string | null = null
-  const recurrence: string[] = []
-  let providerEventUid: string | null = null
-  let originalStart: string | null = null
+  const eventStartInRange = (value: string | null | undefined) => {
+    if (!value) return false
 
-  const normalizedAccountEmail = (connection.account_email || '').trim().toLowerCase()
+    const start =
+      /^\d{4}-\d{2}-\d{2}$/.test(value)
+        ? dateFromTimeZoneParts(
+            {
+              year: Number(value.slice(0, 4)),
+              month: Number(value.slice(5, 7)),
+              day: Number(value.slice(8, 10)),
+              hour: 0,
+              minute: 0,
+              second: 0,
+            },
+            timeZone,
+          )
+        : new Date(value)
 
-  for (const line of lines) {
-    const property = parseIcsProperty(line)
-    if (!property) continue
-
-    if (property.name === 'SUMMARY') title = unescapeIcsText(property.value) || title
-    if (property.name === 'DTSTART') start = parseIcsDateValue(property.value, property.params)
-    if (property.name === 'DTEND') end = parseIcsDateValue(property.value, property.params)
-    if (property.name === 'LOCATION') location = unescapeIcsText(property.value)
-    if (property.name === 'DESCRIPTION') description = unescapeIcsText(property.value)
-    if (property.name === 'RRULE') recurrence.push(`RRULE:${property.value}`)
-    if (property.name === 'RECURRENCE-ID') originalStart = parseIcsDateValue(property.value, property.params)
-    if (property.name === 'ORGANIZER') {
-      organizerEmail = property.value.replace(/^mailto:/i, '')
-    }
-    if (property.name === 'ATTENDEE') {
-      attendeeCount += 1
-      const attendeeEmail = property.value.replace(/^mailto:/i, '').trim().toLowerCase()
-      if (attendeeEmail === normalizedAccountEmail) {
-        selfResponseStatus = property.params.PARTSTAT?.toLowerCase() || null
-      }
-    }
-    if (property.name === 'UID') providerEventUid = property.value || providerEventUid
+    const time = start.getTime()
+    if (Number.isNaN(time)) return false
+    return time >= timeRange!.timeMin.getTime() && time < timeRange!.timeMax.getTime()
   }
 
-  const recurringEventId = recurrence.length || originalStart ? eventHref : null
+  const parseAppleEventBlock = (eventBlock: string): EventSummary | null => {
+    const lines = eventBlock.split(/\r?\n/)
+    let title = 'Untitled event'
+    let start = ''
+    let end = ''
+    let location = ''
+    let description = ''
+    let organizerEmail = ''
+    let attendeeCount = 0
+    let selfResponseStatus: string | null = null
+    const recurrence: string[] = []
+    let providerEventUid: string | null = null
+    let originalStart: string | null = null
 
-  return {
-    id: eventHref,
-    title,
-    start,
-    end,
-    provider: 'apple' as const,
-    calendarId: connection.calendar_id,
-    calendarName: connection.calendar_label?.trim() || connection.calendar_name || 'Apple Calendar',
-    timeLabel: start && !/^\d{4}-\d{2}-\d{2}$/.test(start) ? formatSmsTime(new Date(start), timeZone) : 'All day',
-    location,
-    description,
-    organizerEmail,
-    ownerEmail: connection.account_email || null,
-    attendeeCount,
-    selfResponseStatus,
-    recurrence: recurrence.length ? recurrence : null,
-    recurringEventId,
-    originalStart,
-    providerEventUid,
-  } satisfies EventSummary
+    const normalizedAccountEmail = (connection.account_email || '').trim().toLowerCase()
+
+    for (const line of lines) {
+      const property = parseIcsProperty(line)
+      if (!property) continue
+
+      if (property.name === 'SUMMARY') title = unescapeIcsText(property.value) || title
+      if (property.name === 'DTSTART') start = parseIcsDateValue(property.value, property.params)
+      if (property.name === 'DTEND') end = parseIcsDateValue(property.value, property.params)
+      if (property.name === 'LOCATION') location = unescapeIcsText(property.value)
+      if (property.name === 'DESCRIPTION') description = unescapeIcsText(property.value)
+      if (property.name === 'RRULE') recurrence.push(`RRULE:${property.value}`)
+      if (property.name === 'RECURRENCE-ID') originalStart = parseIcsDateValue(property.value, property.params)
+      if (property.name === 'ORGANIZER') {
+        organizerEmail = property.value.replace(/^mailto:/i, '')
+      }
+      if (property.name === 'ATTENDEE') {
+        attendeeCount += 1
+        const attendeeEmail = property.value.replace(/^mailto:/i, '').trim().toLowerCase()
+        if (attendeeEmail === normalizedAccountEmail) {
+          selfResponseStatus = property.params.PARTSTAT?.toLowerCase() || null
+        }
+      }
+      if (property.name === 'UID') providerEventUid = property.value || providerEventUid
+    }
+
+    const recurringEventId = recurrence.length || originalStart ? eventHref : null
+
+    return {
+      id: eventHref,
+      title,
+      start,
+      end,
+      provider: 'apple' as const,
+      calendarId: connection.calendar_id,
+      calendarName: connection.calendar_label?.trim() || connection.calendar_name || 'Apple Calendar',
+      timeLabel: start && !/^\d{4}-\d{2}-\d{2}$/.test(start) ? formatSmsTime(new Date(start), timeZone) : 'All day',
+      location,
+      description,
+      organizerEmail,
+      ownerEmail: connection.account_email || null,
+      attendeeCount,
+      selfResponseStatus,
+      recurrence: recurrence.length ? recurrence : null,
+      recurringEventId,
+      originalStart,
+      providerEventUid,
+    } satisfies EventSummary
+  }
+
+  const parsedEvents = eventBlocks.map(parseAppleEventBlock).filter(isDefined)
+  if (!parsedEvents.length) return null
+
+  if (!timeRange) {
+    return parsedEvents[0]
+  }
+
+  const inRangeEvents = parsedEvents
+    .filter((event) => eventStartInRange(event.start))
+    .sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime())
+  if (inRangeEvents.length) return inRangeEvents[0]
+
+  const recurrenceInstances = parsedEvents.filter(
+    (event) => Boolean(event.originalStart) && eventStartInRange(event.originalStart),
+  )
+  if (recurrenceInstances.length) return recurrenceInstances[0]
+
+  const recurringOverrides = parsedEvents.filter((event) => Boolean(event.originalStart))
+  if (recurringOverrides.length) return recurringOverrides[0]
+
+  return parsedEvents[0]
 }
 
 function buildAppleCalendarEventBody({
@@ -1042,12 +1092,26 @@ async function listAppleEventsForConnection({
   connection,
   timeMin,
   timeMax,
+  timeZone,
 }: {
   connection: CalendarConnection
   timeMin: Date
   timeMax: Date
+  timeZone?: string
 }) {
   let response: Awaited<ReturnType<typeof appleDavRequest>>
+  const reportBody = (expandOccurrences: boolean) =>
+    '<?xml version="1.0" encoding="utf-8"?>' +
+    '<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">' +
+    '<d:prop><d:getetag /><c:calendar-data>' +
+    (expandOccurrences
+      ? `<c:expand start="${basicUtcTimestamp(timeMin)}" end="${basicUtcTimestamp(timeMax)}" />`
+      : '') +
+    '</c:calendar-data></d:prop>' +
+    `<c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VEVENT"><c:time-range start="${basicUtcTimestamp(
+      timeMin,
+    )}" end="${basicUtcTimestamp(timeMax)}" /></c:comp-filter></c:comp-filter></c:filter>` +
+    '</c:calendar-query>'
 
   try {
     response = await appleDavRequest({
@@ -1056,21 +1120,26 @@ async function listAppleEventsForConnection({
       appSpecificPassword: connection.access_token,
       method: 'REPORT',
       depth: '1',
-      body:
-        '<?xml version="1.0" encoding="utf-8"?>' +
-        '<c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">' +
-        '<d:prop><d:getetag /><c:calendar-data /></d:prop>' +
-        `<c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VEVENT"><c:time-range start="${basicUtcTimestamp(
-          timeMin,
-        )}" end="${basicUtcTimestamp(timeMax)}" /></c:comp-filter></c:comp-filter></c:filter>` +
-        '</c:calendar-query>',
+      body: reportBody(true),
     })
   } catch (error) {
     if (isAppleCalendarAccessError(error)) {
       return []
     }
 
-    throw error
+    const message = error instanceof Error ? error.message : String(error)
+    if (!/\b(400|415|422|500|501)\b/.test(message)) {
+      throw error
+    }
+
+    response = await appleDavRequest({
+      url: connection.calendar_id,
+      email: connection.account_email || connection.account_id,
+      appSpecificPassword: connection.access_token,
+      method: 'REPORT',
+      depth: '1',
+      body: reportBody(false),
+    })
   }
 
   return allXmlBlocks(response.text, 'response')
@@ -1082,6 +1151,8 @@ async function listAppleEventsForConnection({
         calendarData,
         connection,
         sanitizeAppleHref(href, response.url),
+        timeZone || defaultTimezone(),
+        { timeMin, timeMax },
       )
     })
     .filter(isDefined)
@@ -2377,6 +2448,7 @@ async function listEventsBetween({
               connection,
               timeMin,
               timeMax,
+              timeZone: resolvedTimeZone,
             }),
           ),
         )
@@ -2527,6 +2599,7 @@ async function busyBlocks(
   connections: CalendarConnection[],
   timeMin: Date,
   timeMax: Date,
+  timeZone?: string,
   options?: { skippedConnectionIds?: Set<string> },
 ) {
   if (!connections.length) return []
@@ -2560,6 +2633,7 @@ async function busyBlocks(
                 connection,
                 timeMin,
                 timeMax,
+                timeZone,
               }),
             ),
           )
@@ -2691,7 +2765,7 @@ export async function findScheduleOptions({
   const timeMin = futureCandidateStarts[0]
   const timeMax = addMinutes(futureCandidateStarts[futureCandidateStarts.length - 1], durationMinutes)
   const skippedConnectionIds = new Set<string>()
-  const busy = await busyBlocks(connections, timeMin, timeMax, { skippedConnectionIds })
+  const busy = await busyBlocks(connections, timeMin, timeMax, timeZone, { skippedConnectionIds })
 
   if (skippedConnectionIds.has(targetConnection.id)) {
     throw new Error(`Reconnect ${displayCalendarName(targetConnection)} in Manoa before adding events there.`)

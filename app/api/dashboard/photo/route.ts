@@ -16,6 +16,7 @@ export const runtime = 'nodejs'
 const maxImageBytes = 8 * 1024 * 1024
 const allowedImageTypes = new Set([
   'image/jpeg',
+  'image/jpg',
   'image/png',
   'image/webp',
 ])
@@ -84,6 +85,12 @@ export async function POST(request: NextRequest) {
   }
 
   if (!allowedImageTypes.has(file.type)) {
+    if (file.type === 'image/heic' || file.type === 'image/heif') {
+      return NextResponse.json(
+        { error: 'HEIC photos are not supported yet. Send a screenshot instead, or change your iPhone camera format to Most Compatible.' },
+        { status: 400 },
+      )
+    }
     return NextResponse.json(
       { error: 'Use a JPEG, PNG, or WebP photo for now.' },
       { status: 400 },
