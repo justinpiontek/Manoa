@@ -23,16 +23,20 @@ function publicRequestUrl(request: NextRequest) {
   return host ? `${proto}://${host}${url.pathname}${url.search}` : request.url
 }
 
-function twilioBasicAuthHeader() {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID
+function normalizeMediaType(contentType: string | null | undefined) {
+  return (contentType || '').split(';')[0].trim().toLowerCase()
+}
+
+function twilioBasicAuthHeader(accountSidOverride?: string | null) {
+  const accountSid = accountSidOverride || process.env.TWILIO_ACCOUNT_SID
   const authToken = process.env.TWILIO_AUTH_TOKEN
   if (!accountSid || !authToken) return null
 
   return `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString('base64')}`
 }
 
-async function twilioMediaToDataUrl(mediaUrl: string, contentType: string) {
-  const auth = twilioBasicAuthHeader()
+async function twilioMediaToDataUrl(mediaUrl: string, contentType: string, accountSid?: string | null) {
+  const auth = twilioBasicAuthHeader(accountSid)
   const response = await fetch(mediaUrl, {
     headers: auth ? { Authorization: auth } : undefined,
   })
@@ -58,17 +62,18 @@ async function mediaCalendarResult(params: Record<string, string>, timeZone?: st
   const mediaCount = Number(params.NumMedia || '0')
   if (!Number.isFinite(mediaCount) || mediaCount < 1) return null
   let sawUnsupportedType: string | null = null
+  const accountSid = params.AccountSid || null
 
   for (let index = 0; index < mediaCount; index += 1) {
     const mediaUrl = params[`MediaUrl${index}`]
-    const contentType = params[`MediaContentType${index}`]
+    const contentType = normalizeMediaType(params[`MediaContentType${index}`])
     if (!mediaUrl || !contentType) continue
     if (!supportedMediaTypes.has(contentType)) {
       sawUnsupportedType ||= contentType
       continue
     }
 
-    const dataUrl = await twilioMediaToDataUrl(mediaUrl, contentType)
+    const dataUrl = await twilioMediaToDataUrl(mediaUrl, contentType, accountSid)
     return calendarImageToSmsText({
       dataUrl,
       timeZone,
@@ -188,11 +193,22 @@ export async function POST(request: NextRequest) {
         finalBody = finalBody ? `${finalBody}\n${imageResult.smsText}` : imageResult.smsText
       } catch (error) {
         const message = error instanceof Error ? error.message : ''
+        console.error('Twilio MMS calendar image handling failed.', {
+          error: message || error,
+          from,
+          accountSid: params.AccountSid || null,
+          mediaCount: params.NumMedia || '0',
+          mediaTypes: Array.from({ length: Number(params.NumMedia || '0') }, (_, index) =>
+            normalizeMediaType(params[`MediaContentType${index}`] || null),
+          ),
+        })
         const reply =
           message === 'Unsupported photo type: HEIC'
             ? 'I cannot read HEIC photos yet. On iPhone, send it as Most Compatible or send a screenshot instead.'
             : /Unsupported photo type:/i.test(message)
               ? 'I can read JPEG, PNG, or WebP photos right now. Try a screenshot or a different image type.'
+              : /Twilio media fetch returned (401|403)/i.test(message)
+                ? 'I received the photo, but could not download it from Twilio yet. Try again in a minute.'
               : /openai|api key|image reading/i.test(message)
                 ? message
                 : 'I could not read one clear calendar event from that photo. Try a closer crop or type the details.'
