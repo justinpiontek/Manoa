@@ -92,13 +92,31 @@ function parseTopLevelOutputText(response: unknown) {
   const candidate = (response as { output_text?: unknown }).output_text
   if (typeof candidate === 'string' && candidate.trim()) return candidate
 
-  const output = (response as { output?: Array<{ content?: Array<{ text?: string; type?: string }> }> }).output
+  const output = (response as {
+    output?: Array<{
+      content?: Array<
+        | { text?: string; type?: string }
+        | { type?: string; json?: unknown }
+      >
+    }>
+  }).output
   if (!Array.isArray(output)) return null
 
   for (const item of output) {
     for (const content of item.content || []) {
-      if (content?.type === 'output_text' && typeof content.text === 'string' && content.text.trim()) {
-        return content.text
+      const contentText = (content as { text?: unknown }).text
+      if (content?.type === 'output_text' && typeof contentText === 'string' && contentText.trim()) {
+        return contentText
+      }
+      if (typeof contentText === 'string' && contentText.trim()) {
+        return contentText
+      }
+      if ((content as { type?: string }).type === 'output_json' && (content as { json?: unknown }).json) {
+        try {
+          return JSON.stringify((content as { json: unknown }).json)
+        } catch {
+          // ignore and keep looking
+        }
       }
     }
   }
@@ -129,7 +147,7 @@ async function openAiImageResponse({
       },
       signal: controller.signal,
       body: JSON.stringify({
-        model: process.env.OPENAI_CALENDAR_IMAGE_MODEL || 'gpt-5.4',
+        model: process.env.OPENAI_CALENDAR_IMAGE_MODEL || 'gpt-4.1',
         ...body,
         input: [
           {
@@ -167,10 +185,13 @@ async function openAiImageResponse({
 
 function fallbackSmsTexts(outputText: string) {
   return outputText
+    .replace(/```[a-z]*\n?/gi, '')
+    .replace(/```/g, '')
     .split(/\r?\n+/)
-    .map((line) => line.trim())
+    .map((line) => line.replace(/^[-*]\s+/, '').trim())
     .filter(Boolean)
     .filter((line) => !/^no_event$/i.test(line))
+    .filter((line) => /^(add|schedule)\b/i.test(line))
 }
 
 function displayDate(value: string | null) {
