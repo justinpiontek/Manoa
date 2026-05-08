@@ -46,6 +46,46 @@ function hasCalendarImageUnderstanding() {
   return Boolean(process.env.OPENAI_API_KEY)
 }
 
+function currentLocalDateString(timeZone: string) {
+  return new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone,
+  })
+}
+
+function structuredImageInstructions(timeZone: string) {
+  return (
+    `You read photos and screenshots for Manoa, a calendar assistant.\n` +
+    `Current timezone: ${timeZone}.\n` +
+    `Current local date: ${currentLocalDateString(timeZone)}.\n` +
+    'Extract clear calendar events from screenshots, invitation cards, reminder cards, email screenshots, text screenshots, flyers, and calendar-event screenshots.\n' +
+    'Focus on the event details, not the surrounding app chrome.\n' +
+    'For screenshots of a single calendar item or invitation, prefer the obvious main event.\n' +
+    'If a month/day/time is clear but the year is missing, infer the next upcoming matching year from the current local date.\n' +
+    'If the image shows multiple clear events, return them all.\n' +
+    'Do not invent a date, time, or location that is not visible or strongly implied.\n' +
+    'Use has_calendar_items=false only when no real event can be extracted.'
+  )
+}
+
+function fallbackImageInstructions(timeZone: string) {
+  return (
+    `You read photos and screenshots for Manoa, a calendar assistant.\n` +
+    `Current timezone: ${timeZone}.\n` +
+    `Current local date: ${currentLocalDateString(timeZone)}.\n` +
+    'Read the image and turn each clear event into one direct Manoa command line.\n' +
+    'This includes screenshots of calendar events, invitation cards, reminder cards, email screenshots, and text screenshots.\n' +
+    'Ignore app chrome, chat bubbles, and decorative text unless they contain the event itself.\n' +
+    'Each line must start with "add " for fixed/confirmed events or "schedule " for tentative ones.\n' +
+    'Use natural date phrases like "Saturday, June 6, 2026" and include the location when visible.\n' +
+    'If a month/day/time is clear but the year is missing, infer the next upcoming matching year.\n' +
+    'Return only the command lines. If there is no clear event, return exactly NO_EVENT.'
+  )
+}
+
 function parseTopLevelOutputText(response: unknown) {
   if (!response || typeof response !== 'object') return null
 
@@ -94,16 +134,7 @@ async function openAiImageResponse({
         input: [
           {
             role: 'system',
-            content:
-              `You read photos and screenshots for Manoa, a calendar assistant.\n` +
-              `Current timezone: ${timeZone}.\n` +
-              `Current local date: ${new Date().toLocaleDateString('en-US', {
-                weekday: 'long',
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-                timeZone,
-              })}.\n`,
+            content: structuredImageInstructions(timeZone),
           },
           {
             role: 'user',
@@ -180,8 +211,6 @@ export function calendarImagePayloadToEvents(payload: CalendarImagePayload): Cal
 }
 
 function calendarImageItemToEvent(item: CalendarImageItemPayload): CalendarImageEvent | null {
-  if (item.confidence === 'low') return null
-
   const date = displayDate(item.date_ymd)
   const time = displayTime(item.time_24h)
   if (!date || !time) return null
@@ -224,120 +253,159 @@ export async function calendarImageToSmsText({
   if (!hasCalendarImageUnderstanding()) {
     throw new Error('Photo reading needs OPENAI_API_KEY on the server.')
   }
-  const outputText = await openAiImageResponse({
-    dataUrl,
-    timeZone,
-    body: {
-      text: {
-        format: {
-          type: 'json_schema',
-          name: 'manoa_calendar_image',
-          strict: true,
-          schema: {
-            type: 'object',
-            additionalProperties: false,
-            properties: {
-              has_calendar_items: { type: 'boolean' },
-              items: {
-                type: 'array',
-                maxItems: 12,
+  let payload: CalendarImagePayload = {
+    has_calendar_items: false,
+    items: [],
+    confidence: 'low',
+    notes: null,
+  }
+  let events: CalendarImageEvent[] = []
+  let smsTexts: string[] = []
+  let structuredFailure: Error | null = null
+
+  try {
+    const outputText = await openAiImageResponse({
+      dataUrl,
+      timeZone,
+      body: {
+        instructions: structuredImageInstructions(timeZone),
+        text: {
+          format: {
+            type: 'json_schema',
+            name: 'manoa_calendar_image',
+            strict: true,
+            schema: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                has_calendar_items: { type: 'boolean' },
                 items: {
-                  type: 'object',
-                  additionalProperties: false,
-                  properties: {
-                    is_confirmed_or_fixed: { type: 'boolean' },
-                    title: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-                    date_ymd: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-                    time_24h: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-                    duration_minutes: { anyOf: [{ type: 'integer' }, { type: 'null' }] },
-                    location: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-                    organizer_or_source: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-                    item_type: {
-                      anyOf: [
-                        {
-                          type: 'string',
-                          enum: [
-                            'appointment',
-                            'meeting',
-                            'party',
-                            'school',
-                            'sports',
-                            'travel',
-                            'deadline',
-                            'other',
-                          ],
-                        },
-                        { type: 'null' },
-                      ],
+                  type: 'array',
+                  maxItems: 12,
+                  items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                      is_confirmed_or_fixed: { type: 'boolean' },
+                      title: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+                      date_ymd: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+                      time_24h: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+                      duration_minutes: { anyOf: [{ type: 'integer' }, { type: 'null' }] },
+                      location: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+                      organizer_or_source: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+                      item_type: {
+                        anyOf: [
+                          {
+                            type: 'string',
+                            enum: [
+                              'appointment',
+                              'meeting',
+                              'party',
+                              'school',
+                              'sports',
+                              'travel',
+                              'deadline',
+                              'other',
+                            ],
+                          },
+                          { type: 'null' },
+                        ],
+                      },
+                      confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+                      notes: { anyOf: [{ type: 'string' }, { type: 'null' }] },
                     },
-                    confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
-                    notes: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+                    required: [
+                      'is_confirmed_or_fixed',
+                      'title',
+                      'date_ymd',
+                      'time_24h',
+                      'duration_minutes',
+                      'location',
+                      'organizer_or_source',
+                      'item_type',
+                      'confidence',
+                      'notes',
+                    ],
                   },
-                  required: [
-                    'is_confirmed_or_fixed',
-                    'title',
-                    'date_ymd',
-                    'time_24h',
-                    'duration_minutes',
-                    'location',
-                    'organizer_or_source',
-                    'item_type',
-                    'confidence',
-                    'notes',
-                  ],
                 },
+                confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+                notes: { anyOf: [{ type: 'string' }, { type: 'null' }] },
               },
-              confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
-              notes: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+              required: [
+                'has_calendar_items',
+                'items',
+                'confidence',
+                'notes',
+              ],
             },
-            required: [
-              'has_calendar_items',
-              'items',
-              'confidence',
-              'notes',
-            ],
           },
         },
       },
-    },
-  })
+    })
+
     if (!outputText) throw new Error('OpenAI returned no calendar event details.')
 
-    const payload = JSON.parse(outputText) as CalendarImagePayload
-    const events = calendarImagePayloadToEvents(payload)
-    const smsTexts = events.map((event) => event.smsText)
+    payload = JSON.parse(outputText) as CalendarImagePayload
+    events = calendarImagePayloadToEvents(payload)
+    smsTexts = events.map((event) => event.smsText)
+  } catch (error) {
+    structuredFailure = error instanceof Error ? error : new Error('Structured image parsing failed.')
+    console.error('Structured calendar image parsing failed.', {
+      error: structuredFailure.message,
+    })
+  }
 
-    if (smsTexts.length) {
-      return {
-        smsText: smsTexts[0] || null,
-        smsTexts,
-        events,
-        confidence: payload.confidence,
-        notes: payload.notes,
-      }
+  if (smsTexts.length) {
+    return {
+      smsText: smsTexts[0] || null,
+      smsTexts,
+      events,
+      confidence: payload.confidence,
+      notes: payload.notes,
     }
+  }
 
+  let fallbackFailure: Error | null = null
+  let fallbackSmsLines: string[] = []
+
+  try {
     const fallbackText = await openAiImageResponse({
       dataUrl,
       timeZone,
       timeoutMs: 10_000,
       body: {
-        instructions:
-          'Extract one or more clear calendar events from the image and return only direct Manoa command lines. ' +
-          'Each line must start with "add " for fixed events or "schedule " for tentative ones. ' +
-          'Use natural date phrases like "Saturday, June 6" and include the year if shown. ' +
-          'If the image is a photographed invitation card, focus on the invitation details and ignore decorative text. ' +
-          'If a month/day/time is clear but the year is omitted, infer the next upcoming matching year from the current local date. ' +
-          'Include the location when visible. If there is no clear event, return exactly NO_EVENT.',
+        instructions: fallbackImageInstructions(timeZone),
       },
     })
 
-    const fallbackSmsLines = fallbackText ? fallbackSmsTexts(fallbackText) : []
+    fallbackSmsLines = fallbackText ? fallbackSmsTexts(fallbackText) : []
+  } catch (error) {
+    fallbackFailure = error instanceof Error ? error : new Error('Fallback image parsing failed.')
+    console.error('Fallback calendar image parsing failed.', {
+      error: fallbackFailure.message,
+    })
+  }
+
+  if (fallbackSmsLines.length) {
     return {
       smsText: fallbackSmsLines[0] || null,
       smsTexts: fallbackSmsLines,
       events,
-      confidence: fallbackSmsLines.length ? 'medium' : payload.confidence,
+      confidence: 'medium',
       notes: payload.notes,
     }
+  }
+
+  const meaningfulFailure = fallbackFailure || structuredFailure
+  if (meaningfulFailure && /openai|api key|returned \d+|timed out/i.test(meaningfulFailure.message)) {
+    throw meaningfulFailure
+  }
+
+  return {
+    smsText: null,
+    smsTexts: [],
+    events,
+    confidence: payload.confidence,
+    notes: payload.notes,
+  }
 }
