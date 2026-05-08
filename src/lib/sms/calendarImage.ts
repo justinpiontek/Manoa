@@ -95,7 +95,7 @@ export function calendarImagePayloadToSmsTexts(payload: CalendarImagePayload) {
 }
 
 export function calendarImagePayloadToEvents(payload: CalendarImagePayload): CalendarImageEvent[] {
-  if (!payload.has_calendar_items || payload.confidence === 'low') return []
+  if (!payload.has_calendar_items) return []
 
   return payload.items.flatMap((item) => {
     const event = calendarImageItemToEvent(item)
@@ -161,7 +161,7 @@ export async function calendarImageToSmsText({
       },
       signal: controller.signal,
       body: JSON.stringify({
-        model: process.env.OPENAI_CALENDAR_IMAGE_MODEL || process.env.OPENAI_SMS_MODEL || 'gpt-5.4-mini',
+        model: process.env.OPENAI_CALENDAR_IMAGE_MODEL || 'gpt-5.4',
         input: [
           {
             role: 'system',
@@ -178,6 +178,8 @@ export async function calendarImageToSmsText({
                 timeZone,
               })}.\n` +
               `Do not invent missing dates, times, locations, people, teams, offices, or event names.\n` +
+              `If a printed invitation or reminder clearly shows a month, day, weekday, and time but omits the year, infer the next upcoming matching year based on the current local date.\n` +
+              `If the image is a photographed invitation card, treat the main invitation details as one event even if there is decorative text around it.\n` +
               `If the image is a full schedule, extract up to 12 clearly readable items.\n` +
               `If the image has many rows, only include rows with a clear date and time.\n` +
               `If there are no clear dates and times, set has_calendar_items false.\n` +

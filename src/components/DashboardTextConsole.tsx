@@ -166,7 +166,7 @@ export default function DashboardTextConsole({
           <span>{photoPending ? 'Reading photo...' : 'Add photo or screenshot'}</span>
           <input
             type="file"
-            accept="image/jpeg,image/png,image/webp"
+            accept="image/*"
             disabled={pending || photoPending}
             onChange={(event) => {
               const file = event.currentTarget.files?.[0]
