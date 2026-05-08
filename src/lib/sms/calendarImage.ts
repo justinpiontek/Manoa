@@ -66,6 +66,82 @@ function parseTopLevelOutputText(response: unknown) {
   return null
 }
 
+async function openAiImageResponse({
+  dataUrl,
+  timeZone,
+  body,
+  timeoutMs = 12_000,
+}: {
+  dataUrl: string
+  timeZone: string
+  body: Record<string, unknown>
+  timeoutMs?: number
+}) {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: process.env.OPENAI_CALENDAR_IMAGE_MODEL || 'gpt-5.4',
+        ...body,
+        input: [
+          {
+            role: 'system',
+            content:
+              `You read photos and screenshots for Manoa, a calendar assistant.\n` +
+              `Current timezone: ${timeZone}.\n` +
+              `Current local date: ${new Date().toLocaleDateString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                timeZone,
+              })}.\n`,
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'input_text',
+                text: 'Read this image and extract the calendar event details.',
+              },
+              {
+                type: 'input_image',
+                image_url: dataUrl,
+                detail: 'high',
+              },
+            ],
+          },
+        ],
+      }),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`OpenAI image reading returned ${response.status}: ${errorText.slice(0, 220)}`)
+    }
+
+    return parseTopLevelOutputText(await response.json())
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+function fallbackSmsTexts(outputText: string) {
+  return outputText
+    .split(/\r?\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^no_event$/i.test(line))
+}
+
 function displayDate(value: string | null) {
   const match = value?.match(/^(\d{4})-(\d{2})-(\d{2})$/)
   if (!match) return null
@@ -148,154 +224,120 @@ export async function calendarImageToSmsText({
   if (!hasCalendarImageUnderstanding()) {
     throw new Error('Photo reading needs OPENAI_API_KEY on the server.')
   }
-
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 12_000)
-
-  try {
-    const response = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: process.env.OPENAI_CALENDAR_IMAGE_MODEL || 'gpt-5.4',
-        input: [
-          {
-            role: 'system',
-            content:
-              `You read photos and screenshots for Manoa, a calendar assistant.\n` +
-              `Extract clear calendar items from the image when possible.\n` +
-              `Examples include appointment reminder cards, screenshots of texts or emails, school flyers, birthday invitations, sports schedules, work meeting screenshots, travel details, and deadline notices.\n` +
-              `Current timezone: ${timeZone}.\n` +
-              `Current local date: ${new Date().toLocaleDateString('en-US', {
-                weekday: 'long',
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-                timeZone,
-              })}.\n` +
-              `Do not invent missing dates, times, locations, people, teams, offices, or event names.\n` +
-              `If a printed invitation or reminder clearly shows a month, day, weekday, and time but omits the year, infer the next upcoming matching year based on the current local date.\n` +
-              `If the image is a photographed invitation card, treat the main invitation details as one event even if there is decorative text around it.\n` +
-              `If the image is a full schedule, extract up to 12 clearly readable items.\n` +
-              `If the image has many rows, only include rows with a clear date and time.\n` +
-              `If there are no clear dates and times, set has_calendar_items false.\n` +
-              `Set is_confirmed_or_fixed true when the image shows a fixed event, invitation, flyer, reminder card, or confirmed plan.\n` +
-              `Set is_confirmed_or_fixed false when the image only shows a proposed time or tentative conversation.\n` +
-              `Use YYYY-MM-DD for date_ymd and HH:MM 24-hour time for time_24h.\n` +
-              `Set confidence low when the date or time is hard to read.`,
-          },
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'input_text',
-                text: 'Read this image and extract the calendar event details.',
+  const outputText = await openAiImageResponse({
+    dataUrl,
+    timeZone,
+    body: {
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'manoa_calendar_image',
+          strict: true,
+          schema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              has_calendar_items: { type: 'boolean' },
+              items: {
+                type: 'array',
+                maxItems: 12,
+                items: {
+                  type: 'object',
+                  additionalProperties: false,
+                  properties: {
+                    is_confirmed_or_fixed: { type: 'boolean' },
+                    title: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+                    date_ymd: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+                    time_24h: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+                    duration_minutes: { anyOf: [{ type: 'integer' }, { type: 'null' }] },
+                    location: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+                    organizer_or_source: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+                    item_type: {
+                      anyOf: [
+                        {
+                          type: 'string',
+                          enum: [
+                            'appointment',
+                            'meeting',
+                            'party',
+                            'school',
+                            'sports',
+                            'travel',
+                            'deadline',
+                            'other',
+                          ],
+                        },
+                        { type: 'null' },
+                      ],
+                    },
+                    confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+                    notes: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+                  },
+                  required: [
+                    'is_confirmed_or_fixed',
+                    'title',
+                    'date_ymd',
+                    'time_24h',
+                    'duration_minutes',
+                    'location',
+                    'organizer_or_source',
+                    'item_type',
+                    'confidence',
+                    'notes',
+                  ],
+                },
               },
-              {
-                type: 'input_image',
-                image_url: dataUrl,
-                detail: 'high',
-              },
+              confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+              notes: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+            },
+            required: [
+              'has_calendar_items',
+              'items',
+              'confidence',
+              'notes',
             ],
           },
-        ],
-        text: {
-          format: {
-            type: 'json_schema',
-            name: 'manoa_calendar_image',
-            strict: true,
-            schema: {
-              type: 'object',
-              additionalProperties: false,
-              properties: {
-                has_calendar_items: { type: 'boolean' },
-                items: {
-                  type: 'array',
-                  maxItems: 12,
-                  items: {
-                    type: 'object',
-                    additionalProperties: false,
-                    properties: {
-                      is_confirmed_or_fixed: { type: 'boolean' },
-                      title: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-                      date_ymd: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-                      time_24h: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-                      duration_minutes: { anyOf: [{ type: 'integer' }, { type: 'null' }] },
-                      location: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-                      organizer_or_source: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-                      item_type: {
-                        anyOf: [
-                          {
-                            type: 'string',
-                            enum: [
-                              'appointment',
-                              'meeting',
-                              'party',
-                              'school',
-                              'sports',
-                              'travel',
-                              'deadline',
-                              'other',
-                            ],
-                          },
-                          { type: 'null' },
-                        ],
-                      },
-                      confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
-                      notes: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-                    },
-                    required: [
-                      'is_confirmed_or_fixed',
-                      'title',
-                      'date_ymd',
-                      'time_24h',
-                      'duration_minutes',
-                      'location',
-                      'organizer_or_source',
-                      'item_type',
-                      'confidence',
-                      'notes',
-                    ],
-                  },
-                },
-                confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
-                notes: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-              },
-              required: [
-                'has_calendar_items',
-                'items',
-                'confidence',
-                'notes',
-              ],
-            },
-          },
         },
-      }),
-    })
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`OpenAI image reading returned ${response.status}: ${errorText.slice(0, 220)}`)
-    }
-
-    const outputText = parseTopLevelOutputText(await response.json())
+      },
+    },
+  })
     if (!outputText) throw new Error('OpenAI returned no calendar event details.')
 
     const payload = JSON.parse(outputText) as CalendarImagePayload
     const events = calendarImagePayloadToEvents(payload)
     const smsTexts = events.map((event) => event.smsText)
+
+    if (smsTexts.length) {
+      return {
+        smsText: smsTexts[0] || null,
+        smsTexts,
+        events,
+        confidence: payload.confidence,
+        notes: payload.notes,
+      }
+    }
+
+    const fallbackText = await openAiImageResponse({
+      dataUrl,
+      timeZone,
+      timeoutMs: 10_000,
+      body: {
+        instructions:
+          'Extract one or more clear calendar events from the image and return only direct Manoa command lines. ' +
+          'Each line must start with "add " for fixed events or "schedule " for tentative ones. ' +
+          'Use natural date phrases like "Saturday, June 6" and include the year if shown. ' +
+          'If the image is a photographed invitation card, focus on the invitation details and ignore decorative text. ' +
+          'If a month/day/time is clear but the year is omitted, infer the next upcoming matching year from the current local date. ' +
+          'Include the location when visible. If there is no clear event, return exactly NO_EVENT.',
+      },
+    })
+
+    const fallbackSmsLines = fallbackText ? fallbackSmsTexts(fallbackText) : []
     return {
-      smsText: smsTexts[0] || null,
-      smsTexts,
+      smsText: fallbackSmsLines[0] || null,
+      smsTexts: fallbackSmsLines,
       events,
-      confidence: payload.confidence,
+      confidence: fallbackSmsLines.length ? 'medium' : payload.confidence,
       notes: payload.notes,
     }
-  } finally {
-    clearTimeout(timeout)
-  }
 }
