@@ -2534,7 +2534,7 @@ export async function storePhotoBatchCalendarChoicePending({
   await storePendingAction({
     profileId,
     smsFrom,
-    kind: 'photo_batch_choose_calendar',
+    kind: 'choose_calendar',
     payload: {
       calendarChoices,
       visibleCalendarChoiceCount,
@@ -3319,7 +3319,7 @@ async function handleChoice({
   choice: number
   pending: PendingAction
 }) {
-  if (pending.kind === 'photo_batch_choose_calendar') {
+  if (pending.kind === 'photo_batch_choose_calendar' || (pending.kind === 'choose_calendar' && (pending.payload.photoBatchEvents || []).length > 0 && !pending.payload.scheduleRequest)) {
     const visibleChoiceCount = pending.payload.visibleCalendarChoiceCount || pending.payload.calendarChoices?.length || 0
     const pickedCalendar =
       choice <= visibleChoiceCount ? choose(pending.payload.calendarChoices, choice) : null
@@ -4415,7 +4415,15 @@ export async function handleIncomingSms({
     }
   }
 
-  if (activePending?.kind === 'photo_batch_choose_calendar') {
+  if (
+    activePending &&
+    (
+      activePending.kind === 'photo_batch_choose_calendar' ||
+      (activePending.kind === 'choose_calendar' &&
+        (activePending.payload.photoBatchEvents || []).length > 0 &&
+        !activePending.payload.scheduleRequest)
+    )
+  ) {
     const pickedCalendar = resolveCalendarChoiceFromText(
       body,
       activePending.payload.calendarChoices,
