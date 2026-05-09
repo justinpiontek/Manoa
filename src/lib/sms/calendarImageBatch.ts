@@ -13,6 +13,7 @@ import {
   formatSmsTime,
 } from '../calendar/dates'
 import { supabaseAdmin } from '../supabaseAdmin'
+import { DEFAULT_REMINDER_LEAD_MINUTES } from '../reminders'
 import type { CalendarImageEvent, CalendarImageResult } from './calendarImage'
 
 type CalendarImageBatchProfile = {
@@ -201,7 +202,7 @@ async function queueBatchReminder({
   if (option.isAllDay) return
 
   const start = new Date(option.start)
-  const dueAt = addMinutes(start, -30)
+  const dueAt = addMinutes(start, -DEFAULT_REMINDER_LEAD_MINUTES)
   if (!profile.phone_e164 || dueAt <= new Date()) return
 
   const { error } = await supabaseAdmin.from('reminders').insert({

@@ -1,4 +1,5 @@
 import { getCalendarEvent, listAgenda, listUpcomingEvents } from './calendar/google'
+import { DEFAULT_REMINDER_LEAD_MINUTES } from './reminders'
 import { supabaseAdmin } from './supabaseAdmin'
 import { sendSms } from './twilioClient'
 
@@ -120,7 +121,9 @@ async function ensureUpcomingReminders() {
         continue
       }
 
-      const dueDate = new Date(new Date(startsAt).getTime() - 30 * 60_000)
+      const dueDate = new Date(
+        new Date(startsAt).getTime() - DEFAULT_REMINDER_LEAD_MINUTES * 60_000,
+      )
       const dueAt =
         dueDate.getTime() <= Date.now() ? new Date().toISOString() : dueDate.toISOString()
 

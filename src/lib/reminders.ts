@@ -1,0 +1,1 @@
+export const DEFAULT_REMINDER_LEAD_MINUTES = 15

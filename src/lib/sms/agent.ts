@@ -42,6 +42,7 @@ import {
 import { createCalendarImageBatchOnCalendar } from './calendarImageBatch'
 import type { CalendarImageEvent } from './calendarImage'
 import { profileIdFromDashboardSender } from './sender'
+import { DEFAULT_REMINDER_LEAD_MINUTES } from '../reminders'
 import {
   classifyEventAuthority,
   looksExternalAppointment,
@@ -2612,7 +2613,7 @@ async function queueReminderForEvent({
   calendarId,
   title,
   start,
-  leadMinutes = 30,
+  leadMinutes = DEFAULT_REMINDER_LEAD_MINUTES,
   timeZone,
 }: {
   profileId: string
