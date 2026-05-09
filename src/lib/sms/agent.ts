@@ -1261,6 +1261,8 @@ async function maybeConfirmExactRescheduleTime({
       target,
       options: alternatives,
       authority,
+      requestedBaseDate: baseDate.toISOString(),
+      exactTime,
     },
   })
 
@@ -1512,6 +1514,44 @@ function correctedScheduleIntentFromPending(
   const correctedText = `schedule ${context.title} ${cleanedFragment}`
   const intent = parseSmsIntent(correctedText, timeZone)
   return intent.type === 'schedule' ? { text: correctedText, intent } : null
+}
+
+function correctedRescheduleIntentFromPending(
+  text: string,
+  pending: PendingAction,
+  timeZone?: string,
+) {
+  if (pending.kind !== 'reschedule' || !pending.payload.target) {
+    return null
+  }
+
+  const target = pending.payload.target
+  const fragment = correctionFragment(text) || text.trim()
+  if (!fragment) return null
+
+  const exactTime = parseSmsTime(fragment)
+  if (!exactTime) return null
+
+  const requestedBaseDate =
+    pending.payload.requestedBaseDate ? new Date(pending.payload.requestedBaseDate) : null
+  const baseDate = rescheduleBaseDateForTarget({
+    requestedBaseDate,
+    explicitDateRequested: Boolean(requestedBaseDate),
+    exactTime,
+    target,
+    timeZone,
+  })
+
+  return {
+    intent: {
+      type: 'reschedule' as const,
+      query: target.title,
+      baseDate,
+      dateWindow: null,
+      exactTime,
+      calendarHint: target.calendarName,
+    },
+  }
 }
 
 function reminderForPending(pending: PendingAction) {
@@ -4610,11 +4650,19 @@ export async function handleIncomingSms({
       )
     : null
 
-  if (activePending && correctedSchedule) {
+  const correctedReschedule = activePending
+    ? correctedRescheduleIntentFromPending(body, activePending, profile.timezone)
+    : null
+
+  if (activePending && (correctedSchedule || correctedReschedule)) {
     await clearPendingAction(activePending.id)
     activePending = null
-    intentBody = correctedSchedule.text
-    intentOverride = correctedSchedule.intent
+    if (correctedSchedule) {
+      intentBody = correctedSchedule.text
+      intentOverride = correctedSchedule.intent
+    } else if (correctedReschedule) {
+      intentOverride = correctedReschedule.intent
+    }
   }
 
   if (activePending && isPendingEscapeRequest(body)) {
