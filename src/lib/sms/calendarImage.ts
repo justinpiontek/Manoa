@@ -134,6 +134,19 @@ function lineItemImageInstructions(timeZone: string) {
   )
 }
 
+function transcriptImageInstructions(timeZone: string) {
+  return (
+    `You transcribe visible text from photos and screenshots for Manoa, a calendar assistant.\n` +
+    `Current timezone: ${timeZone}.\n` +
+    `Current local date: ${currentLocalDateString(timeZone)}.\n` +
+    'Return only the visible text from the image.\n' +
+    'Preserve one line per visible line when possible.\n' +
+    'Do not summarize, interpret, or label the text.\n' +
+    'Do not add commentary.\n' +
+    'If the image is unreadable, return exactly NO_EVENT.'
+  )
+}
+
 function parseTopLevelOutputText(response: unknown) {
   if (!response || typeof response !== 'object') return null
 
@@ -427,6 +440,114 @@ function lineItemFallbackEvents(lines: string[], timeZone: string) {
   return lines
     .map((line) => parseLineItemToEvent(line, timeZone))
     .filter((event): event is CalendarImageEvent => Boolean(event))
+}
+
+const transcriptMonthNameSource =
+  'jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?'
+const transcriptWeekdaySource =
+  'sun(?:day)?|mon(?:day)?|tue(?:s|sday)?|wed(?:nesday)?|thu(?:r|rs|rsday|rday)?|fri(?:day)?|sat(?:urday)?'
+const transcriptDatePrefixPattern = new RegExp(
+  `^\\s*(?:${transcriptWeekdaySource}\\s+)?((?:${transcriptMonthNameSource})\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s+\\d{4})?|\\d{1,2}(?:st|nd|rd|th)?\\s+(?:of\\s+)?(?:${transcriptMonthNameSource})\\.?\\b(?:,?\\s+\\d{4})?)\\*?\\s*(?:[-:–—]\\s*)?(.*)$`,
+  'i',
+)
+
+function normalizeTranscriptLine(line: string) {
+  return cleanText(
+    line
+      .replace(/```[a-z]*\n?/gi, '')
+      .replace(/```/g, '')
+      .replace(/^[•*\-]+\s*/, '')
+      .replace(/\s+/g, ' '),
+  )
+}
+
+function isGenericTranscriptHeading(line: string) {
+  return /\b(important dates?|preschool|school calendar|newsletter|upcoming events?)\b/i.test(line)
+}
+
+function looksTranscriptHeading(line: string) {
+  if (!line || parseExplicitDate(line)) return false
+  const stripped = line.replace(/[!:.]/g, '').trim()
+  if (!stripped) return false
+  const lettersOnly = stripped.replace(/[^A-Za-z]/g, '')
+  if (lettersOnly.length < 3) return false
+  return stripped === stripped.toUpperCase()
+}
+
+function parseTranscriptEvents(outputText: string, timeZone: string) {
+  const lines = outputText
+    .split(/\r?\n+/)
+    .map((line) => normalizeTranscriptLine(line))
+    .filter(Boolean)
+    .filter((line) => !/^no_event$/i.test(line))
+
+  const events: CalendarImageEvent[] = []
+  let currentHeading: string | null = null
+
+  for (const line of lines) {
+    if (looksTranscriptHeading(line)) {
+      currentHeading = isGenericTranscriptHeading(line) ? null : line
+      continue
+    }
+
+    const match = line.match(transcriptDatePrefixPattern)
+    if (!match) continue
+
+    const dateText = cleanText(match[1])
+    const remainder = cleanText((match[2] || '').replace(/\*+/g, ''))
+    const date = parseExplicitDate(dateText, timeZone)
+    if (!date) continue
+
+    let title = ''
+    let notes: string | null = null
+
+    if (remainder.startsWith('(') && currentHeading) {
+      title = currentHeading
+      notes = remainder.replace(/^\((.*)\)$/, '$1') || remainder
+    } else if (remainder.includes('(')) {
+      const [beforeParen, ...rest] = remainder.split('(')
+      title = cleanText(beforeParen)
+      const noteText = cleanText(rest.join('(').replace(/\)+$/, ''))
+      notes = noteText || null
+    } else {
+      title = remainder
+    }
+
+    if (!title) title = currentHeading || 'event'
+
+    const visibleTimes = Array.from(
+      new Set(
+        (line.match(/\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/gi) || [])
+          .map((value) => parseTimeTo24h(value))
+          .filter((value): value is string => Boolean(value)),
+      ),
+    )
+
+    const isAllDay = visibleTimes.length === 0
+    const time24h = isAllDay ? null : visibleTimes[0]
+    const dateYmd = ymdFromDate(date, timeZone)
+    const smsText = isAllDay
+      ? `add ${title} on ${displayDate(dateYmd)} all day`
+      : `add ${title} on ${displayDate(dateYmd)} at ${displayTime(time24h)}`
+
+    events.push({
+      title,
+      dateYmd,
+      endDateYmd: null,
+      time24h,
+      isAllDay,
+      durationMinutes: null,
+      location: null,
+      organizerOrSource: null,
+      itemType: 'school',
+      isConfirmedOrFixed: true,
+      confidence: 'medium',
+      notes,
+      smsText,
+    })
+  }
+
+  return events
 }
 
 function calendarImageSchema() {
@@ -760,6 +881,33 @@ export async function calendarImageToSmsText({
       confidence: 'medium',
       notes: payload.notes,
     }
+  }
+
+  try {
+    const transcriptText = await openAiImageResponse({
+      dataUrl,
+      timeZone,
+      instructions: transcriptImageInstructions(timeZone),
+      userText: 'Transcribe the visible text from this image.',
+      timeoutMs: finalFallbackTimeoutMs,
+      body: {},
+    })
+
+    const transcriptEvents = transcriptText ? parseTranscriptEvents(transcriptText, timeZone) : []
+    if (transcriptEvents.length > smsTexts.length && transcriptEvents.length >= 2) {
+      return {
+        smsText: transcriptEvents[0]?.smsText || null,
+        smsTexts: transcriptEvents.map((event) => event.smsText),
+        events: transcriptEvents,
+        confidence: 'medium',
+        notes: payload.notes,
+      }
+    }
+  } catch (error) {
+    const transcriptFailure = error instanceof Error ? error : new Error('Transcript image parsing failed.')
+    console.error('Transcript calendar image parsing failed.', {
+      error: transcriptFailure.message,
+    })
   }
 
   if (smsTexts.length) {
