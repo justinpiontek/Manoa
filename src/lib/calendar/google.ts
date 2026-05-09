@@ -7,6 +7,7 @@ import { appUrl, defaultTimezone, requiredEnv } from '../env'
 import { supabaseAdmin } from '../supabaseAdmin'
 import { decryptCalendarToken, encryptCalendarToken } from './tokenEncryption'
 import {
+  addDays,
   addMinutes,
   dateFromTimeZoneParts,
   dateTimePartsInTimeZone,
@@ -822,6 +823,113 @@ function appleEventParticipants(calendarData: string) {
   }
 }
 
+function monthlyOccurrenceFromOffset(
+  originalStart: Date,
+  spec: RecurrenceSpec,
+  monthOffset: number,
+  timeZone?: string,
+) {
+  if (spec.unit !== 'month') return null
+
+  const originalParts = dateTimePartsInTimeZone(originalStart, timeZone)
+  const targetMonthAnchor = new Date(Date.UTC(originalParts.year, originalParts.month - 1, 1))
+  targetMonthAnchor.setUTCMonth(targetMonthAnchor.getUTCMonth() + monthOffset)
+  const targetYear = targetMonthAnchor.getUTCFullYear()
+  const targetMonth = targetMonthAnchor.getUTCMonth() + 1
+  const lastDayOfMonth = new Date(Date.UTC(targetYear, targetMonth, 0)).getUTCDate()
+
+  if (spec.mode === 'month_day') {
+    if (originalParts.day > lastDayOfMonth) return null
+    return dateFromTimeZoneParts(
+      {
+        year: targetYear,
+        month: targetMonth,
+        day: originalParts.day,
+        hour: originalParts.hour,
+        minute: originalParts.minute,
+        second: originalParts.second,
+      },
+      timeZone,
+    )
+  }
+
+  const occurrence = Math.floor((originalParts.day - 1) / 7) + 1
+  const monthStart = dateFromTimeZoneParts(
+    {
+      year: targetYear,
+      month: targetMonth,
+      day: 1,
+      hour: 0,
+      minute: 0,
+      second: 0,
+    },
+    timeZone,
+  )
+  const firstWeekday = dateTimePartsInTimeZone(monthStart, timeZone).weekday
+  const dayOffset = (originalParts.weekday - firstWeekday + 7) % 7
+  const occurrenceDay = 1 + dayOffset + (occurrence - 1) * 7
+  if (occurrenceDay > lastDayOfMonth) return null
+
+  return dateFromTimeZoneParts(
+    {
+      year: targetYear,
+      month: targetMonth,
+      day: occurrenceDay,
+      hour: originalParts.hour,
+      minute: originalParts.minute,
+      second: originalParts.second,
+    },
+    timeZone,
+  )
+}
+
+function projectSimpleRecurringEventIntoRange(
+  event: EventSummary,
+  timeRange: { timeMin: Date; timeMax: Date },
+  timeZone?: string,
+) {
+  if (!event.recurrence?.length) return null
+  if (/^\d{4}-\d{2}-\d{2}$/.test(event.start) || /^\d{4}-\d{2}-\d{2}$/.test(event.end)) return null
+
+  const spec = parseGoogleRecurrence(event.recurrence)
+  if (!spec) return null
+
+  const originalStart = new Date(event.start)
+  const originalEnd = new Date(event.end)
+  if (Number.isNaN(originalStart.getTime()) || Number.isNaN(originalEnd.getTime()) || originalEnd <= originalStart) {
+    return null
+  }
+
+  const durationMs = originalEnd.getTime() - originalStart.getTime()
+  let candidateStart: Date | null = null
+
+  if (spec.unit === 'week') {
+    candidateStart = new Date(originalStart)
+    while (candidateStart.getTime() < timeRange.timeMin.getTime()) {
+      candidateStart = addDays(candidateStart, spec.interval * 7, timeZone)
+    }
+  } else {
+    for (let monthOffset = 0; monthOffset < 36; monthOffset += spec.interval) {
+      const next = monthlyOccurrenceFromOffset(originalStart, spec, monthOffset, timeZone)
+      if (!next) continue
+      if (next.getTime() < timeRange.timeMin.getTime()) continue
+      candidateStart = next
+      break
+    }
+  }
+
+  if (!candidateStart || candidateStart.getTime() >= timeRange.timeMax.getTime()) return null
+
+  const candidateEnd = new Date(candidateStart.getTime() + durationMs)
+  return {
+    ...event,
+    start: candidateStart.toISOString(),
+    end: candidateEnd.toISOString(),
+    timeLabel: formatSmsTime(candidateStart, timeZone),
+    originalStart: event.originalStart || event.start,
+  } satisfies EventSummary
+}
+
 function parseAppleCalendarData(
   calendarData: string,
   connection: Pick<CalendarConnection, 'calendar_id' | 'calendar_name' | 'calendar_label' | 'account_email'>,
@@ -938,6 +1046,12 @@ function parseAppleCalendarData(
     (event) => Boolean(event.originalStart) && eventStartInRange(event.originalStart),
   )
   if (recurrenceInstances.length) return recurrenceInstances[0]
+
+  const projectedRecurringEvents = parsedEvents
+    .map((event) => projectSimpleRecurringEventIntoRange(event, timeRange, timeZone))
+    .filter(isDefined)
+    .sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime())
+  if (projectedRecurringEvents.length) return projectedRecurringEvents[0]
 
   const recurringOverrides = parsedEvents.filter((event) => Boolean(event.originalStart))
   if (recurringOverrides.length) return recurringOverrides[0]

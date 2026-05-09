@@ -160,6 +160,7 @@ export async function POST(request: NextRequest) {
     await handleIncomingSms({
       from,
       body: result.smsText,
+      source: 'photo',
     })
 
     const thread = toSmsThreadMessages(await listSmsThreadEntries(profile.id))

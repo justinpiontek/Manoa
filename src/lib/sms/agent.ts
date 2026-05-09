@@ -3914,10 +3914,12 @@ export async function handleIncomingSms({
   from,
   body,
   twilioMessageSid,
+  source = 'text',
 }: {
   from: string
   body: string
   twilioMessageSid?: string
+  source?: 'text' | 'photo'
 }) {
   const dashboardProfileId = profileIdFromDashboardSender(from)
   const isDashboardConsole = Boolean(dashboardProfileId)
@@ -4138,6 +4140,11 @@ export async function handleIncomingSms({
   let intentBody = body
   let intentOverride: ParsedSmsIntent | null = null
 
+  if (source === 'photo' && activePending) {
+    await clearPendingAction(activePending.id)
+    activePending = null
+  }
+
   if (activePending && isCancelPendingRequest(body)) {
     const recentEvent =
       activePending.payload.recentlyCreated && activePending.kind === 'select_cancel_target'
@@ -4337,7 +4344,8 @@ export async function handleIncomingSms({
     return reply
   }
 
-  const existingEventInviteRequest = parseExistingEventInviteRequest(intentBody)
+  const existingEventInviteRequest =
+    source === 'photo' ? null : parseExistingEventInviteRequest(intentBody)
   if (existingEventInviteRequest) {
     const inviteeContext = await resolveExistingEventInvitees(profile.id, existingEventInviteRequest)
     const contextualTarget = contextualEventTarget(activePending, inviteeContext.eventQuery)

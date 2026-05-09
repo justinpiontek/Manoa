@@ -153,14 +153,16 @@ export async function POST(request: NextRequest) {
       return twilioXmlResponse(messageXml('Missing SMS sender.'), { status: 400 })
     }
 
+    const hasMedia = Number(params.NumMedia || '0') > 0
     let finalBody = body.trim()
-    if (Number(params.NumMedia || '0') > 0) {
+    if (hasMedia) {
       const profile = await findProfileByPhone(from)
       if (!profile) {
         const reply = await handleIncomingSms({
           from,
           body: finalBody || 'photo with event details',
           twilioMessageSid,
+          source: 'photo',
         })
         return twilioXmlResponse(messageXml(reply))
       }
@@ -220,7 +222,12 @@ export async function POST(request: NextRequest) {
       return twilioXmlResponse(messageXml('Text me an event, agenda request, or photo with event details.'), { status: 400 })
     }
 
-    const reply = await handleIncomingSms({ from, body: finalBody, twilioMessageSid })
+    const reply = await handleIncomingSms({
+      from,
+      body: finalBody,
+      twilioMessageSid,
+      source: hasMedia ? 'photo' : 'text',
+    })
     return twilioXmlResponse(messageXml(reply))
   } catch (error) {
     console.error('Twilio inbound route failed.', {
