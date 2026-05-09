@@ -813,8 +813,8 @@ export async function calendarImageToSmsText({
     throw new Error('Photo reading needs OPENAI_API_KEY on the server.')
   }
   const isSmsMode = mode === 'sms'
-  const structuredTimeoutMs = isSmsMode ? 4_000 : 12_000
-  const secondaryTimeoutMs = isSmsMode ? 3_500 : 10_000
+  const structuredTimeoutMs = isSmsMode ? 5_500 : 12_000
+  const secondaryTimeoutMs = isSmsMode ? 4_500 : 10_000
   const finalFallbackTimeoutMs = isSmsMode ? 2_500 : 10_000
 
   let payload: CalendarImagePayload = {
@@ -862,6 +862,68 @@ export async function calendarImageToSmsText({
     return {
       smsText: smsTexts[0] || null,
       smsTexts,
+      events,
+      confidence: payload.confidence,
+      notes: payload.notes,
+    }
+  }
+
+  if (isSmsMode) {
+    let transcriptFailure: Error | null = null
+
+    try {
+      const transcriptText = await openAiImageResponse({
+        dataUrl,
+        timeZone,
+        instructions: transcriptImageInstructions(timeZone),
+        userText: 'Transcribe the visible text from this image.',
+        timeoutMs: secondaryTimeoutMs,
+        body: {},
+      })
+
+      const transcriptEvents = transcriptText
+        ? (() => {
+            const lineEvents = parseTranscriptEvents(transcriptText, timeZone)
+            if (lineEvents.length >= 2) return lineEvents
+            const blockEvents = parseTranscriptEventsFromBlocks(transcriptText, timeZone)
+            return blockEvents.length > lineEvents.length ? blockEvents : lineEvents
+          })()
+        : []
+
+      if (transcriptEvents.length) {
+        return {
+          smsText: transcriptEvents[0]?.smsText || null,
+          smsTexts: transcriptEvents.map((event) => event.smsText),
+          events: transcriptEvents,
+          confidence: 'medium',
+          notes: payload.notes,
+        }
+      }
+    } catch (error) {
+      transcriptFailure = error instanceof Error ? error : new Error('Transcript image parsing failed.')
+      console.error('Transcript calendar image parsing failed.', {
+        error: transcriptFailure.message,
+      })
+    }
+
+    if (smsTexts.length) {
+      return {
+        smsText: smsTexts[0] || null,
+        smsTexts,
+        events,
+        confidence: payload.confidence,
+        notes: payload.notes,
+      }
+    }
+
+    const meaningfulFailure = transcriptFailure || structuredFailure
+    if (meaningfulFailure && /openai|api key|returned \d+|timed out|aborted/i.test(meaningfulFailure.message)) {
+      throw meaningfulFailure
+    }
+
+    return {
+      smsText: null,
+      smsTexts: [],
       events,
       confidence: payload.confidence,
       notes: payload.notes,
