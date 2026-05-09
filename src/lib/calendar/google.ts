@@ -2627,6 +2627,27 @@ async function listEventsBetween({
 
   return eventLists
     .flat()
+    .filter((event) => {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(event.start)) {
+        const start = dateFromTimeZoneParts(
+          {
+            year: Number(event.start.slice(0, 4)),
+            month: Number(event.start.slice(5, 7)),
+            day: Number(event.start.slice(8, 10)),
+            hour: 0,
+            minute: 0,
+            second: 0,
+          },
+          resolvedTimeZone,
+        )
+        const time = start.getTime()
+        return time >= timeMin.getTime() && time < timeMax.getTime()
+      }
+
+      const time = new Date(event.start).getTime()
+      if (Number.isNaN(time)) return false
+      return time >= timeMin.getTime() && time < timeMax.getTime()
+    })
     .sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime())
     .slice(0, maxResults)
 }
