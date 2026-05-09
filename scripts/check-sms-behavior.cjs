@@ -190,6 +190,14 @@ assert.equal(
   recurrenceRule({ unit: 'week', interval: 1 }, mondayEveningUtcStart, timeZone),
   'RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=MO',
 )
+assert.equal(
+  recurrenceRule({ unit: 'week', interval: 1, weekday: 2 }, mondayEveningUtcStart, timeZone),
+  'RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
+)
+assert.equal(
+  recurrenceRule({ unit: 'month', interval: 1, mode: 'nth_weekday', weekday: 3 }, mondayEveningUtcStart, timeZone),
+  'RRULE:FREQ=MONTHLY;INTERVAL=1;BYDAY=WE;BYSETPOS=3',
+)
 
 assertAgendaWindow("what's coming up", 'coming up')
 

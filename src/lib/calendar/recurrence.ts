@@ -102,13 +102,14 @@ export function recurrenceRule(
   const date = asDate(start)
   if (Number.isNaN(date.getTime())) return null
   const parts = dateTimePartsInTimeZone(date, timeZone)
+  const weekday = spec.weekday ?? parts.weekday
 
   if (spec.unit === 'week') {
-    return `RRULE:FREQ=WEEKLY;INTERVAL=${spec.interval};BYDAY=${weekdayCodes[parts.weekday]}`
+    return `RRULE:FREQ=WEEKLY;INTERVAL=${spec.interval};BYDAY=${weekdayCodes[weekday]}`
   }
 
   if (spec.mode === 'nth_weekday') {
-    return `RRULE:FREQ=MONTHLY;INTERVAL=1;BYDAY=${weekdayCodes[parts.weekday]};BYSETPOS=${nthWeekdayOfMonth(
+    return `RRULE:FREQ=MONTHLY;INTERVAL=1;BYDAY=${weekdayCodes[weekday]};BYSETPOS=${nthWeekdayOfMonth(
       parts.day,
     )}`
   }

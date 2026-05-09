@@ -1054,6 +1054,7 @@ function parseAppleCalendarData(
   }
 
   const inRangeEvents = parsedEvents
+    .filter((event) => !event.recurrence?.length || Boolean(event.originalStart))
     .filter((event) => eventStartInRange(event.start))
     .sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime())
   if (inRangeEvents.length) return inRangeEvents[0]
