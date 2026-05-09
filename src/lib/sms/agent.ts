@@ -16,6 +16,7 @@ import {
 import {
   addDays,
   addMinutes,
+  dateFromTimeZoneParts,
   dateTimePartsInTimeZone,
   formatSmsDate,
   formatSmsTime,
@@ -1446,6 +1447,21 @@ function shouldClearRecentCreatedPendingForIntent(
 }
 
 function eventDateLabel(event: EventSummary, timeZone?: string) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(event.start)) {
+    const date = dateFromTimeZoneParts(
+      {
+        year: Number(event.start.slice(0, 4)),
+        month: Number(event.start.slice(5, 7)),
+        day: Number(event.start.slice(8, 10)),
+        hour: 12,
+        minute: 0,
+        second: 0,
+      },
+      timeZone,
+    )
+    return `${formatSmsDate(date, timeZone)} (All day)`
+  }
+
   const start = new Date(event.start)
   if (Number.isNaN(start.getTime())) return event.timeLabel
   return `${formatSmsDate(start, timeZone)} at ${formatSmsTime(start, timeZone)}`
