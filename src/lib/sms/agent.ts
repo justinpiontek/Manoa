@@ -1557,20 +1557,11 @@ function buildCancelNote(target: EventSummary, timeZone?: string) {
 }
 
 function looksExternalScheduleRequest(title: string) {
-  return looksExternalAppointment({
-    id: '',
-    title,
-    start: '',
-    end: '',
-    provider: 'google',
-    calendarId: '',
-    calendarName: '',
-    timeLabel: '',
-    location: '',
-    description: '',
-    organizerEmail: '',
-    attendeeCount: 0,
-  } as EventSummary)
+  // New scheduling is simpler if every request books directly onto the calendar.
+  // We still keep external-appointment authority for existing event management
+  // flows, but we no longer route fresh schedule requests into "call to book."
+  void title
+  return false
 }
 
 function userAlreadyConfirmedServiceBooking(text: string) {
