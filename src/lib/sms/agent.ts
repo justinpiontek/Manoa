@@ -507,6 +507,72 @@ function hardConflictScheduleReply({
   return lines.join('\n')
 }
 
+function pendingInviteRescheduleReply({
+  conflict,
+  requestedOption,
+  alternatives,
+}: {
+  conflict: EventSummary
+  requestedOption: ScheduleOption
+  alternatives: ScheduleOption[]
+}) {
+  const lines = [
+    `You have a pending invite for "${conflict.title}" at ${conflict.timeLabel}.`,
+    `1. Move over it anyway: ${optionTimingText(requestedOption)} on ${requestedOption.calendarName}`,
+  ]
+
+  if (alternatives[0]) {
+    lines.push(`2. Adjust to ${optionTimingText(alternatives[0])} on ${alternatives[0].calendarName}`)
+  }
+
+  if (alternatives[1]) {
+    lines.push(`3. Adjust to ${optionTimingText(alternatives[1])} on ${alternatives[1].calendarName}`)
+  }
+
+  if (alternatives[1]) {
+    lines.push('Reply 1, 2, or 3.')
+  } else if (alternatives[0]) {
+    lines.push('Reply 1 or 2.')
+  } else {
+    lines.push('Reply 1 to move it anyway, or text a different day or time.')
+  }
+
+  return lines.join('\n')
+}
+
+function hardConflictRescheduleReply({
+  conflict,
+  requestedOption,
+  alternatives,
+}: {
+  conflict: EventSummary
+  requestedOption: ScheduleOption
+  alternatives: ScheduleOption[]
+}) {
+  const lines = [
+    `That time is already reserved for "${conflict.title}" at ${conflict.timeLabel} on ${conflict.calendarName}.`,
+    `1. Move anyway: ${optionTimingText(requestedOption)} on ${requestedOption.calendarName}`,
+  ]
+
+  if (alternatives[0]) {
+    lines.push(`2. Adjust to ${optionTimingText(alternatives[0])} on ${alternatives[0].calendarName}`)
+  }
+
+  if (alternatives[1]) {
+    lines.push(`3. Adjust to ${optionTimingText(alternatives[1])} on ${alternatives[1].calendarName}`)
+  }
+
+  if (alternatives[1]) {
+    lines.push('Reply 1, 2, or 3.')
+  } else if (alternatives[0]) {
+    lines.push('Reply 1 or 2.')
+  } else {
+    lines.push('Reply 1 to move it anyway, or text a different day or time.')
+  }
+
+  return lines.join('\n')
+}
+
 function genericNoOpeningReply({
   calendarLabel,
   dateLabel,
@@ -820,6 +886,19 @@ function requestedExactScheduleOption({
   }
 }
 
+function withRequestedOptionFirst(
+  requestedOption: ScheduleOption,
+  options: ScheduleOption[],
+) {
+  const seen = new Set<string>()
+  return [requestedOption, ...options].filter((option) => {
+    const key = `${option.start}|${option.end}|${option.calendarId}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 function requestedAllDayScheduleOption({
   title,
   startDate,
@@ -1102,6 +1181,108 @@ async function maybeConfirmExactScheduleTime({
     attendees,
     unresolvedInvitees,
   })
+}
+
+async function maybeConfirmExactRescheduleTime({
+  profile,
+  smsFrom,
+  target,
+  baseDate,
+  exactTime,
+  durationMinutes,
+  authority,
+}: {
+  profile: SmsProfile
+  smsFrom: string
+  target: EventSummary
+  baseDate: Date
+  exactTime: { hour: number; minute: number } | null
+  durationMinutes: number
+  authority: EventAuthority
+}) {
+  if (!exactTime) return null
+
+  const chosenCalendar = {
+    provider: target.provider,
+    calendarId: target.calendarId,
+    calendarLabel: target.calendarName,
+    accountId: target.ownerEmail || target.calendarId,
+    accountEmail: target.ownerEmail || null,
+    connectionId: '',
+    calendarName: target.calendarName,
+    isPrimary: false,
+  } satisfies CalendarPlacementOption
+
+  const { option: requestedOption, requestedStart, requestedEnd } = requestedExactScheduleOption({
+    title: target.title,
+    baseDate,
+    exactTime,
+    durationMinutes,
+    chosenCalendar,
+    timeZone: profile.timezone,
+    location: target.location || null,
+  })
+
+  const overlappingEvents = (await listUpcomingEvents({
+    profileId: profile.id,
+    startAt: requestedStart,
+    windowMinutes: durationMinutes,
+    maxResults: 12,
+    timeZone: profile.timezone,
+  }))
+    .filter((event) => event.id !== target.id)
+    .filter((event) => overlapsOption(event, requestedStart, requestedEnd))
+
+  const pendingInviteConflict = overlappingEvents.find((event) =>
+    isPendingInviteConflict(event, profile.email),
+  )
+  const hardConflict = overlappingEvents.find(
+    (event) => !isPendingInviteConflict(event, profile.email),
+  )
+
+  const alternatives = withRequestedOptionFirst(
+    requestedOption,
+    await findScheduleOptions({
+      profileId: profile.id,
+      title: target.title,
+      baseDate,
+      exactTime,
+      calendarHint: target.calendarName,
+      durationMinutes,
+      location: target.location || null,
+    }),
+  ).slice(0, 3)
+
+  await storePendingAction({
+    profileId: profile.id,
+    smsFrom,
+    kind: 'reschedule',
+    payload: {
+      target,
+      options: alternatives,
+      authority,
+    },
+  })
+
+  if (hardConflict) {
+    return hardConflictRescheduleReply({
+      conflict: hardConflict,
+      requestedOption,
+      alternatives: alternatives.slice(1, 3),
+    })
+  }
+
+  if (pendingInviteConflict) {
+    return pendingInviteRescheduleReply({
+      conflict: pendingInviteConflict,
+      requestedOption,
+      alternatives: alternatives.slice(1, 3),
+    })
+  }
+
+  return `I can move ${target.title} to:\n${optionList(alternatives)}\n${
+    alternatives.length >= 3 ? 'Reply 1, 2, or 3.' : alternatives.length === 2 ? 'Reply 1 or 2.' : 'Reply 1.'
+  }`
 }
 
 function sortAgendaEvents(events: EventSummary[]) {
@@ -3626,6 +3807,20 @@ async function handleChoice({
       })
     }
 
+    const exactRescheduleReply = await maybeConfirmExactRescheduleTime({
+      profile,
+      smsFrom,
+      target: event,
+      baseDate,
+      exactTime: pending.payload.exactTime || null,
+      durationMinutes: eventDurationMinutes(event),
+      authority,
+    })
+
+    if (exactRescheduleReply) {
+      return exactRescheduleReply
+    }
+
     const options = await findScheduleOptions({
       profileId: profile.id,
       title: event.title,
@@ -3671,6 +3866,20 @@ async function handleChoice({
         const baseDate = pending.payload.requestedBaseDate
           ? new Date(pending.payload.requestedBaseDate)
           : new Date(Date.now() + 24 * 60 * 60_000)
+
+        const exactRescheduleReply = await maybeConfirmExactRescheduleTime({
+          profile,
+          smsFrom,
+          target,
+          baseDate,
+          exactTime: pending.payload.exactTime || null,
+          durationMinutes: eventDurationMinutes(target),
+          authority: pending.payload.authority || 'personal',
+        })
+
+        if (exactRescheduleReply) {
+          return exactRescheduleReply
+        }
 
         const options = await findScheduleOptions({
           profileId: profile.id,
