@@ -5370,6 +5370,21 @@ export async function handleIncomingSms({
       return reply
     }
 
+    const exactRescheduleReply = await maybeConfirmExactRescheduleTime({
+      profile,
+      smsFrom: from,
+      target,
+      baseDate: rescheduleBaseDate,
+      exactTime: intent.exactTime,
+      durationMinutes: eventDurationMinutes(target),
+      authority,
+    })
+
+    if (exactRescheduleReply) {
+      await logSms({ profileId: profile.id, from, body: exactRescheduleReply, direction: 'outbound' })
+      return exactRescheduleReply
+    }
+
     const options = await findScheduleOptions({
       profileId: profile.id,
       title: target.title,
