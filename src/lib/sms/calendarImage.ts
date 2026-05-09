@@ -117,6 +117,23 @@ function fallbackImageInstructions(timeZone: string) {
   )
 }
 
+function lineItemImageInstructions(timeZone: string) {
+  return (
+    `You read photos and screenshots for Manoa, a calendar assistant.\n` +
+    `Current timezone: ${timeZone}.\n` +
+    `Current local date: ${currentLocalDateString(timeZone)}.\n` +
+    'This image may be a school flyer, preschool notice, church bulletin, newsletter, invitation, or important-dates sheet.\n' +
+    'Return one line per clear dated event using this exact format:\n' +
+    'DATE || TITLE || TIME_OR_ALL_DAY || LOCATION_OR_NOTES\n' +
+    'Use compact numeric dates like 5/20/2026.\n' +
+    'If the event has no clear time, write ALL_DAY in the third field.\n' +
+    'If a section heading provides the event title, use it as the title.\n' +
+    'If the dated line adds detail, include it in TITLE or LOCATION_OR_NOTES.\n' +
+    'If a month/day is clear but the year is missing, infer the next upcoming matching year.\n' +
+    'Return only the lines. If there are no readable dated events, return exactly NO_EVENT.'
+  )
+}
+
 function parseTopLevelOutputText(response: unknown) {
   if (!response || typeof response !== 'object') return null
 
@@ -228,6 +245,17 @@ function fallbackSmsTexts(outputText: string) {
     .filter(Boolean)
     .filter((line) => !/^no_event$/i.test(line))
     .filter((line) => /^(add|schedule)\b/i.test(line))
+}
+
+function lineItemFallbackLines(outputText: string) {
+  return outputText
+    .replace(/```[a-z]*\n?/gi, '')
+    .replace(/```/g, '')
+    .split(/\r?\n+/)
+    .map((line) => line.replace(/^[-*]\s+/, '').trim())
+    .filter(Boolean)
+    .filter((line) => !/^no_event$/i.test(line))
+    .filter((line) => line.includes('||'))
 }
 
 function displayDate(value: string | null) {
@@ -355,6 +383,49 @@ function parseFallbackLineToEvent(line: string, timeZone: string): CalendarImage
 function fallbackSmsEvents(lines: string[], timeZone: string) {
   return lines
     .map((line) => parseFallbackLineToEvent(line, timeZone))
+    .filter((event): event is CalendarImageEvent => Boolean(event))
+}
+
+function parseLineItemToEvent(line: string, timeZone: string): CalendarImageEvent | null {
+  const parts = line.split('||').map((part) => cleanText(part))
+  if (parts.length < 3) return null
+
+  const date = parseExplicitDate(parts[0], timeZone)
+  if (!date) return null
+
+  const title = parts[1] || 'event'
+  const timeOrAllDay = (parts[2] || '').toUpperCase()
+  const locationOrNotes = parts[3] || ''
+  const time24h = timeOrAllDay === 'ALL_DAY' ? null : parseTimeTo24h(parts[2])
+  const isAllDay = timeOrAllDay === 'ALL_DAY'
+  if (!isAllDay && !time24h) return null
+
+  const dateYmd = ymdFromDate(date, timeZone)
+  const location = locationOrNotes || null
+  const smsText = isAllDay
+    ? `add ${title} on ${displayDate(dateYmd)} all day${location ? ` at ${location}` : ''}`
+    : `add ${title} on ${displayDate(dateYmd)} at ${displayTime(time24h)}${location ? ` at ${location}` : ''}`
+
+  return {
+    title,
+    dateYmd,
+    endDateYmd: null,
+    time24h,
+    isAllDay,
+    durationMinutes: null,
+    location,
+    organizerOrSource: null,
+    itemType: 'other',
+    isConfirmedOrFixed: true,
+    confidence: 'medium',
+    notes: null,
+    smsText,
+  }
+}
+
+function lineItemFallbackEvents(lines: string[], timeZone: string) {
+  return lines
+    .map((line) => parseLineItemToEvent(line, timeZone))
     .filter((event): event is CalendarImageEvent => Boolean(event))
 }
 
@@ -610,6 +681,39 @@ export async function calendarImageToSmsText({
     })
   }
 
+  let lineItemFailure: Error | null = null
+  let lineItemLines: string[] = []
+  let lineItemEvents: CalendarImageEvent[] = []
+
+  try {
+    const lineItemText = await openAiImageResponse({
+      dataUrl,
+      timeZone,
+      instructions: lineItemImageInstructions(timeZone),
+      userText: 'Read this image and return one rigid dated line per event.',
+      timeoutMs: 10_000,
+      body: {},
+    })
+
+    lineItemLines = lineItemText ? lineItemFallbackLines(lineItemText) : []
+    lineItemEvents = lineItemFallbackEvents(lineItemLines, timeZone)
+  } catch (error) {
+    lineItemFailure = error instanceof Error ? error : new Error('Line-item image parsing failed.')
+    console.error('Line-item calendar image parsing failed.', {
+      error: lineItemFailure.message,
+    })
+  }
+
+  if (lineItemEvents.length > smsTexts.length && lineItemEvents.length >= 2) {
+    return {
+      smsText: lineItemEvents[0]?.smsText || null,
+      smsTexts: lineItemEvents.map((event) => event.smsText),
+      events: lineItemEvents,
+      confidence: 'medium',
+      notes: payload.notes,
+    }
+  }
+
   if (fallbackSmsLines.length > smsTexts.length && fallbackEvents.length >= Math.min(2, fallbackSmsLines.length)) {
     return {
       smsText: fallbackSmsLines[0] || null,
@@ -641,8 +745,8 @@ export async function calendarImageToSmsText({
   }
 
   const meaningfulFailure = fallbackFailure || structuredFailure
-  if (meaningfulFailure && /openai|api key|returned \d+|timed out/i.test(meaningfulFailure.message)) {
-    throw meaningfulFailure
+  if ((lineItemFailure || meaningfulFailure) && /openai|api key|returned \d+|timed out/i.test((lineItemFailure || meaningfulFailure)!.message)) {
+    throw (lineItemFailure || meaningfulFailure)!
   }
 
   return {
