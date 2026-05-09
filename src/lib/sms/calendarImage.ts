@@ -572,13 +572,20 @@ function calendarImageItemToEvent(item: CalendarImageItemPayload): CalendarImage
 export async function calendarImageToSmsText({
   dataUrl,
   timeZone = defaultTimezone(),
+  mode = 'dashboard',
 }: {
   dataUrl: string
   timeZone?: string
+  mode?: 'sms' | 'dashboard'
 }): Promise<CalendarImageResult> {
   if (!hasCalendarImageUnderstanding()) {
     throw new Error('Photo reading needs OPENAI_API_KEY on the server.')
   }
+  const isSmsMode = mode === 'sms'
+  const structuredTimeoutMs = isSmsMode ? 4_000 : 12_000
+  const secondaryTimeoutMs = isSmsMode ? 3_500 : 10_000
+  const finalFallbackTimeoutMs = isSmsMode ? 2_500 : 10_000
+
   let payload: CalendarImagePayload = {
     has_calendar_items: false,
     items: [],
@@ -595,6 +602,7 @@ export async function calendarImageToSmsText({
       timeZone,
       instructions: structuredImageInstructions(timeZone),
       userText: 'Read this image and extract the calendar event details.',
+      timeoutMs: structuredTimeoutMs,
       body: {
         text: {
           format: {
@@ -619,6 +627,59 @@ export async function calendarImageToSmsText({
     })
   }
 
+  if (isSmsMode && smsTexts.length > 1) {
+    return {
+      smsText: smsTexts[0] || null,
+      smsTexts,
+      events,
+      confidence: payload.confidence,
+      notes: payload.notes,
+    }
+  }
+
+  let lineItemFailure: Error | null = null
+  let lineItemLines: string[] = []
+  let lineItemEvents: CalendarImageEvent[] = []
+
+  try {
+    const lineItemText = await openAiImageResponse({
+      dataUrl,
+      timeZone,
+      instructions: lineItemImageInstructions(timeZone),
+      userText: 'Read this image and return one rigid dated line per event.',
+      timeoutMs: secondaryTimeoutMs,
+      body: {},
+    })
+
+    lineItemLines = lineItemText ? lineItemFallbackLines(lineItemText) : []
+    lineItemEvents = lineItemFallbackEvents(lineItemLines, timeZone)
+  } catch (error) {
+    lineItemFailure = error instanceof Error ? error : new Error('Line-item image parsing failed.')
+    console.error('Line-item calendar image parsing failed.', {
+      error: lineItemFailure.message,
+    })
+  }
+
+  if (lineItemEvents.length > smsTexts.length && lineItemEvents.length >= 2) {
+    return {
+      smsText: lineItemEvents[0]?.smsText || null,
+      smsTexts: lineItemEvents.map((event) => event.smsText),
+      events: lineItemEvents,
+      confidence: 'medium',
+      notes: payload.notes,
+    }
+  }
+
+  if (isSmsMode && smsTexts.length) {
+    return {
+      smsText: smsTexts[0] || null,
+      smsTexts,
+      events,
+      confidence: payload.confidence,
+      notes: payload.notes,
+    }
+  }
+
   if (smsTexts.length <= 1) {
     try {
       const listOutputText = await openAiImageResponse({
@@ -626,7 +687,7 @@ export async function calendarImageToSmsText({
         timeZone,
         instructions: multiEventImageInstructions(timeZone),
         userText: 'Read this image and extract every separate dated calendar item you can clearly read.',
-        timeoutMs: 10_000,
+        timeoutMs: secondaryTimeoutMs,
         body: {
           text: {
             format: {
@@ -668,7 +729,7 @@ export async function calendarImageToSmsText({
       timeZone,
       instructions: fallbackImageInstructions(timeZone),
       userText: 'Read this image and turn each clear event into one Manoa command line.',
-      timeoutMs: 10_000,
+      timeoutMs: finalFallbackTimeoutMs,
       body: {},
     })
 
@@ -678,29 +739,6 @@ export async function calendarImageToSmsText({
     fallbackFailure = error instanceof Error ? error : new Error('Fallback image parsing failed.')
     console.error('Fallback calendar image parsing failed.', {
       error: fallbackFailure.message,
-    })
-  }
-
-  let lineItemFailure: Error | null = null
-  let lineItemLines: string[] = []
-  let lineItemEvents: CalendarImageEvent[] = []
-
-  try {
-    const lineItemText = await openAiImageResponse({
-      dataUrl,
-      timeZone,
-      instructions: lineItemImageInstructions(timeZone),
-      userText: 'Read this image and return one rigid dated line per event.',
-      timeoutMs: 10_000,
-      body: {},
-    })
-
-    lineItemLines = lineItemText ? lineItemFallbackLines(lineItemText) : []
-    lineItemEvents = lineItemFallbackEvents(lineItemLines, timeZone)
-  } catch (error) {
-    lineItemFailure = error instanceof Error ? error : new Error('Line-item image parsing failed.')
-    console.error('Line-item calendar image parsing failed.', {
-      error: lineItemFailure.message,
     })
   }
 

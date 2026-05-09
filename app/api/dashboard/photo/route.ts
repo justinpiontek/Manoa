@@ -119,6 +119,7 @@ export async function POST(request: NextRequest) {
     const result = await calendarImageToSmsText({
       dataUrl,
       timeZone: profile.timezone,
+      mode: 'dashboard',
     })
 
     if (result.events.length > 1) {

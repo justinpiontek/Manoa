@@ -77,6 +77,7 @@ async function mediaCalendarResult(params: Record<string, string>, timeZone?: st
     return calendarImageToSmsText({
       dataUrl,
       timeZone,
+      mode: 'sms',
     })
   }
 
