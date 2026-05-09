@@ -27,6 +27,10 @@ export type CalendarImageBatchResult = {
   reply: string
   createdCount: number
   skippedCount: number
+  needsCalendarChoice?: boolean
+  calendarChoices?: CalendarPlacementOption[]
+  visibleCalendarChoiceCount?: number
+  events?: CalendarImageEvent[]
 }
 
 function normalize(value: string) {
@@ -218,6 +222,17 @@ function calendarChoicesText(calendars: CalendarPlacementOption[]) {
   return calendars.slice(0, 6).map((calendar) => calendar.calendarLabel).join(', ')
 }
 
+function calendarChoicesReply(calendars: CalendarPlacementOption[]) {
+  const visibleChoices = calendars.slice(0, 6)
+  return {
+    visibleChoices,
+    visibleCount: visibleChoices.length,
+    reply: `I found multiple events. Which calendar should I put those on?\n${visibleChoices
+      .map((calendar, index) => `${index + 1}. ${calendar.calendarLabel}`)
+      .join('\n')}\nReply with the calendar name or number.`,
+  }
+}
+
 function batchList(options: ScheduleOption[]) {
   return options.slice(0, 6).map((option, index) => {
     return `${index + 1}. ${option.dayLabel} at ${option.timeLabel} ${option.title}`
@@ -264,18 +279,105 @@ export async function createCalendarImageBatch({
         : null
 
   if (!calendar) {
-    const choices = calendarChoicesText(
+    const choicePrompt = calendarChoicesReply(
       calendarHint && placement.matches.length > 1
         ? placement.matches
         : placement.bookingCalendars,
     )
     return {
       ok: false,
-      reply: `I found ${fixedEvents.length} events. Tell me which calendar to add them to, like "add to Home", then upload it again.\nChoices: ${choices}`,
+      reply: choicePrompt.reply,
       createdCount: 0,
       skippedCount: 0,
+      needsCalendarChoice: true,
+      calendarChoices: choicePrompt.visibleChoices,
+      visibleCalendarChoiceCount: choicePrompt.visibleCount,
+      events: fixedEvents,
     }
   }
+
+  const created: ScheduleOption[] = []
+  const skipped: ScheduleOption[] = []
+  const failed: ScheduleOption[] = []
+
+  for (const event of fixedEvents) {
+    const option = scheduleOptionFromImageEvent({
+      event,
+      calendar,
+      timeZone: profile.timezone,
+      defaultDurationMinutes: profile.default_event_duration_minutes,
+    })
+    if (!option) continue
+
+    try {
+      if (await alreadyOnCalendar(profile.id, option, profile.timezone)) {
+        skipped.push(option)
+        continue
+      }
+
+      const createdEvent = await createCalendarEvent(profile.id, option)
+      await queueBatchReminder({
+        profile,
+        option,
+        eventId: createdEvent.id || null,
+      })
+      created.push(option)
+    } catch {
+      failed.push(option)
+    }
+  }
+
+  if (!created.length && skipped.length) {
+    return {
+      ok: true,
+      reply: `I found ${fixedEvents.length} events, but they already look like they are on ${calendar.calendarLabel}.`,
+      createdCount: 0,
+      skippedCount: skipped.length,
+    }
+  }
+
+  if (!created.length) {
+    return {
+      ok: false,
+      reply: `I found ${fixedEvents.length} events, but I could not add them to ${calendar.calendarLabel}. Try one clearer photo or a different calendar.`,
+      createdCount: 0,
+      skippedCount: skipped.length,
+    }
+  }
+
+  const lines = [
+    `Added ${created.length} event${created.length === 1 ? '' : 's'} to ${calendar.calendarLabel}.`,
+    batchList(created),
+  ]
+
+  if (skipped.length) {
+    lines.push(`Skipped ${skipped.length} that already looked saved.`)
+  }
+
+  if (failed.length) {
+    lines.push(`Could not add ${failed.length}. Try those one at a time if they matter.`)
+  }
+
+  return {
+    ok: true,
+    reply: lines.join('\n'),
+    createdCount: created.length,
+    skippedCount: skipped.length,
+  }
+}
+
+export async function createCalendarImageBatchOnCalendar({
+  profile,
+  events,
+  calendar,
+}: {
+  profile: CalendarImageBatchProfile
+  events: CalendarImageEvent[]
+  calendar: CalendarPlacementOption
+}): Promise<CalendarImageBatchResult> {
+  const fixedEvents = events
+    .filter((event) => event.isConfirmedOrFixed)
+    .slice(0, 12)
 
   const created: ScheduleOption[] = []
   const skipped: ScheduleOption[] = []

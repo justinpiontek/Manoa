@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { normalizePhone } from '@/src/lib/phone'
 import { findProfileByPhone } from '@/src/lib/profiles'
-import { handleIncomingSms } from '@/src/lib/sms/agent'
+import { handleIncomingSms, storePhotoBatchCalendarChoicePending } from '@/src/lib/sms/agent'
 import { calendarImageToSmsText, type CalendarImageResult } from '@/src/lib/sms/calendarImage'
 import {
   calendarHintFromImageCaption,
@@ -182,6 +182,15 @@ export async function POST(request: NextRequest) {
             result: imageResult,
             calendarHint: calendarHintFromImageCaption(finalBody),
           })
+          if (batch.needsCalendarChoice && batch.calendarChoices?.length && batch.events?.length) {
+            await storePhotoBatchCalendarChoicePending({
+              profileId: profile.id,
+              smsFrom: from,
+              calendarChoices: batch.calendarChoices,
+              visibleCalendarChoiceCount: batch.visibleCalendarChoiceCount || batch.calendarChoices.length,
+              events: batch.events,
+            })
+          }
           await logDirectTwilioReply({
             profileId: profile.id,
             from,

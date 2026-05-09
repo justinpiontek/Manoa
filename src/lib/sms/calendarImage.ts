@@ -250,6 +250,12 @@ function cleanText(value: string | null | undefined) {
   return (value || '').replace(/\s+/g, ' ').trim()
 }
 
+function looksTravelReservationText(value: string) {
+  return /\b(reservation|campground|camp site|campsite|rv site|hotel|motel|resort|airbnb|check-in|check out|check-out|arrival|departure|itinerary|travel|flight|boarding|lodging|stay)\b/i.test(
+    value,
+  )
+}
+
 function ymdFromDate(date: Date, timeZone: string) {
   const parts = dateTimePartsInTimeZone(date, timeZone)
   return `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`
@@ -444,8 +450,7 @@ function calendarImageItemToEvent(item: CalendarImageItemPayload): CalendarImage
   const date = displayDate(item.date_ymd)
   const endDate = displayDate(item.end_date_ymd)
   const time = displayTime(item.time_24h)
-  const isAllDay = Boolean(item.is_all_day)
-  if (!date || (!time && !isAllDay)) return null
+  if (!date) return null
 
   const title =
     cleanText(item.title) ||
@@ -453,11 +458,25 @@ function calendarImageItemToEvent(item: CalendarImageItemPayload): CalendarImage
       ? `${cleanText(item.organizer_or_source)} ${item.item_type || 'event'}`
       : item.item_type || 'event')
   const location = cleanText(item.location || item.organizer_or_source)
+  const sourceText = [title, location, cleanText(item.organizer_or_source), cleanText(item.notes)]
+    .filter(Boolean)
+    .join(' ')
+  const looksTravelReservation =
+    item.item_type === 'travel' || looksTravelReservationText(sourceText)
+  const hasDateRange = Boolean(endDate && endDate !== date)
+  const isAllDay = Boolean(item.is_all_day || (looksTravelReservation && hasDateRange))
+  const isConfirmedOrFixed = Boolean(
+    item.is_confirmed_or_fixed ||
+      (looksTravelReservation &&
+        /\b(reservation|confirmed|confirmation|itinerary|booking|arrival|departure)\b/i.test(sourceText)),
+  )
+  if (!time && !isAllDay) return null
+
   const duration = item.duration_minutes && item.duration_minutes > 0
     ? ` for ${item.duration_minutes} minutes`
     : ''
 
-  const prefix = item.is_confirmed_or_fixed ? 'add' : 'schedule'
+  const prefix = isConfirmedOrFixed ? 'add' : 'schedule'
   const smsText = isAllDay
     ? `${prefix} ${title}${endDate && endDate !== date ? ` from ${date} to ${endDate}` : ` on ${date}`} all day${location ? ` at ${location}` : ''}`
     : `${prefix} ${title} on ${date} at ${time}${location ? ` at ${location}` : ''}${duration}`
@@ -466,13 +485,13 @@ function calendarImageItemToEvent(item: CalendarImageItemPayload): CalendarImage
     title,
     dateYmd: item.date_ymd as string,
     endDateYmd: item.end_date_ymd || null,
-    time24h: item.time_24h || null,
+    time24h: isAllDay ? null : item.time_24h || null,
     isAllDay,
     durationMinutes: item.duration_minutes,
     location: location || null,
     organizerOrSource: cleanText(item.organizer_or_source) || null,
     itemType: item.item_type,
-    isConfirmedOrFixed: item.is_confirmed_or_fixed,
+    isConfirmedOrFixed,
     confidence: item.confidence,
     notes: item.notes,
     smsText,

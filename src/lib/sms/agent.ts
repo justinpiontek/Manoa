@@ -38,6 +38,8 @@ import {
   findPersonContact,
   saveOrUpdatePersonContact,
 } from '../peopleContacts'
+import { createCalendarImageBatchOnCalendar } from './calendarImageBatch'
+import type { CalendarImageEvent } from './calendarImage'
 import { profileIdFromDashboardSender } from './sender'
 import {
   classifyEventAuthority,
@@ -93,6 +95,7 @@ type PendingKind =
   | 'external_call_prep'
   | 'external_cancel_confirm'
   | 'external_reschedule_confirm'
+  | 'photo_batch_choose_calendar'
   | 'save_business_contact_phone'
 
 const smsProfileSelectVariants = [
@@ -143,6 +146,7 @@ type PendingPayload = {
     location?: string | null
     serviceConfirmed?: boolean
   }
+  photoBatchEvents?: CalendarImageEvent[]
 }
 
 type PendingAction = {
@@ -1338,6 +1342,7 @@ function reminderForPending(pending: PendingAction) {
     case 'external_call_prep':
       return 'Reply with the option you want, like 1, 2, or 3.'
     case 'choose_calendar':
+    case 'photo_batch_choose_calendar':
       return 'Reply with the calendar name or number you want.'
     case 'reschedule':
       if (pending.payload.stage === 'scope') {
@@ -2522,6 +2527,31 @@ async function storePendingAction({
   if (error) throw error
 }
 
+export async function storePhotoBatchCalendarChoicePending({
+  profileId,
+  smsFrom,
+  calendarChoices,
+  visibleCalendarChoiceCount,
+  events,
+}: {
+  profileId: string
+  smsFrom: string
+  calendarChoices: CalendarPlacementOption[]
+  visibleCalendarChoiceCount: number
+  events: CalendarImageEvent[]
+}) {
+  await storePendingAction({
+    profileId,
+    smsFrom,
+    kind: 'photo_batch_choose_calendar',
+    payload: {
+      calendarChoices,
+      visibleCalendarChoiceCount,
+      photoBatchEvents: events,
+    },
+  })
+}
+
 async function clearPendingAction(id: string) {
   const { error } = await supabaseAdmin
     .from('pending_actions')
@@ -3298,12 +3328,42 @@ async function handleChoice({
   choice: number
   pending: PendingAction
 }) {
+  if (pending.kind === 'photo_batch_choose_calendar') {
+    const visibleChoiceCount = pending.payload.visibleCalendarChoiceCount || pending.payload.calendarChoices?.length || 0
+    const pickedCalendar =
+      choice <= visibleChoiceCount ? choose(pending.payload.calendarChoices, choice) : null
+    const events = pending.payload.photoBatchEvents || []
+    if (!pickedCalendar || !events.length) return 'Reply with the calendar name or number you want.'
+
+    const result = await createCalendarImageBatchOnCalendar({
+      profile,
+      events,
+      calendar: pickedCalendar,
+    })
+    await clearPendingAction(pending.id)
+    return result.reply
+  }
+
   if (pending.kind === 'choose_calendar') {
     const visibleChoiceCount = pending.payload.visibleCalendarChoiceCount || pending.payload.calendarChoices?.length || 0
     const pickedCalendar =
       choice <= visibleChoiceCount ? choose(pending.payload.calendarChoices, choice) : null
     const scheduleRequest = pending.payload.scheduleRequest
     if (!pickedCalendar || !scheduleRequest) return 'Reply with the calendar name or number you want.'
+
+    if (scheduleRequest.allDay) {
+      return maybeConfirmAllDaySchedule({
+        profile,
+        smsFrom,
+        title: scheduleRequest.title,
+        startDate: new Date(scheduleRequest.baseDate),
+        endDate: scheduleRequest.endDate ? new Date(scheduleRequest.endDate) : new Date(scheduleRequest.baseDate),
+        chosenCalendar: pickedCalendar,
+        location: scheduleRequest.location || null,
+        attendees: pending.payload.attendees || [],
+        unresolvedInvitees: pending.payload.unresolvedInvitees || [],
+      })
+    }
 
     if (looksExternalScheduleRequest(scheduleRequest.title) && !scheduleRequest.serviceConfirmed) {
       return prepareExternalScheduleCallPrep({
@@ -4364,6 +4424,24 @@ export async function handleIncomingSms({
     }
   }
 
+  if (activePending?.kind === 'photo_batch_choose_calendar') {
+    const pickedCalendar = resolveCalendarChoiceFromText(
+      body,
+      activePending.payload.calendarChoices,
+      activePending.payload.visibleCalendarChoiceCount,
+    )
+    if (pickedCalendar && (activePending.payload.photoBatchEvents || []).length) {
+      const result = await createCalendarImageBatchOnCalendar({
+        profile,
+        events: activePending.payload.photoBatchEvents || [],
+        calendar: pickedCalendar,
+      })
+      await clearPendingAction(activePending.id)
+      await logSms({ profileId: profile.id, from, body: result.reply, direction: 'outbound' })
+      return result.reply
+    }
+  }
+
   if (activePending?.kind === 'choose_calendar') {
     const pickedCalendar = resolveCalendarChoiceFromText(
       body,
@@ -4374,6 +4452,22 @@ export async function handleIncomingSms({
       const scheduleRequest = activePending.payload.scheduleRequest
       const attendees = activePending.payload.attendees || []
       const unresolvedInvitees = activePending.payload.unresolvedInvitees || []
+
+      if (scheduleRequest.allDay) {
+        const reply = await maybeConfirmAllDaySchedule({
+          profile,
+          smsFrom: from,
+          title: scheduleRequest.title,
+          startDate: new Date(scheduleRequest.baseDate),
+          endDate: scheduleRequest.endDate ? new Date(scheduleRequest.endDate) : new Date(scheduleRequest.baseDate),
+          chosenCalendar: pickedCalendar,
+          location: scheduleRequest.location || null,
+          attendees,
+          unresolvedInvitees,
+        })
+        await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+        return reply
+      }
 
       if (looksExternalScheduleRequest(scheduleRequest.title) && !scheduleRequest.serviceConfirmed) {
         const reply = await prepareExternalScheduleCallPrep({
@@ -4759,21 +4853,6 @@ export async function handleIncomingSms({
       placement.matches[0] ||
       placement.bookingCalendars[0]
 
-    if (looksExternalScheduleRequest(scheduleIntent.title) && !userAlreadyConfirmedServiceBooking(intentBody)) {
-      const reply = await prepareExternalScheduleCallPrep({
-        profile,
-        smsFrom: from,
-        title: scheduleIntent.title,
-        baseDate: scheduleIntent.baseDate,
-        exactTime: scheduleIntent.exactTime,
-        durationMinutes: scheduleDurationMinutes,
-        dateWindow: scheduleIntent.dateWindow,
-        chosenCalendar,
-      })
-      await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
-      return reply
-    }
-
     if (scheduleIntent.allDay && chosenCalendar) {
       const reply = await maybeConfirmAllDaySchedule({
         profile,
@@ -4785,6 +4864,21 @@ export async function handleIncomingSms({
         location: scheduleIntent.location,
         attendees: inviteeContext.invitees,
         unresolvedInvitees: inviteeContext.unresolvedNames,
+      })
+      await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+      return reply
+    }
+
+    if (looksExternalScheduleRequest(scheduleIntent.title) && !userAlreadyConfirmedServiceBooking(intentBody)) {
+      const reply = await prepareExternalScheduleCallPrep({
+        profile,
+        smsFrom: from,
+        title: scheduleIntent.title,
+        baseDate: scheduleIntent.baseDate,
+        exactTime: scheduleIntent.exactTime,
+        durationMinutes: scheduleDurationMinutes,
+        dateWindow: scheduleIntent.dateWindow,
+        chosenCalendar,
       })
       await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
       return reply
