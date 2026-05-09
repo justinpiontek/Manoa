@@ -450,6 +450,10 @@ const transcriptDatePrefixPattern = new RegExp(
   `^\\s*(?:${transcriptWeekdaySource}\\s+)?((?:${transcriptMonthNameSource})\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s+\\d{4})?|\\d{1,2}(?:st|nd|rd|th)?\\s+(?:of\\s+)?(?:${transcriptMonthNameSource})\\.?\\b(?:,?\\s+\\d{4})?)\\*?\\s*(?:[-:–—]\\s*)?(.*)$`,
   'i',
 )
+const transcriptDateAnywherePattern = new RegExp(
+  `(?:${transcriptWeekdaySource}\\s+)?((?:${transcriptMonthNameSource})\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s+\\d{4})?|\\d{1,2}(?:st|nd|rd|th)?\\s+(?:of\\s+)?(?:${transcriptMonthNameSource})\\.?\\b(?:,?\\s+\\d{4})?)\\*?`,
+  'ig',
+)
 
 function normalizeTranscriptLine(line: string) {
   return cleanText(
@@ -545,6 +549,112 @@ function parseTranscriptEvents(outputText: string, timeZone: string) {
       notes,
       smsText,
     })
+  }
+
+  return events
+}
+
+function parseTranscriptEventsFromBlocks(outputText: string, timeZone: string) {
+  const text = cleanText(
+    outputText
+      .replace(/```[a-z]*\n?/gi, '')
+      .replace(/```/g, '')
+      .replace(/\r?\n+/g, '\n'),
+  )
+  if (!text || /^no_event$/i.test(text)) return []
+
+  const lines = outputText
+    .split(/\r?\n+/)
+    .map((line) => normalizeTranscriptLine(line))
+    .filter(Boolean)
+    .filter((line) => !/^no_event$/i.test(line))
+
+  const headingCandidates = lines.filter(looksTranscriptHeading).map((line) =>
+    isGenericTranscriptHeading(line) ? null : line,
+  )
+  let currentHeading: string | null = null
+  const events: CalendarImageEvent[] = []
+  const seen = new Set<string>()
+
+  for (const line of lines) {
+    if (looksTranscriptHeading(line)) {
+      currentHeading = isGenericTranscriptHeading(line) ? null : line
+      continue
+    }
+
+    const matches = Array.from(line.matchAll(transcriptDateAnywherePattern))
+    if (!matches.length) continue
+
+    for (let index = 0; index < matches.length; index += 1) {
+      const match = matches[index]
+      const dateText = cleanText(match[1])
+      const date = parseExplicitDate(dateText, timeZone)
+      if (!date) continue
+
+      const matchStart = match.index || 0
+      const matchEnd = matchStart + match[0].length
+      const nextMatchStart = index + 1 < matches.length ? matches[index + 1].index || line.length : line.length
+
+      const prefix = cleanText(line.slice(0, matchStart).replace(/[:\-–—]+$/, ''))
+      const remainder = cleanText(line.slice(matchEnd, nextMatchStart).replace(/^[:\-–—)\]]+\s*/, ''))
+
+      const inlineHeading =
+        prefix && looksTranscriptHeading(prefix) && !isGenericTranscriptHeading(prefix) ? prefix : null
+      const heading = inlineHeading || currentHeading || null
+
+      let title = ''
+      let notes: string | null = null
+
+      if (remainder.startsWith('(') && heading) {
+        title = heading
+        notes = remainder.replace(/^\((.*)\)$/, '$1') || remainder
+      } else if (heading && remainder) {
+        title = heading
+        notes = remainder
+      } else if (remainder.includes('(')) {
+        const [beforeParen, ...rest] = remainder.split('(')
+        title = cleanText(beforeParen)
+        const noteText = cleanText(rest.join('(').replace(/\)+$/, ''))
+        notes = noteText || null
+      } else {
+        title = remainder
+      }
+
+      if (!title) title = heading || 'event'
+
+      const visibleTimes = Array.from(
+        new Set(
+          (remainder.match(/\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/gi) || [])
+            .map((value) => parseTimeTo24h(value))
+            .filter((value): value is string => Boolean(value)),
+        ),
+      )
+
+      const isAllDay = visibleTimes.length === 0
+      const time24h = isAllDay ? null : visibleTimes[0]
+      const dateYmd = ymdFromDate(date, timeZone)
+      const key = `${dateYmd}::${title.toLowerCase()}`
+      if (seen.has(key)) continue
+      seen.add(key)
+
+      events.push({
+        title,
+        dateYmd,
+        endDateYmd: null,
+        time24h,
+        isAllDay,
+        durationMinutes: null,
+        location: null,
+        organizerOrSource: null,
+        itemType: 'school',
+        isConfirmedOrFixed: true,
+        confidence: 'medium',
+        notes,
+        smsText: isAllDay
+          ? `add ${title} on ${displayDate(dateYmd)} all day`
+          : `add ${title} on ${displayDate(dateYmd)} at ${displayTime(time24h)}`,
+      })
+    }
   }
 
   return events
@@ -893,7 +1003,14 @@ export async function calendarImageToSmsText({
       body: {},
     })
 
-    const transcriptEvents = transcriptText ? parseTranscriptEvents(transcriptText, timeZone) : []
+    const transcriptEvents = transcriptText
+      ? (() => {
+          const lineEvents = parseTranscriptEvents(transcriptText, timeZone)
+          if (lineEvents.length >= 2) return lineEvents
+          const blockEvents = parseTranscriptEventsFromBlocks(transcriptText, timeZone)
+          return blockEvents.length > lineEvents.length ? blockEvents : lineEvents
+        })()
+      : []
     if (transcriptEvents.length > smsTexts.length && transcriptEvents.length >= 2) {
       return {
         smsText: transcriptEvents[0]?.smsText || null,
