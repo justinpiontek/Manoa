@@ -441,6 +441,45 @@ function isPendingInviteConflict(event: EventSummary, profileEmail: string) {
   )
 }
 
+function eventStartMs(event: EventSummary) {
+  const value = new Date(event.start).getTime()
+  return Number.isNaN(value) ? null : value
+}
+
+function isSameEventSummaryIdentity(left: EventSummary, right: EventSummary) {
+  if (left.id && right.id && left.id === right.id) return true
+
+  if (
+    left.providerEventUid &&
+    right.providerEventUid &&
+    left.providerEventUid === right.providerEventUid
+  ) {
+    return true
+  }
+
+  if (
+    left.recurringEventId &&
+    right.recurringEventId &&
+    left.recurringEventId === right.recurringEventId &&
+    left.originalStart &&
+    right.originalStart &&
+    left.originalStart === right.originalStart
+  ) {
+    return true
+  }
+
+  if (left.provider !== right.provider || left.calendarId !== right.calendarId) return false
+
+  const leftStart = eventStartMs(left)
+  const rightStart = eventStartMs(right)
+  if (leftStart === null || rightStart === null) return false
+
+  return (
+    left.title.trim().toLowerCase() === right.title.trim().toLowerCase() &&
+    Math.abs(leftStart - rightStart) < 60_000
+  )
+}
+
 function pendingInviteScheduleReply({
   conflict,
   requestedOption,
@@ -1230,7 +1269,7 @@ async function maybeConfirmExactRescheduleTime({
     maxResults: 12,
     timeZone: profile.timezone,
   }))
-    .filter((event) => event.id !== target.id)
+    .filter((event) => !isSameEventSummaryIdentity(event, target))
     .filter((event) => overlapsOption(event, requestedStart, requestedEnd))
 
   const pendingInviteConflict = overlappingEvents.find((event) =>
