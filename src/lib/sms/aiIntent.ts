@@ -2,7 +2,7 @@ import type { RecurrenceSpec } from '../calendar/recurrence'
 import { defaultTimezone } from '../env'
 import { dateFromTimeZoneParts, nextDateForWeekday, startOfDay } from '../calendar/dates'
 import type { ParsedSmsIntent } from './parser'
-import { parseDateWindow, parseExplicitDate, parseScheduleLocation } from './parser'
+import { parseAllDayDateSpan, parseDateWindow, parseExplicitDate, parseScheduleLocation } from './parser'
 
 type AiIntentPayload = {
   intent_type: 'choice' | 'agenda' | 'schedule' | 'reschedule' | 'cancel' | 'unknown'
@@ -191,14 +191,17 @@ function toParsedSmsIntent(payload: AiIntentPayload, timeZone: string, originalT
 
     case 'schedule':
       const locationContext = parseScheduleLocation(originalText, timeZone)
+      const allDaySpan = parseAllDayDateSpan(originalText, timeZone)
       return {
         type: 'schedule',
         title: payload.title?.trim() || 'meeting',
-        baseDate: parseBaseDate(payload.date_ymd, payload.day, payload.weekday, timeZone, originalText),
+        baseDate: allDaySpan?.start || parseBaseDate(payload.date_ymd, payload.day, payload.weekday, timeZone, originalText),
+        endDate: allDaySpan?.end || null,
         dateWindow: parseDateWindow(originalText, timeZone),
-        exactTime: parseExactTime(payload.exact_time_24h),
+        exactTime: allDaySpan ? null : parseExactTime(payload.exact_time_24h),
         calendarHint: payload.calendar_hint || 'Calendar',
-        durationMinutes: payload.duration_minutes,
+        durationMinutes: allDaySpan ? null : payload.duration_minutes,
+        allDay: Boolean(allDaySpan),
         recurrence: parseRecurrence(payload),
         location: payload.location?.trim() || locationContext.location,
       }

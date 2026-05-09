@@ -1,10 +1,14 @@
+import { dateTimePartsInTimeZone } from '../calendar/dates'
 import { defaultTimezone } from '../env'
+import { parseExplicitDate } from './parser'
 
 type CalendarImageItemPayload = {
   is_confirmed_or_fixed: boolean
   title: string | null
   date_ymd: string | null
+  end_date_ymd: string | null
   time_24h: string | null
+  is_all_day: boolean
   duration_minutes: number | null
   location: string | null
   organizer_or_source: string | null
@@ -23,7 +27,9 @@ type CalendarImagePayload = {
 export type CalendarImageEvent = {
   title: string
   dateYmd: string
-  time24h: string
+  endDateYmd: string | null
+  time24h: string | null
+  isAllDay: boolean
   durationMinutes: number | null
   location: string | null
   organizerOrSource: string | null
@@ -64,8 +70,30 @@ function structuredImageInstructions(timeZone: string) {
     'Extract clear calendar events from screenshots, invitation cards, reminder cards, email screenshots, text screenshots, flyers, and calendar-event screenshots.\n' +
     'Focus on the event details, not the surrounding app chrome.\n' +
     'For screenshots of a single calendar item or invitation, prefer the obvious main event.\n' +
+    'For flyers, newsletters, school notices, church bulletins, and "important dates" lists, extract every separate dated event line you can clearly read.\n' +
+    'Items like "No School", birthdays, last day of school, graduations, games, and ceremonies should each become their own event if they have a date.\n' +
+    'For reservations, hotel stays, campground stays, and travel confirmations, use the arrival date as the start date and the departure date as the final included calendar date when no time is shown.\n' +
+    'If no event time is shown but the item clearly spans full dates, mark it as all-day.\n' +
     'If a month/day/time is clear but the year is missing, infer the next upcoming matching year from the current local date.\n' +
     'If the image shows multiple clear events, return them all.\n' +
+    'Do not invent a date, time, or location that is not visible or strongly implied.\n' +
+    'Use has_calendar_items=false only when no real event can be extracted.'
+  )
+}
+
+function multiEventImageInstructions(timeZone: string) {
+  return (
+    `You read photos and screenshots for Manoa, a calendar assistant.\n` +
+    `Current timezone: ${timeZone}.\n` +
+    `Current local date: ${currentLocalDateString(timeZone)}.\n` +
+    'This image may contain a flyer, newsletter, school notice, church bulletin, travel confirmation, or an "important dates" list.\n' +
+    'Extract every separate dated calendar item you can clearly read, not just the most prominent one.\n' +
+    'Each dated line or block should become its own event.\n' +
+    'Examples include no school days, birthdays, graduations, ceremonies, games, deadlines, arrival dates, and departure dates.\n' +
+    'If no event time is shown, mark that event as all-day.\n' +
+    'If an item spans multiple dates, include both the start date and the end date.\n' +
+    'If a month/day/time is clear but the year is missing, infer the next upcoming matching year from the current local date.\n' +
+    'Do not merge unrelated dated items into one event.\n' +
     'Do not invent a date, time, or location that is not visible or strongly implied.\n' +
     'Use has_calendar_items=false only when no real event can be extracted.'
   )
@@ -78,9 +106,12 @@ function fallbackImageInstructions(timeZone: string) {
     `Current local date: ${currentLocalDateString(timeZone)}.\n` +
     'Read the image and turn each clear event into one direct Manoa command line.\n' +
     'This includes screenshots of calendar events, invitation cards, reminder cards, email screenshots, and text screenshots.\n' +
+    'For flyers, newsletters, school notices, church bulletins, and "important dates" lists, output one separate line for each dated event you can clearly read.\n' +
+    'For reservations, hotel stays, campground stays, and travel confirmations, include both arrival and departure dates.\n' +
+    'If no time is shown and the event clearly spans full dates, use "all day".\n' +
     'Ignore app chrome, chat bubbles, and decorative text unless they contain the event itself.\n' +
     'Each line must start with "add " for fixed/confirmed events or "schedule " for tentative ones.\n' +
-    'Use natural date phrases like "Saturday, June 6, 2026" and include the location when visible.\n' +
+    'Use compact numeric dates like "6/6/2026". For multi-day all-day events, write "from 5/22/2026 to 5/26/2026 all day". Include the location when visible.\n' +
     'If a month/day/time is clear but the year is missing, infer the next upcoming matching year.\n' +
     'Return only the command lines. If there is no clear event, return exactly NO_EVENT.'
   )
@@ -127,11 +158,15 @@ function parseTopLevelOutputText(response: unknown) {
 async function openAiImageResponse({
   dataUrl,
   timeZone,
+  instructions,
+  userText,
   body,
   timeoutMs = 12_000,
 }: {
   dataUrl: string
   timeZone: string
+  instructions: string
+  userText: string
   body: Record<string, unknown>
   timeoutMs?: number
 }) {
@@ -148,18 +183,19 @@ async function openAiImageResponse({
       signal: controller.signal,
       body: JSON.stringify({
         model: process.env.OPENAI_CALENDAR_IMAGE_MODEL || 'gpt-4.1',
+        instructions,
         ...body,
         input: [
           {
             role: 'system',
-            content: structuredImageInstructions(timeZone),
+            content: instructions,
           },
           {
             role: 'user',
             content: [
               {
                 type: 'input_text',
-                text: 'Read this image and extract the calendar event details.',
+                text: userText,
               },
               {
                 type: 'input_image',
@@ -214,6 +250,179 @@ function cleanText(value: string | null | undefined) {
   return (value || '').replace(/\s+/g, ' ').trim()
 }
 
+function ymdFromDate(date: Date, timeZone: string) {
+  const parts = dateTimePartsInTimeZone(date, timeZone)
+  return `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`
+}
+
+function parseTimeTo24h(value: string | null | undefined) {
+  const match = cleanText(value).toLowerCase().match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/)
+  if (!match) return null
+  let hour = Number(match[1]) % 12
+  const minute = Number(match[2] || '0')
+  if (match[3] === 'pm') hour += 12
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
+
+function parseFallbackLineToEvent(line: string, timeZone: string): CalendarImageEvent | null {
+  const cleaned = cleanText(line.replace(/^[-*]\s+/, '').replace(/[.]+$/, ''))
+  const prefixMatch = cleaned.match(/^(add|schedule)\s+(.+)$/i)
+  if (!prefixMatch) return null
+  const isConfirmedOrFixed = prefixMatch[1].toLowerCase() === 'add'
+  const rest = prefixMatch[2]
+
+  const rangeMatch = rest.match(/^(.+?)\s+from\s+(.+?)\s+to\s+(.+?)\s+all day(?:\s+at\s+(.+))?$/i)
+  if (rangeMatch) {
+    const startDate = parseExplicitDate(rangeMatch[2], timeZone)
+    const endDate = parseExplicitDate(rangeMatch[3], timeZone)
+    if (!startDate || !endDate) return null
+    const title = cleanText(rangeMatch[1]) || 'event'
+    const location = cleanText(rangeMatch[4]) || null
+    return {
+      title,
+      dateYmd: ymdFromDate(startDate, timeZone),
+      endDateYmd: ymdFromDate(endDate, timeZone),
+      time24h: null,
+      isAllDay: true,
+      durationMinutes: null,
+      location,
+      organizerOrSource: null,
+      itemType: 'other',
+      isConfirmedOrFixed,
+      confidence: 'medium',
+      notes: null,
+      smsText: cleaned,
+    }
+  }
+
+  const allDayMatch = rest.match(/^(.+?)\s+on\s+(.+?)\s+all day(?:\s+at\s+(.+))?$/i)
+  if (allDayMatch) {
+    const date = parseExplicitDate(allDayMatch[2], timeZone)
+    if (!date) return null
+    const title = cleanText(allDayMatch[1]) || 'event'
+    const location = cleanText(allDayMatch[3]) || null
+    return {
+      title,
+      dateYmd: ymdFromDate(date, timeZone),
+      endDateYmd: null,
+      time24h: null,
+      isAllDay: true,
+      durationMinutes: null,
+      location,
+      organizerOrSource: null,
+      itemType: 'other',
+      isConfirmedOrFixed,
+      confidence: 'medium',
+      notes: null,
+      smsText: cleaned,
+    }
+  }
+
+  const timedMatch = rest.match(/^(.+?)\s+on\s+(.+?)\s+at\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm))(?:\s+at\s+(.+?))?(?:\s+for\s+(\d+)\s+minutes?)?$/i)
+  if (timedMatch) {
+    const date = parseExplicitDate(timedMatch[2], timeZone)
+    const time24h = parseTimeTo24h(timedMatch[3])
+    if (!date || !time24h) return null
+    const title = cleanText(timedMatch[1]) || 'event'
+    const location = cleanText(timedMatch[4]) || null
+    const durationMinutes = timedMatch[5] ? Number(timedMatch[5]) : null
+    return {
+      title,
+      dateYmd: ymdFromDate(date, timeZone),
+      endDateYmd: null,
+      time24h,
+      isAllDay: false,
+      durationMinutes: Number.isFinite(durationMinutes) ? durationMinutes : null,
+      location,
+      organizerOrSource: null,
+      itemType: 'other',
+      isConfirmedOrFixed,
+      confidence: 'medium',
+      notes: null,
+      smsText: cleaned,
+    }
+  }
+
+  return null
+}
+
+function fallbackSmsEvents(lines: string[], timeZone: string) {
+  return lines
+    .map((line) => parseFallbackLineToEvent(line, timeZone))
+    .filter((event): event is CalendarImageEvent => Boolean(event))
+}
+
+function calendarImageSchema() {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      has_calendar_items: { type: 'boolean' },
+      items: {
+        type: 'array',
+        maxItems: 12,
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            is_confirmed_or_fixed: { type: 'boolean' },
+            title: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+            date_ymd: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+            end_date_ymd: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+            time_24h: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+            is_all_day: { type: 'boolean' },
+            duration_minutes: { anyOf: [{ type: 'integer' }, { type: 'null' }] },
+            location: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+            organizer_or_source: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+            item_type: {
+              anyOf: [
+                {
+                  type: 'string',
+                  enum: [
+                    'appointment',
+                    'meeting',
+                    'party',
+                    'school',
+                    'sports',
+                    'travel',
+                    'deadline',
+                    'other',
+                  ],
+                },
+                { type: 'null' },
+              ],
+            },
+            confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+            notes: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+          },
+          required: [
+            'is_confirmed_or_fixed',
+            'title',
+            'date_ymd',
+            'end_date_ymd',
+            'time_24h',
+            'is_all_day',
+            'duration_minutes',
+            'location',
+            'organizer_or_source',
+            'item_type',
+            'confidence',
+            'notes',
+          ],
+        },
+      },
+      confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+      notes: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    },
+    required: [
+      'has_calendar_items',
+      'items',
+      'confidence',
+      'notes',
+    ],
+  }
+}
+
 export function calendarImagePayloadToSmsText(payload: CalendarImagePayload) {
   return calendarImagePayloadToSmsTexts(payload)[0] || null
 }
@@ -233,8 +442,10 @@ export function calendarImagePayloadToEvents(payload: CalendarImagePayload): Cal
 
 function calendarImageItemToEvent(item: CalendarImageItemPayload): CalendarImageEvent | null {
   const date = displayDate(item.date_ymd)
+  const endDate = displayDate(item.end_date_ymd)
   const time = displayTime(item.time_24h)
-  if (!date || !time) return null
+  const isAllDay = Boolean(item.is_all_day)
+  if (!date || (!time && !isAllDay)) return null
 
   const title =
     cleanText(item.title) ||
@@ -247,12 +458,16 @@ function calendarImageItemToEvent(item: CalendarImageItemPayload): CalendarImage
     : ''
 
   const prefix = item.is_confirmed_or_fixed ? 'add' : 'schedule'
-  const smsText = `${prefix} ${title} on ${date} at ${time}${location ? ` at ${location}` : ''}${duration}`
+  const smsText = isAllDay
+    ? `${prefix} ${title}${endDate && endDate !== date ? ` from ${date} to ${endDate}` : ` on ${date}`} all day${location ? ` at ${location}` : ''}`
+    : `${prefix} ${title} on ${date} at ${time}${location ? ` at ${location}` : ''}${duration}`
 
   return {
     title,
     dateYmd: item.date_ymd as string,
-    time24h: item.time_24h as string,
+    endDateYmd: item.end_date_ymd || null,
+    time24h: item.time_24h || null,
+    isAllDay,
     durationMinutes: item.duration_minutes,
     location: location || null,
     organizerOrSource: cleanText(item.organizer_or_source) || null,
@@ -288,77 +503,15 @@ export async function calendarImageToSmsText({
     const outputText = await openAiImageResponse({
       dataUrl,
       timeZone,
+      instructions: structuredImageInstructions(timeZone),
+      userText: 'Read this image and extract the calendar event details.',
       body: {
-        instructions: structuredImageInstructions(timeZone),
         text: {
           format: {
             type: 'json_schema',
             name: 'manoa_calendar_image',
             strict: true,
-            schema: {
-              type: 'object',
-              additionalProperties: false,
-              properties: {
-                has_calendar_items: { type: 'boolean' },
-                items: {
-                  type: 'array',
-                  maxItems: 12,
-                  items: {
-                    type: 'object',
-                    additionalProperties: false,
-                    properties: {
-                      is_confirmed_or_fixed: { type: 'boolean' },
-                      title: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-                      date_ymd: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-                      time_24h: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-                      duration_minutes: { anyOf: [{ type: 'integer' }, { type: 'null' }] },
-                      location: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-                      organizer_or_source: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-                      item_type: {
-                        anyOf: [
-                          {
-                            type: 'string',
-                            enum: [
-                              'appointment',
-                              'meeting',
-                              'party',
-                              'school',
-                              'sports',
-                              'travel',
-                              'deadline',
-                              'other',
-                            ],
-                          },
-                          { type: 'null' },
-                        ],
-                      },
-                      confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
-                      notes: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-                    },
-                    required: [
-                      'is_confirmed_or_fixed',
-                      'title',
-                      'date_ymd',
-                      'time_24h',
-                      'duration_minutes',
-                      'location',
-                      'organizer_or_source',
-                      'item_type',
-                      'confidence',
-                      'notes',
-                    ],
-                  },
-                },
-                confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
-                notes: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-              },
-              required: [
-                'has_calendar_items',
-                'items',
-                'confidence',
-                'notes',
-              ],
-            },
+            schema: calendarImageSchema(),
           },
         },
       },
@@ -376,6 +529,78 @@ export async function calendarImageToSmsText({
     })
   }
 
+  if (smsTexts.length <= 1) {
+    try {
+      const listOutputText = await openAiImageResponse({
+        dataUrl,
+        timeZone,
+        instructions: multiEventImageInstructions(timeZone),
+        userText: 'Read this image and extract every separate dated calendar item you can clearly read.',
+        timeoutMs: 10_000,
+        body: {
+          text: {
+            format: {
+              type: 'json_schema',
+              name: 'manoa_calendar_image',
+              strict: true,
+              schema: calendarImageSchema(),
+            },
+          },
+        },
+      })
+
+      if (listOutputText) {
+        const listPayload = JSON.parse(listOutputText) as CalendarImagePayload
+        const listEvents = calendarImagePayloadToEvents(listPayload)
+        const listSmsTexts = listEvents.map((event) => event.smsText)
+
+        if (listSmsTexts.length > smsTexts.length) {
+          payload = listPayload
+          events = listEvents
+          smsTexts = listSmsTexts
+        }
+      }
+    } catch (error) {
+      const listFailure = error instanceof Error ? error : new Error('List-focused image parsing failed.')
+      console.error('List-focused calendar image parsing failed.', {
+        error: listFailure.message,
+      })
+    }
+  }
+
+  let fallbackFailure: Error | null = null
+  let fallbackSmsLines: string[] = []
+  let fallbackEvents: CalendarImageEvent[] = []
+
+  try {
+    const fallbackText = await openAiImageResponse({
+      dataUrl,
+      timeZone,
+      instructions: fallbackImageInstructions(timeZone),
+      userText: 'Read this image and turn each clear event into one Manoa command line.',
+      timeoutMs: 10_000,
+      body: {},
+    })
+
+    fallbackSmsLines = fallbackText ? fallbackSmsTexts(fallbackText) : []
+    fallbackEvents = fallbackSmsEvents(fallbackSmsLines, timeZone)
+  } catch (error) {
+    fallbackFailure = error instanceof Error ? error : new Error('Fallback image parsing failed.')
+    console.error('Fallback calendar image parsing failed.', {
+      error: fallbackFailure.message,
+    })
+  }
+
+  if (fallbackSmsLines.length > smsTexts.length && fallbackEvents.length >= Math.min(2, fallbackSmsLines.length)) {
+    return {
+      smsText: fallbackSmsLines[0] || null,
+      smsTexts: fallbackSmsLines,
+      events: fallbackEvents,
+      confidence: 'medium',
+      notes: payload.notes,
+    }
+  }
+
   if (smsTexts.length) {
     return {
       smsText: smsTexts[0] || null,
@@ -386,32 +611,11 @@ export async function calendarImageToSmsText({
     }
   }
 
-  let fallbackFailure: Error | null = null
-  let fallbackSmsLines: string[] = []
-
-  try {
-    const fallbackText = await openAiImageResponse({
-      dataUrl,
-      timeZone,
-      timeoutMs: 10_000,
-      body: {
-        instructions: fallbackImageInstructions(timeZone),
-      },
-    })
-
-    fallbackSmsLines = fallbackText ? fallbackSmsTexts(fallbackText) : []
-  } catch (error) {
-    fallbackFailure = error instanceof Error ? error : new Error('Fallback image parsing failed.')
-    console.error('Fallback calendar image parsing failed.', {
-      error: fallbackFailure.message,
-    })
-  }
-
   if (fallbackSmsLines.length) {
     return {
       smsText: fallbackSmsLines[0] || null,
       smsTexts: fallbackSmsLines,
-      events,
+      events: fallbackEvents,
       confidence: 'medium',
       notes: payload.notes,
     }

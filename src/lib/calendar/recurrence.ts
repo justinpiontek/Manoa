@@ -4,11 +4,13 @@ export type RecurrenceSpec =
   | {
       unit: 'week'
       interval: 1 | 2
+      weekday?: number
     }
   | {
       unit: 'month'
       interval: 1
       mode: 'month_day' | 'nth_weekday'
+      weekday?: number
     }
 
 const weekdayCodes = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'] as const
@@ -75,7 +77,7 @@ export function recurrenceSummary(
   const parts = dateTimePartsInTimeZone(date, timeZone)
 
   if (spec.unit === 'week') {
-    const weekday = weekdayNames[parts.weekday]
+    const weekday = weekdayNames[spec.weekday ?? parts.weekday]
     return spec.interval === 2
       ? `Repeats every other ${weekday}.`
       : `Repeats every ${weekday}.`
@@ -83,7 +85,7 @@ export function recurrenceSummary(
 
   if (spec.mode === 'nth_weekday') {
     return `Repeats monthly on the ${ordinalWord(nthWeekdayOfMonth(parts.day))} ${
-      weekdayNames[parts.weekday]
+      weekdayNames[spec.weekday ?? parts.weekday]
     }.`
   }
 
@@ -130,10 +132,13 @@ export function parseGoogleRecurrence(recurrence: string[] | null | undefined): 
 
   if (fields.FREQ === 'WEEKLY') {
     const interval = Number(fields.INTERVAL || '1')
+    const weekday = fields.BYDAY?.split(',')[0]
+    const weekdayIndex = weekday ? weekdayCodes.indexOf(weekday as (typeof weekdayCodes)[number]) : -1
     if ((interval === 1 || interval === 2) && fields.BYDAY) {
       return {
         unit: 'week',
         interval: interval as 1 | 2,
+        weekday: weekdayIndex >= 0 ? weekdayIndex : undefined,
       }
     }
   }
@@ -149,10 +154,13 @@ export function parseGoogleRecurrence(recurrence: string[] | null | undefined): 
 
     const bySetPos = Number(fields.BYSETPOS || '')
     if (fields.BYDAY && Number.isInteger(bySetPos) && bySetPos >= 1 && bySetPos <= 5) {
+      const weekday = fields.BYDAY.split(',')[0]
+      const weekdayIndex = weekdayCodes.indexOf(weekday as (typeof weekdayCodes)[number])
       return {
         unit: 'month',
         interval: 1,
         mode: 'nth_weekday',
+        weekday: weekdayIndex >= 0 ? weekdayIndex : undefined,
       }
     }
   }

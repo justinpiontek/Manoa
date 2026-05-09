@@ -7,6 +7,7 @@ import {
 } from '../calendar/google'
 import {
   addMinutes,
+  addDays,
   dateFromTimeZoneParts,
   formatSmsDate,
   formatSmsTime,
@@ -43,7 +44,8 @@ function parseYmd(value: string) {
   }
 }
 
-function parseTime24h(value: string) {
+function parseTime24h(value: string | null) {
+  if (!value) return null
   const match = value.match(/^([01]?\d|2[0-3]):([0-5]\d)$/)
   if (!match) return null
 
@@ -87,8 +89,52 @@ function scheduleOptionFromImageEvent({
   defaultDurationMinutes: number
 }): ScheduleOption | null {
   const date = parseYmd(event.dateYmd)
+  if (!date) return null
+
+  if (event.isAllDay) {
+    const endDate = parseYmd(event.endDateYmd || event.dateYmd)
+    if (!endDate) return null
+
+    const start = dateFromTimeZoneParts({
+      year: date.year,
+      month: date.month,
+      day: date.day,
+      hour: 0,
+      minute: 0,
+      second: 0,
+    }, timeZone)
+    const inclusiveEnd = dateFromTimeZoneParts({
+      year: endDate.year,
+      month: endDate.month,
+      day: endDate.day,
+      hour: 0,
+      minute: 0,
+      second: 0,
+    }, timeZone)
+    const end = addDays(inclusiveEnd, 1, timeZone)
+    const dayLabel =
+      event.endDateYmd && event.endDateYmd !== event.dateYmd
+        ? `${formatSmsDate(start, timeZone)} through ${formatSmsDate(inclusiveEnd, timeZone)}`
+        : formatSmsDate(start, timeZone)
+
+    return {
+      title: event.title,
+      start: start.toISOString(),
+      end: end.toISOString(),
+      isAllDay: true,
+      provider: calendar.provider,
+      calendarId: calendar.calendarId,
+      calendarName: calendar.calendarLabel,
+      dayLabel,
+      timeLabel: 'All day',
+      timeZone,
+      location: event.location,
+      recurrence: null,
+    }
+  }
+
   const time = parseTime24h(event.time24h)
-  if (!date || !time) return null
+  if (!time) return null
 
   const start = dateFromTimeZoneParts({
     year: date.year,
@@ -148,6 +194,8 @@ async function queueBatchReminder({
   option: ScheduleOption
   eventId?: string | null
 }) {
+  if (option.isAllDay) return
+
   const start = new Date(option.start)
   const dueAt = addMinutes(start, -30)
   if (!profile.phone_e164 || dueAt <= new Date()) return

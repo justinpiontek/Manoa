@@ -21,10 +21,12 @@ export type ParsedSmsIntent =
       type: 'schedule'
       title: string
       baseDate: Date
+      endDate: Date | null
       dateWindow: DateWindow | null
       exactTime: { hour: number; minute: number } | null
       calendarHint: string
       durationMinutes: number | null
+      allDay: boolean
       recurrence: RecurrenceSpec | null
       location: string | null
     }
@@ -389,6 +391,33 @@ export function parseExplicitDate(text: string, timeZone?: string) {
   return null
 }
 
+export function parseAllDayDateSpan(text: string, timeZone?: string) {
+  const rangeMatch = text.match(/\bfrom\s+(.+?)\s+to\s+(.+?)\s+all day\b/i)
+  if (rangeMatch) {
+    const start = parseExplicitDate(rangeMatch[1], timeZone)
+    const end = parseExplicitDate(rangeMatch[2], timeZone)
+    if (start && end) {
+      return {
+        start,
+        end,
+      }
+    }
+  }
+
+  const singleDayMatch = text.match(/\bon\s+(.+?)\s+all day\b/i)
+  if (singleDayMatch) {
+    const date = parseExplicitDate(singleDayMatch[1], timeZone)
+    if (date) {
+      return {
+        start: date,
+        end: date,
+      }
+    }
+  }
+
+  return null
+}
+
 function endOfSpecificDay(date: Date, timeZone?: string) {
   const parts = dateTimePartsInTimeZone(date, timeZone)
   return dateFromTimeZoneParts(
@@ -735,6 +764,7 @@ function stripSchedulingNoise(text: string) {
     .replace(/\bat\s+(1[0-2]|0?[1-9])(?::[0-5]\d)?\b/g, ' ')
     .replace(/\b(?:to|for|around|by)\s+(1[0-2]|0?[1-9])(?::[0-5]\d)?\b/g, ' ')
     .replace(/\b(1[0-2]|0?[1-9]):([0-5]\d)\b/g, ' ')
+    .replace(/\ball day\b/g, ' ')
     .replace(/\b(noon|midnight|morning|afternoon|evening|tonight|lunchtime)\b/g, ' ')
     .replace(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday|today|tomorrow|tmrw|tmmrw|tomorow|tommorow|tommorrow|next)\b/g, ' ')
     .replace(/\btomororws?\b/g, ' ')
@@ -776,6 +806,7 @@ function parseLookupQuery(text: string) {
 export function parseSmsIntent(body: string, timeZone?: string): ParsedSmsIntent {
   const text = body.trim()
   const lower = text.toLowerCase()
+  const allDaySpan = parseAllDayDateSpan(text, timeZone)
   const dateWindow = parseDateWindow(text, timeZone)
 
   const choice = parseChoiceIntent(text)
@@ -855,15 +886,24 @@ export function parseSmsIntent(body: string, timeZone?: string): ParsedSmsIntent
 
   if (looksLikeSchedule) {
     const locationContext = parseScheduleLocation(text, timeZone)
+    const effectiveDateWindow = allDaySpan
+      ? {
+          start: allDaySpan.start,
+          end: endOfSpecificDay(allDaySpan.end, timeZone),
+          label: formatWindowLabel(allDaySpan.start, allDaySpan.end, timeZone),
+        }
+      : dateWindow
 
     return {
       type: 'schedule',
       title: stripSchedulingNoise(locationContext.textWithoutLocation),
-      baseDate: parseBaseDate(text, timeZone),
-      dateWindow,
-      exactTime: parseSmsTime(text) || parseLooseTimeHint(text),
+      baseDate: allDaySpan?.start || parseBaseDate(text, timeZone),
+      endDate: allDaySpan?.end || null,
+      dateWindow: effectiveDateWindow,
+      exactTime: allDaySpan ? null : parseSmsTime(text) || parseLooseTimeHint(text),
       calendarHint: parseCalendarHint(text),
-      durationMinutes: parseDuration(text),
+      durationMinutes: allDaySpan ? null : parseDuration(text),
+      allDay: Boolean(allDaySpan),
       recurrence: parseRecurrence(text),
       location: locationContext.location,
     }

@@ -134,9 +134,11 @@ type PendingPayload = {
   scheduleRequest?: {
     title: string
     baseDate: string
+    endDate?: string | null
     dateWindow?: SerializedDateWindow | null
     exactTime: { hour: number; minute: number } | null
     durationMinutes: number
+    allDay?: boolean
     recurrence: RecurrenceSpec | null
     location?: string | null
     serviceConfirmed?: boolean
@@ -168,18 +170,22 @@ const stopWords = new Set(['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'q
 const startWords = new Set(['start', 'unstop'])
 const maxCalendarChoicesToDisplay = 5
 
+function optionTimingText(option: ScheduleOption) {
+  return option.isAllDay ? `${option.dayLabel} (all day)` : `${option.dayLabel} at ${option.timeLabel}`
+}
+
 function optionList(options: ScheduleOption[]) {
   return options
     .map(
       (option, index) =>
-        `${index + 1}. ${option.dayLabel} at ${option.timeLabel} on ${option.calendarName}`,
+        `${index + 1}. ${optionTimingText(option)} on ${option.calendarName}`,
     )
     .join('\n')
 }
 
 function callPrepOptionList(options: ScheduleOption[]) {
   return options
-    .map((option, index) => `${index + 1}. ${option.dayLabel} at ${option.timeLabel}`)
+    .map((option, index) => `${index + 1}. ${optionTimingText(option)}`)
     .join('\n')
 }
 
@@ -290,10 +296,10 @@ function bookingText(option: ScheduleOption) {
   const locationLine = location ? `\nLocation: ${location}.` : ''
   const summary = recurrenceSummary(option.recurrence, option.start, option.timeZone)
   if (summary) {
-    return `Booked ${option.title} starting ${option.dayLabel} at ${option.timeLabel}.${locationLine}\n${summary}`
+    return `Booked ${option.title} starting ${optionTimingText(option)}.${locationLine}\n${summary}`
   }
 
-  return `Booked ${option.title} for ${option.dayLabel} at ${option.timeLabel}.${locationLine}`
+  return `Booked ${option.title} for ${optionTimingText(option)}.${locationLine}`
 }
 
 function createdEventSummaryFromOption(
@@ -380,7 +386,7 @@ function exactAvailabilityReply({
   unresolvedInvitees: string[]
 }) {
   const lines = [
-    `I confirmed ${option.dayLabel} at ${option.timeLabel} is available on ${option.calendarName}.`,
+    `I confirmed ${optionTimingText(option)} is available on ${option.calendarName}.`,
   ]
 
   if (option.location?.trim()) {
@@ -440,15 +446,15 @@ function pendingInviteScheduleReply({
 }) {
   const lines = [
     `You have a pending invite for "${conflict.title}" at ${conflict.timeLabel}.`,
-    `1. Book over it anyway: ${requestedOption.dayLabel} at ${requestedOption.timeLabel} on ${requestedOption.calendarName}`,
+    `1. Book over it anyway: ${optionTimingText(requestedOption)} on ${requestedOption.calendarName}`,
   ]
 
   if (alternatives[0]) {
-    lines.push(`2. ${alternatives[0].dayLabel} at ${alternatives[0].timeLabel} on ${alternatives[0].calendarName}`)
+    lines.push(`2. ${optionTimingText(alternatives[0])} on ${alternatives[0].calendarName}`)
   }
 
   if (alternatives[1]) {
-    lines.push(`3. ${alternatives[1].dayLabel} at ${alternatives[1].timeLabel} on ${alternatives[1].calendarName}`)
+    lines.push(`3. ${optionTimingText(alternatives[1])} on ${alternatives[1].calendarName}`)
   }
 
   if (alternatives[1]) {
@@ -473,15 +479,15 @@ function hardConflictScheduleReply({
 }) {
   const lines = [
     `That time is already reserved for "${conflict.title}" at ${conflict.timeLabel} on ${conflict.calendarName}.`,
-    `1. Book anyway: ${requestedOption.dayLabel} at ${requestedOption.timeLabel} on ${requestedOption.calendarName}`,
+    `1. Book anyway: ${optionTimingText(requestedOption)} on ${requestedOption.calendarName}`,
   ]
 
   if (alternatives[0]) {
-    lines.push(`2. Adjust to ${alternatives[0].dayLabel} at ${alternatives[0].timeLabel} on ${alternatives[0].calendarName}`)
+    lines.push(`2. Adjust to ${optionTimingText(alternatives[0])} on ${alternatives[0].calendarName}`)
   }
 
   if (alternatives[1]) {
-    lines.push(`3. Adjust to ${alternatives[1].dayLabel} at ${alternatives[1].timeLabel} on ${alternatives[1].calendarName}`)
+    lines.push(`3. Adjust to ${optionTimingText(alternatives[1])} on ${alternatives[1].calendarName}`)
   }
 
   if (alternatives[1]) {
@@ -524,7 +530,7 @@ function blockedDayNoOpeningReply({
       : `That day is already reserved for "${conflict.title}" at ${conflict.timeLabel} on ${conflict.calendarName}.`,
     ...options.map(
       (option, index) =>
-        `${index + 1}. Book anyway: ${option.dayLabel} at ${option.timeLabel} on ${option.calendarName}`,
+        `${index + 1}. Book anyway: ${optionTimingText(option)} on ${option.calendarName}`,
     ),
   ]
 
@@ -806,6 +812,135 @@ function requestedExactScheduleOption({
     requestedStart,
     requestedEnd,
   }
+}
+
+function requestedAllDayScheduleOption({
+  title,
+  startDate,
+  endDate,
+  chosenCalendar,
+  timeZone,
+  location,
+}: {
+  title: string
+  startDate: Date
+  endDate: Date
+  chosenCalendar: CalendarPlacementOption
+  timeZone: string
+  location?: string | null
+}) {
+  const requestedStart = setTime(startDate, { hour: 0, minute: 0 }, timeZone)
+  const inclusiveEnd = setTime(endDate, { hour: 0, minute: 0 }, timeZone)
+  const requestedEnd = addDays(inclusiveEnd, 1, timeZone)
+  const dayLabel = sameCalendarDay(requestedStart, inclusiveEnd, timeZone)
+    ? formatSmsDate(requestedStart, timeZone)
+    : `${formatSmsDate(requestedStart, timeZone)} through ${formatSmsDate(inclusiveEnd, timeZone)}`
+
+  return {
+    option: {
+      title,
+      start: requestedStart.toISOString(),
+      end: requestedEnd.toISOString(),
+      isAllDay: true,
+      provider: chosenCalendar.provider,
+      calendarId: chosenCalendar.calendarId,
+      calendarName: chosenCalendar.calendarLabel,
+      dayLabel,
+      timeLabel: 'All day',
+      timeZone,
+      recurrence: null,
+      location,
+      ownerEmail: chosenCalendar.accountEmail || chosenCalendar.accountId || null,
+    } satisfies ScheduleOption,
+    requestedStart,
+    requestedEnd,
+  }
+}
+
+async function maybeConfirmAllDaySchedule({
+  profile,
+  smsFrom,
+  title,
+  startDate,
+  endDate,
+  chosenCalendar,
+  location,
+  attendees,
+  unresolvedInvitees,
+}: {
+  profile: SmsProfile
+  smsFrom: string
+  title: string
+  startDate: Date
+  endDate: Date
+  chosenCalendar: CalendarPlacementOption
+  location?: string | null
+  attendees: Invitee[]
+  unresolvedInvitees: string[]
+}) {
+  const { option: requestedOption, requestedStart, requestedEnd } = requestedAllDayScheduleOption({
+    title,
+    startDate,
+    endDate,
+    chosenCalendar,
+    timeZone: profile.timezone,
+    location,
+  })
+
+  const overlappingEvents = (await listUpcomingEvents({
+    profileId: profile.id,
+    startAt: requestedStart,
+    windowMinutes: Math.max(24 * 60, Math.ceil((requestedEnd.getTime() - requestedStart.getTime()) / 60_000)),
+    maxResults: 24,
+    timeZone: profile.timezone,
+  })).filter((event) => overlapsOption(event, requestedStart, requestedEnd))
+
+  const pendingInviteConflict = overlappingEvents.find((event) =>
+    isPendingInviteConflict(event, profile.email),
+  )
+  const hardConflict = overlappingEvents.find(
+    (event) => !isPendingInviteConflict(event, profile.email),
+  )
+
+  await storeScheduleOptionsPending({
+    profileId: profile.id,
+    smsFrom,
+    options: [requestedOption],
+    attendees,
+    unresolvedInvitees,
+    scheduleRequest: {
+      title,
+      baseDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
+      exactTime: null,
+      durationMinutes: profile.default_event_duration_minutes,
+      allDay: true,
+      recurrence: null,
+      location: location || null,
+    },
+  })
+
+  if (hardConflict) {
+    return hardConflictScheduleReply({
+      conflict: hardConflict,
+      requestedOption,
+      alternatives: [],
+    })
+  }
+
+  if (pendingInviteConflict) {
+    return pendingInviteScheduleReply({
+      conflict: pendingInviteConflict,
+      requestedOption,
+      alternatives: [],
+    })
+  }
+
+  return exactAvailabilityReply({
+    option: requestedOption,
+    attendees,
+    unresolvedInvitees,
+  })
 }
 
 async function maybeConfirmExactScheduleTime({
@@ -1098,6 +1233,8 @@ function pendingScheduleContext(pending: PendingAction, defaultDurationMinutes: 
       title: request.title,
       exactTime: request.exactTime,
       durationMinutes: request.durationMinutes,
+      allDay: request.allDay || false,
+      endDate: request.endDate || null,
       recurrence: request.recurrence,
       location: request.location || null,
       calendarHint: '',
@@ -1116,6 +1253,8 @@ function pendingScheduleContext(pending: PendingAction, defaultDurationMinutes: 
       Number.isFinite(start) && Number.isFinite(end) && end > start
         ? Math.max(15, Math.round((end - start) / 60_000))
         : defaultDurationMinutes,
+    allDay: Boolean(option.isAllDay),
+    endDate: null,
     recurrence: option.recurrence || null,
     location: option.location || null,
     calendarHint: option.calendarName,
@@ -2486,7 +2625,7 @@ async function maybeQueueReminderForOption({
   title?: string
   leadMinutes?: number
 }) {
-  if (option.recurrence) return
+  if (option.recurrence || option.isAllDay) return
 
   await queueReminderForEvent({
     profileId: profile.id,
@@ -3197,6 +3336,21 @@ async function handleChoice({
     })
 
     if (exactReply) return exactReply
+
+    if (scheduleRequest.allDay) {
+      const reply = await maybeConfirmAllDaySchedule({
+        profile,
+        smsFrom,
+        title: scheduleRequest.title,
+        startDate: new Date(scheduleRequest.baseDate),
+        endDate: new Date(scheduleRequest.endDate || scheduleRequest.baseDate),
+        chosenCalendar: pickedCalendar,
+        location: scheduleRequest.location || null,
+        attendees,
+        unresolvedInvitees,
+      })
+      return reply
+    }
 
     const options = await findScheduleOptionsAcrossWindow({
       profileId: profile.id,
@@ -4584,9 +4738,11 @@ export async function handleIncomingSms({
           scheduleRequest: {
             title: scheduleIntent.title,
             baseDate: scheduleIntent.baseDate.toISOString(),
+            endDate: scheduleIntent.endDate?.toISOString() || null,
             dateWindow: serializeDateWindow(scheduleIntent.dateWindow),
             exactTime: scheduleIntent.exactTime,
             durationMinutes: scheduleDurationMinutes,
+            allDay: scheduleIntent.allDay,
             recurrence: scheduleIntent.recurrence,
             location: scheduleIntent.location,
             serviceConfirmed: userAlreadyConfirmedServiceBooking(intentBody),
@@ -4613,6 +4769,22 @@ export async function handleIncomingSms({
         durationMinutes: scheduleDurationMinutes,
         dateWindow: scheduleIntent.dateWindow,
         chosenCalendar,
+      })
+      await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+      return reply
+    }
+
+    if (scheduleIntent.allDay && chosenCalendar) {
+      const reply = await maybeConfirmAllDaySchedule({
+        profile,
+        smsFrom: from,
+        title: scheduleIntent.title,
+        startDate: scheduleIntent.baseDate,
+        endDate: scheduleIntent.endDate || scheduleIntent.baseDate,
+        chosenCalendar,
+        location: scheduleIntent.location,
+        attendees: inviteeContext.invitees,
+        unresolvedInvitees: inviteeContext.unresolvedNames,
       })
       await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
       return reply
@@ -4683,9 +4855,11 @@ export async function handleIncomingSms({
       scheduleRequest: {
         title: scheduleIntent.title,
         baseDate: scheduleIntent.baseDate.toISOString(),
+        endDate: scheduleIntent.endDate?.toISOString() || null,
         dateWindow: serializeDateWindow(scheduleIntent.dateWindow),
         exactTime: scheduleIntent.exactTime,
         durationMinutes: scheduleDurationMinutes,
+        allDay: scheduleIntent.allDay,
         recurrence: scheduleIntent.recurrence,
         location: scheduleIntent.location,
         serviceConfirmed: userAlreadyConfirmedServiceBooking(intentBody),

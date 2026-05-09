@@ -82,6 +82,7 @@ export type ScheduleOption = {
   title: string
   start: string
   end: string
+  isAllDay?: boolean
   location?: string | null
   provider: CalendarProvider
   calendarId: string
@@ -92,6 +93,16 @@ export type ScheduleOption = {
   ownerEmail?: string | null
   attendees?: Invitee[]
   recurrence?: RecurrenceSpec | null
+}
+
+function allDayDateInTimeZone(value: Date | string, timeZone?: string) {
+  const parts = dateTimePartsInTimeZone(value, timeZone)
+  return `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`
+}
+
+function allDayDateStamp(value: Date | string, timeZone?: string) {
+  const parts = dateTimePartsInTimeZone(value, timeZone)
+  return `${parts.year}${String(parts.month).padStart(2, '0')}${String(parts.day).padStart(2, '0')}`
 }
 
 export type EventSummary = {
@@ -854,6 +865,7 @@ function monthlyOccurrenceFromOffset(
   }
 
   const occurrence = Math.floor((originalParts.day - 1) / 7) + 1
+  const targetWeekday = spec.weekday ?? originalParts.weekday
   const monthStart = dateFromTimeZoneParts(
     {
       year: targetYear,
@@ -866,7 +878,7 @@ function monthlyOccurrenceFromOffset(
     timeZone,
   )
   const firstWeekday = dateTimePartsInTimeZone(monthStart, timeZone).weekday
-  const dayOffset = (originalParts.weekday - firstWeekday + 7) % 7
+  const dayOffset = (targetWeekday - firstWeekday + 7) % 7
   const occurrenceDay = 1 + dayOffset + (occurrence - 1) * 7
   if (occurrenceDay > lastDayOfMonth) return null
 
@@ -904,7 +916,11 @@ function projectSimpleRecurringEventIntoRange(
   let candidateStart: Date | null = null
 
   if (spec.unit === 'week') {
-    candidateStart = new Date(originalStart)
+    const originalParts = dateTimePartsInTimeZone(originalStart, timeZone)
+    const targetWeekday = spec.weekday ?? originalParts.weekday
+    let weekdayOffset = targetWeekday - originalParts.weekday
+    if (weekdayOffset < 0) weekdayOffset += 7
+    candidateStart = weekdayOffset === 0 ? new Date(originalStart) : addDays(originalStart, weekdayOffset, timeZone)
     while (candidateStart.getTime() < timeRange.timeMin.getTime()) {
       candidateStart = addDays(candidateStart, spec.interval * 7, timeZone)
     }
@@ -1078,8 +1094,15 @@ function buildAppleCalendarEventBody({
     'BEGIN:VEVENT',
     `UID:${uid}`,
     `DTSTAMP:${basicUtcTimestamp(new Date())}`,
-    `DTSTART;TZID=${eventTimeZone}:${basicLocalTimestamp(option.start, eventTimeZone)}`,
-    `DTEND;TZID=${eventTimeZone}:${basicLocalTimestamp(option.end, eventTimeZone)}`,
+    ...(option.isAllDay
+      ? [
+          `DTSTART;VALUE=DATE:${allDayDateStamp(option.start, eventTimeZone)}`,
+          `DTEND;VALUE=DATE:${allDayDateStamp(option.end, eventTimeZone)}`,
+        ]
+      : [
+          `DTSTART;TZID=${eventTimeZone}:${basicLocalTimestamp(option.start, eventTimeZone)}`,
+          `DTEND;TZID=${eventTimeZone}:${basicLocalTimestamp(option.end, eventTimeZone)}`,
+        ]),
     `SUMMARY:${escapeIcsText(option.title)}`,
   ]
 
@@ -1433,11 +1456,17 @@ function parseOutlookRecurrence(
 
   const type = String(pattern.type || '')
   const interval = Number(pattern.interval || 1)
+  const weekdayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+  const daysOfWeek = Array.isArray((pattern as { daysOfWeek?: unknown }).daysOfWeek)
+    ? ((pattern as { daysOfWeek?: unknown[] }).daysOfWeek || []).map((value) => String(value).toLowerCase())
+    : []
+  const weekday = daysOfWeek.length ? weekdayNames.indexOf(daysOfWeek[0]) : -1
 
   if (type === 'weekly' && (interval === 1 || interval === 2)) {
     return {
       unit: 'week',
       interval: interval as 1 | 2,
+      weekday: weekday >= 0 ? weekday : undefined,
     }
   }
 
@@ -1454,6 +1483,7 @@ function parseOutlookRecurrence(
       unit: 'month',
       interval: 1,
       mode: 'nth_weekday',
+      weekday: weekday >= 0 ? weekday : undefined,
     }
   }
 
@@ -2923,22 +2953,28 @@ export async function createCalendarEvent(
   if (client.provider === 'outlook') {
     const recurrence = outlookRecurrenceBody(option.recurrence, option.start, option.timeZone)
     const recurrenceTimeZone = option.recurrence ? option.timeZone || defaultTimezone() : null
+    const eventTimeZone = recurrenceTimeZone || option.timeZone || defaultTimezone()
     return graphJson(`/me/calendars/${encodeURIComponent(option.calendarId || client.connection.calendar_id)}/events`, {
       accessToken: client.accessToken,
       method: 'POST',
       body: {
         subject: option.title,
+        isAllDay: Boolean(option.isAllDay),
         start: {
-          dateTime: recurrenceTimeZone
+          dateTime: option.isAllDay
+            ? calendarLocalDateTime(option.start, eventTimeZone)
+            : recurrenceTimeZone
             ? calendarLocalDateTime(option.start, recurrenceTimeZone)
             : normalizeOutlookGraphDateTime(option.start),
-          timeZone: recurrenceTimeZone || 'UTC',
+          timeZone: eventTimeZone,
         },
         end: {
-          dateTime: recurrenceTimeZone
+          dateTime: option.isAllDay
+            ? calendarLocalDateTime(option.end, eventTimeZone)
+            : recurrenceTimeZone
             ? calendarLocalDateTime(option.end, recurrenceTimeZone)
             : normalizeOutlookGraphDateTime(option.end),
-          timeZone: recurrenceTimeZone || 'UTC',
+          timeZone: eventTimeZone,
         },
         attendees: option.attendees?.map((invitee) => ({
           emailAddress: {
@@ -2968,16 +3004,28 @@ export async function createCalendarEvent(
     requestBody: {
       summary: option.title,
       start: {
-        dateTime: recurrenceTimeZone
-          ? calendarLocalDateTime(option.start, recurrenceTimeZone)
-          : option.start,
-        timeZone: recurrenceTimeZone || undefined,
+        ...(option.isAllDay
+          ? {
+              date: allDayDateInTimeZone(option.start, option.timeZone || defaultTimezone()),
+            }
+          : {
+              dateTime: recurrenceTimeZone
+                ? calendarLocalDateTime(option.start, recurrenceTimeZone)
+                : option.start,
+              timeZone: recurrenceTimeZone || undefined,
+            }),
       },
       end: {
-        dateTime: recurrenceTimeZone
-          ? calendarLocalDateTime(option.end, recurrenceTimeZone)
-          : option.end,
-        timeZone: recurrenceTimeZone || undefined,
+        ...(option.isAllDay
+          ? {
+              date: allDayDateInTimeZone(option.end, option.timeZone || defaultTimezone()),
+            }
+          : {
+              dateTime: recurrenceTimeZone
+                ? calendarLocalDateTime(option.end, recurrenceTimeZone)
+                : option.end,
+              timeZone: recurrenceTimeZone || undefined,
+            }),
       },
       location: option.location?.trim() || undefined,
       attendees: option.attendees?.map((invitee) => ({
@@ -3008,22 +3056,28 @@ export async function updateCalendarEvent(
   if (client.provider === 'outlook') {
     const recurrence = outlookRecurrenceBody(option.recurrence, option.start, option.timeZone)
     const recurrenceTimeZone = option.recurrence ? option.timeZone || defaultTimezone() : null
+    const eventTimeZone = recurrenceTimeZone || option.timeZone || defaultTimezone()
     return graphJson(`/me/calendars/${encodeURIComponent(option.calendarId || client.connection.calendar_id)}/events/${encodeURIComponent(eventId)}`, {
       accessToken: client.accessToken,
       method: 'PATCH',
       body: {
         subject: option.title,
+        isAllDay: Boolean(option.isAllDay),
         start: {
-          dateTime: recurrenceTimeZone
+          dateTime: option.isAllDay
+            ? calendarLocalDateTime(option.start, eventTimeZone)
+            : recurrenceTimeZone
             ? calendarLocalDateTime(option.start, recurrenceTimeZone)
             : normalizeOutlookGraphDateTime(option.start),
-          timeZone: recurrenceTimeZone || 'UTC',
+          timeZone: eventTimeZone,
         },
         end: {
-          dateTime: recurrenceTimeZone
+          dateTime: option.isAllDay
+            ? calendarLocalDateTime(option.end, eventTimeZone)
+            : recurrenceTimeZone
             ? calendarLocalDateTime(option.end, recurrenceTimeZone)
             : normalizeOutlookGraphDateTime(option.end),
-          timeZone: recurrenceTimeZone || 'UTC',
+          timeZone: eventTimeZone,
         },
         location: option.location?.trim()
           ? {
@@ -3047,16 +3101,28 @@ export async function updateCalendarEvent(
     requestBody: {
       summary: option.title,
       start: {
-        dateTime: recurrenceTimeZone
-          ? calendarLocalDateTime(option.start, recurrenceTimeZone)
-          : option.start,
-        timeZone: recurrenceTimeZone || undefined,
+        ...(option.isAllDay
+          ? {
+              date: allDayDateInTimeZone(option.start, option.timeZone || defaultTimezone()),
+            }
+          : {
+              dateTime: recurrenceTimeZone
+                ? calendarLocalDateTime(option.start, recurrenceTimeZone)
+                : option.start,
+              timeZone: recurrenceTimeZone || undefined,
+            }),
       },
       end: {
-        dateTime: recurrenceTimeZone
-          ? calendarLocalDateTime(option.end, recurrenceTimeZone)
-          : option.end,
-        timeZone: recurrenceTimeZone || undefined,
+        ...(option.isAllDay
+          ? {
+              date: allDayDateInTimeZone(option.end, option.timeZone || defaultTimezone()),
+            }
+          : {
+              dateTime: recurrenceTimeZone
+                ? calendarLocalDateTime(option.end, recurrenceTimeZone)
+                : option.end,
+              timeZone: recurrenceTimeZone || undefined,
+            }),
       },
       location: option.location?.trim() || undefined,
       recurrence: recurrence ? [recurrence] : undefined,
