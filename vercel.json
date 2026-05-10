@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/jobs/morning-agenda",
+      "schedule": "*/15 * * * *"
+    },
+    {
       "path": "/api/jobs/reminders",
       "schedule": "*/5 * * * *"
     }

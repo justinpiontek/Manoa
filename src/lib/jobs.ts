@@ -6,7 +6,12 @@ import { sendSms } from './twilioClient'
 type ActiveProfile = {
   id: string
   phone_e164: string
+  timezone: string
 }
+
+const MORNING_AGENDA_HOUR = 6
+const MORNING_AGENDA_MINUTE = 30
+const MORNING_AGENDA_WINDOW_MINUTES = 15
 
 function sortAgendaEvents(events: Awaited<ReturnType<typeof listAgenda>>) {
   return [...events].sort((left, right) => {
@@ -47,7 +52,7 @@ export async function activeSubscriberProfiles() {
 
   const { data: profiles, error: profileError } = await supabaseAdmin
     .from('profiles')
-    .select('id,phone_e164')
+    .select('id,phone_e164,timezone')
     .in('id', profileIds)
     .not('phone_e164', 'is', null)
     .is('sms_opted_out_at', null)
@@ -57,14 +62,78 @@ export async function activeSubscriberProfiles() {
   return profiles || []
 }
 
+function datePartsInTimeZone(date: Date, timeZone: string) {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  })
+
+  const parts = formatter.formatToParts(date)
+  const value = (type: string) => parts.find((part) => part.type === type)?.value || ''
+
+  return {
+    year: value('year'),
+    month: value('month'),
+    day: value('day'),
+    hour: Number(value('hour') || '0'),
+    minute: Number(value('minute') || '0'),
+    dateKey: `${value('year')}-${value('month')}-${value('day')}`,
+  }
+}
+
+function isMorningAgendaWindow(date: Date, timeZone: string) {
+  const local = datePartsInTimeZone(date, timeZone)
+  return (
+    local.hour === MORNING_AGENDA_HOUR &&
+    local.minute >= MORNING_AGENDA_MINUTE &&
+    local.minute < MORNING_AGENDA_MINUTE + MORNING_AGENDA_WINDOW_MINUTES
+  )
+}
+
+async function alreadySentMorningAgendaToday(profile: ActiveProfile, now: Date) {
+  const { data, error } = await supabaseAdmin
+    .from('sms_messages')
+    .select('created_at,body')
+    .eq('profile_id', profile.id)
+    .eq('direction', 'outbound')
+    .gte('created_at', new Date(now.getTime() - 36 * 60 * 60_000).toISOString())
+    .ilike('body', 'Good morning.%')
+    .returns<{ created_at: string; body: string }[]>()
+
+  if (error) throw error
+
+  const todayKey = datePartsInTimeZone(now, profile.timezone).dateKey
+  return (data || []).some((message) => {
+    const createdAt = new Date(message.created_at)
+    if (Number.isNaN(createdAt.getTime())) return false
+    return datePartsInTimeZone(createdAt, profile.timezone).dateKey === todayKey
+  })
+}
+
 export async function sendMorningAgendas() {
   const profiles = await activeSubscriberProfiles()
   const results = []
+  const now = new Date()
 
   for (const profile of profiles) {
-    const events = await listAgenda(profile.id, 'today')
+    if (!isMorningAgendaWindow(now, profile.timezone)) continue
+    if (await alreadySentMorningAgendaToday(profile, now)) continue
+
+    const events = await listAgenda(profile.id, 'today', profile.timezone)
     const message = agendaText(events)
     const result = await sendSms({ to: profile.phone_e164, body: message })
+    await supabaseAdmin.from('sms_messages').insert({
+      profile_id: profile.id,
+      from_e164: profile.phone_e164,
+      body: message,
+      direction: 'outbound',
+      twilio_message_sid: result.sid,
+    })
     results.push({ profileId: profile.id, sid: result.sid })
   }
 
