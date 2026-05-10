@@ -7,6 +7,9 @@ type ActiveProfile = {
   id: string
   phone_e164: string
   timezone: string
+  morning_agenda_enabled: boolean
+  reminder_texts_enabled: boolean
+  reminder_lead_minutes: number
 }
 
 const MORNING_AGENDA_HOUR = 6
@@ -50,16 +53,49 @@ export async function activeSubscriberProfiles() {
   const profileIds = [...new Set((subscriptions || []).map((item) => item.profile_id))]
   if (!profileIds.length) return []
 
-  const { data: profiles, error: profileError } = await supabaseAdmin
-    .from('profiles')
-    .select('id,phone_e164,timezone')
-    .in('id', profileIds)
-    .not('phone_e164', 'is', null)
-    .is('sms_opted_out_at', null)
-    .returns<ActiveProfile[]>()
+  const profileQuery = () =>
+    supabaseAdmin
+      .from('profiles')
+      .select('id,phone_e164,timezone,morning_agenda_enabled,reminder_texts_enabled,reminder_lead_minutes')
+      .in('id', profileIds)
+      .not('phone_e164', 'is', null)
+      .is('sms_opted_out_at', null)
 
-  if (profileError) throw profileError
-  return profiles || []
+  const { data: profiles, error: profileError } = await profileQuery().returns<ActiveProfile[]>()
+
+  if (profileError) {
+    const lower = String((profileError as { message?: unknown })?.message || '').toLowerCase()
+    const missingNotificationColumns =
+      lower.includes('does not exist') &&
+      ['morning_agenda_enabled', 'reminder_texts_enabled', 'reminder_lead_minutes'].some((column) =>
+        lower.includes(column),
+      )
+
+    if (!missingNotificationColumns) throw profileError
+
+    const fallback = await supabaseAdmin
+      .from('profiles')
+      .select('id,phone_e164,timezone')
+      .in('id', profileIds)
+      .not('phone_e164', 'is', null)
+      .is('sms_opted_out_at', null)
+      .returns<Array<{ id: string; phone_e164: string; timezone: string }>>()
+
+    if (fallback.error) throw fallback.error
+    return (fallback.data || []).map((profile) => ({
+      ...profile,
+      morning_agenda_enabled: true,
+      reminder_texts_enabled: true,
+      reminder_lead_minutes: DEFAULT_REMINDER_LEAD_MINUTES,
+    }))
+  }
+
+  return (profiles || []).map((profile) => ({
+    ...profile,
+    morning_agenda_enabled: profile.morning_agenda_enabled ?? true,
+    reminder_texts_enabled: profile.reminder_texts_enabled ?? true,
+    reminder_lead_minutes: profile.reminder_lead_minutes ?? DEFAULT_REMINDER_LEAD_MINUTES,
+  }))
 }
 
 function datePartsInTimeZone(date: Date, timeZone: string) {
@@ -121,6 +157,7 @@ export async function sendMorningAgendas() {
   const now = new Date()
 
   for (const profile of profiles) {
+    if (!profile.morning_agenda_enabled) continue
     if (!isMorningAgendaWindow(now, profile.timezone)) continue
     if (await alreadySentMorningAgendaToday(profile, now)) continue
 
@@ -167,6 +204,7 @@ async function ensureUpcomingReminders() {
   const profiles = await activeSubscriberProfiles()
 
   for (const profile of profiles) {
+    if (!profile.reminder_texts_enabled) continue
     const events = await listUpcomingEvents({
       profileId: profile.id,
       windowMinutes: 90,
@@ -191,7 +229,7 @@ async function ensureUpcomingReminders() {
       }
 
       const dueDate = new Date(
-        new Date(startsAt).getTime() - DEFAULT_REMINDER_LEAD_MINUTES * 60_000,
+        new Date(startsAt).getTime() - profile.reminder_lead_minutes * 60_000,
       )
       const dueAt =
         dueDate.getTime() <= Date.now() ? new Date().toISOString() : dueDate.toISOString()
@@ -258,13 +296,21 @@ export async function sendDueReminders() {
       }
     }
 
-    const { data: profile } = await supabaseAdmin
+    const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
-      .select('sms_opted_out_at')
+      .select('sms_opted_out_at,reminder_texts_enabled')
       .eq('id', reminder.profile_id)
-      .maybeSingle<{ sms_opted_out_at: string | null }>()
+      .maybeSingle<{ sms_opted_out_at: string | null; reminder_texts_enabled?: boolean | null }>()
 
-    if (profile?.sms_opted_out_at) {
+    if (profileError) {
+      const lower = String((profileError as { message?: unknown })?.message || '').toLowerCase()
+      const missingReminderTextsColumn =
+        lower.includes('does not exist') && lower.includes('reminder_texts_enabled')
+
+      if (!missingReminderTextsColumn) throw profileError
+    }
+
+    if (profile?.sms_opted_out_at || profile?.reminder_texts_enabled === false) {
       await supabaseAdmin
         .from('reminders')
         .update({

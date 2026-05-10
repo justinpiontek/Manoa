@@ -5,7 +5,7 @@ import type { ParsedSmsIntent } from './parser'
 import { parseAllDayDateSpan, parseDateWindow, parseExplicitDate, parseScheduleLocation } from './parser'
 
 type AiIntentPayload = {
-  intent_type: 'choice' | 'agenda' | 'schedule' | 'reschedule' | 'cancel' | 'unknown'
+  intent_type: 'choice' | 'agenda' | 'schedule' | 'reschedule' | 'cancel' | 'settings' | 'unknown'
   choice: 1 | 2 | 3 | null
   day: 'today' | 'tomorrow' | null
   date_ymd: string | null
@@ -27,6 +27,9 @@ type AiIntentPayload = {
   recurrence_unit: 'week' | 'month' | null
   recurrence_interval: 1 | 2 | null
   recurrence_mode: 'month_day' | 'nth_weekday' | null
+  settings_target: 'morning_agenda' | 'reminders' | 'reminder_timing' | null
+  toggle_value: 'on' | 'off' | null
+  reminder_lead_minutes: number | null
 }
 
 const weekdayNumbers: Record<NonNullable<AiIntentPayload['weekday']>, number> = {
@@ -222,6 +225,32 @@ function toParsedSmsIntent(payload: AiIntentPayload, timeZone: string, originalT
         query: payload.query?.trim() || payload.title?.trim() || 'meeting',
       }
 
+    case 'settings':
+      return {
+        type: 'settings',
+        morningAgendaEnabled:
+          payload.settings_target === 'morning_agenda'
+            ? payload.toggle_value === 'on'
+              ? true
+              : payload.toggle_value === 'off'
+                ? false
+                : null
+            : null,
+        reminderTextsEnabled:
+          payload.settings_target === 'reminders'
+            ? payload.toggle_value === 'on'
+              ? true
+              : payload.toggle_value === 'off'
+                ? false
+                : payload.reminder_lead_minutes
+                  ? true
+                  : null
+            : payload.settings_target === 'reminder_timing'
+              ? true
+              : null,
+        reminderLeadMinutes: payload.reminder_lead_minutes,
+      }
+
     default:
       return { type: 'unknown' }
   }
@@ -275,6 +304,7 @@ export async function parseSmsIntentWithAIResult(
               `- schedule means creating a new event.\n` +
               `- reschedule means moving an existing event.\n` +
               `- cancel means canceling or removing an existing event.\n` +
+              `- settings means changing notification preferences like morning agenda on/off, reminder texts on/off, or reminder timing.\n` +
               `- choice means direct option-selection like first, second, third, 1, 2, 3.\n` +
               `- unknown if the text is too vague or not a calendar action.\n` +
               `- If the user pastes or forwards event details from an email, invitation, school flyer, appointment reminder, sports schedule, or text thread, treat it as schedule when there is one clear calendar event.\n` +
@@ -289,6 +319,7 @@ export async function parseSmsIntentWithAIResult(
               `- Preserve the user's calendar label when they name one, like "Personal", "Metonga Media", or "Part-time job". Use "Calendar" only if they did not name one.\n` +
               `- Strip invitee names/emails from the title/query if possible.\n` +
               `- Use the recent conversation turns as context for follow-ups like "actually make it an hour", "change it to Thursday instead", "cancel that", or "book the second one".\n` +
+              `- For settings: use settings_target morning_agenda for daily/morning agenda texts, reminders for reminder texts on/off, and reminder_timing for "30 minutes before" type requests.\n` +
               `- Treat the final user turn as the message to parse right now. Earlier turns are only context.`,
           },
           ...recentConversation,
@@ -308,7 +339,7 @@ export async function parseSmsIntentWithAIResult(
               properties: {
                 intent_type: {
                   type: 'string',
-                  enum: ['choice', 'agenda', 'schedule', 'reschedule', 'cancel', 'unknown'],
+                  enum: ['choice', 'agenda', 'schedule', 'reschedule', 'cancel', 'settings', 'unknown'],
                 },
                 choice: {
                   anyOf: [
@@ -384,6 +415,21 @@ export async function parseSmsIntentWithAIResult(
                     { type: 'null' },
                   ],
                 },
+                settings_target: {
+                  anyOf: [
+                    { type: 'string', enum: ['morning_agenda', 'reminders', 'reminder_timing'] },
+                    { type: 'null' },
+                  ],
+                },
+                toggle_value: {
+                  anyOf: [
+                    { type: 'string', enum: ['on', 'off'] },
+                    { type: 'null' },
+                  ],
+                },
+                reminder_lead_minutes: {
+                  anyOf: [{ type: 'integer' }, { type: 'null' }],
+                },
               },
               required: [
                 'intent_type',
@@ -400,6 +446,9 @@ export async function parseSmsIntentWithAIResult(
                 'recurrence_unit',
                 'recurrence_interval',
                 'recurrence_mode',
+                'settings_target',
+                'toggle_value',
+                'reminder_lead_minutes',
               ],
             },
           },

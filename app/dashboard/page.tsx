@@ -10,6 +10,7 @@ import CalendarSettingsForm from '@/src/components/CalendarSettingsForm'
 import DisconnectCalendarAccountForm from '@/src/components/DisconnectCalendarAccountForm'
 import DefaultDurationForm from '@/src/components/DefaultDurationForm'
 import DashboardTextConsole from '@/src/components/DashboardTextConsole'
+import NotificationSettingsForm from '@/src/components/NotificationSettingsForm'
 import TimezoneForm from '@/src/components/TimezoneForm'
 import type { Metadata } from 'next'
 
@@ -345,6 +346,30 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </div>
         ) : null}
 
+        {params.settings === 'notifications_saved' ? (
+          <div className="notice success" role="status" aria-live="polite">
+            Notification settings saved. Manoa will use those for morning agenda and reminder texts.
+          </div>
+        ) : null}
+
+        {params.settings === 'notifications_invalid' ? (
+          <div className="notice warning" role="status" aria-live="polite">
+            That reminder timing option was not recognized. Pick one from the dashboard and try again.
+          </div>
+        ) : null}
+
+        {params.settings === 'notifications_unavailable' ? (
+          <div className="notice warning" role="status" aria-live="polite">
+            Notification settings could not be saved yet because the latest profile settings update has not finished in the database.
+          </div>
+        ) : null}
+
+        {params.settings === 'notifications_error' ? (
+          <div className="notice warning" role="status" aria-live="polite">
+            We could not save notification settings yet. Try again in a minute.
+          </div>
+        ) : null}
+
         {billingMissing ? (
           <div className="notice warning" role="status" aria-live="polite">
             We could not find your billing record yet. Try again in a minute. If it still looks off,
@@ -592,6 +617,18 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                   </form>
                 </>
               )}
+            </article>
+
+            <article className="dashboard-support-card">
+              <p className="dashboard-label">Notifications</p>
+              <h3>Choose what Manoa texts</h3>
+              <p>Keep the daily agenda, event reminders, and timing under your control.</p>
+              <NotificationSettingsForm
+                profileId={profile.id}
+                morningAgendaEnabled={profile.morning_agenda_enabled}
+                reminderTextsEnabled={profile.reminder_texts_enabled}
+                reminderLeadMinutes={profile.reminder_lead_minutes}
+              />
             </article>
 
             <article className="dashboard-support-card">

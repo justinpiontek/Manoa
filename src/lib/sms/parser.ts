@@ -18,6 +18,12 @@ export type ParsedSmsIntent =
   | { type: 'agenda'; day: 'today' | 'tomorrow'; dateWindow?: DateWindow | null; label?: string }
   | { type: 'lookup'; query: string; dateWindow?: DateWindow | null; mode?: 'when' | 'where' | 'time' }
   | {
+      type: 'settings'
+      morningAgendaEnabled?: boolean | null
+      reminderTextsEnabled?: boolean | null
+      reminderLeadMinutes?: number | null
+    }
+  | {
       type: 'schedule'
       title: string
       baseDate: Date
@@ -803,6 +809,89 @@ function parseLookupQuery(text: string) {
   return null
 }
 
+function parseReminderLeadMinutes(text: string) {
+  const lower = text.toLowerCase()
+  const match = lower.match(/\b(\d+)\s*(minutes?|mins?|hours?|hrs?)\b/)
+  if (!match) return null
+
+  const value = Number(match[1])
+  if (!Number.isFinite(value) || value <= 0) return null
+
+  if (match[2].startsWith('hour') || match[2] === 'hr' || match[2] === 'hrs') {
+    return value * 60
+  }
+
+  return value
+}
+
+function parseSettingsIntent(text: string): ParsedSmsIntent | null {
+  const lower = text.trim().toLowerCase()
+  const normalized = lower.replace(/[.?!]+$/g, '').trim()
+
+  const mentionsMorningAgenda =
+    /\bmorning agenda\b/.test(normalized) ||
+    /\bdaily agenda\b/.test(normalized) ||
+    /\bmorning text\b/.test(normalized)
+
+  if (mentionsMorningAgenda) {
+    if (
+      /\b(turn|switch|set|keep)\s+(it\s+)?on\b/.test(normalized) ||
+      /\b(enable|enabled|start|resume)\b/.test(normalized) ||
+      /\bon\b/.test(normalized) && /\bmorning agenda|daily agenda|morning text\b/.test(normalized)
+    ) {
+      return { type: 'settings', morningAgendaEnabled: true }
+    }
+
+    if (
+      /\b(turn|switch|set|keep)\s+(it\s+)?off\b/.test(normalized) ||
+      /\b(disable|disabled|stop|pause|skip|cancel)\b/.test(normalized) ||
+      /\boff\b/.test(normalized) && /\bmorning agenda|daily agenda|morning text\b/.test(normalized)
+    ) {
+      return { type: 'settings', morningAgendaEnabled: false }
+    }
+  }
+
+  const mentionsReminders =
+    /\breminder texts?\b/.test(normalized) ||
+    /\breminders?\b/.test(normalized) ||
+    /\btext reminders?\b/.test(normalized)
+
+  const reminderLeadMinutes =
+    mentionsReminders &&
+    /\bbefore\b/.test(normalized) &&
+    /\b(remind me|change reminders?|set reminders?|make reminders?|reminder timing|before events?|before meetings?)\b/.test(normalized)
+      ? parseReminderLeadMinutes(normalized)
+      : null
+
+  if (reminderLeadMinutes && [5, 15, 30, 60].includes(reminderLeadMinutes)) {
+    return {
+      type: 'settings',
+      reminderTextsEnabled: true,
+      reminderLeadMinutes,
+    }
+  }
+
+  if (mentionsReminders) {
+    if (
+      /\b(turn|switch|set|keep)\s+(them\s+)?on\b/.test(normalized) ||
+      /\b(enable|enabled|start|resume)\b/.test(normalized) ||
+      /\bback on\b/.test(normalized)
+    ) {
+      return { type: 'settings', reminderTextsEnabled: true }
+    }
+
+    if (
+      /\b(turn|switch|set|keep)\s+(them\s+)?off\b/.test(normalized) ||
+      /\b(disable|disabled|stop|pause|skip|cancel)\b/.test(normalized) ||
+      /\bno reminders\b/.test(normalized)
+    ) {
+      return { type: 'settings', reminderTextsEnabled: false }
+    }
+  }
+
+  return null
+}
+
 export function parseSmsIntent(body: string, timeZone?: string): ParsedSmsIntent {
   const text = body.trim()
   const lower = text.toLowerCase()
@@ -814,6 +903,9 @@ export function parseSmsIntent(body: string, timeZone?: string): ParsedSmsIntent
 
   const lookupQuery = parseLookupQuery(text)
   if (lookupQuery) return { type: 'lookup', query: lookupQuery.query, dateWindow, mode: lookupQuery.mode }
+
+  const settingsIntent = parseSettingsIntent(text)
+  if (settingsIntent) return settingsIntent
 
   const startsWithScheduleCommand = /^(schedule|scheudle|chedule|book|add|set up|put|throw|save|plan|pencil in|block off|already scheduled|already booked|they scheduled|they booked)\b/.test(lower)
   const isTomorrowAgenda =

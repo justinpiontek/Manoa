@@ -8,6 +8,9 @@ export type Profile = {
   phone_e164: string | null
   timezone: string
   default_event_duration_minutes: number
+  morning_agenda_enabled: boolean
+  reminder_texts_enabled: boolean
+  reminder_lead_minutes: number
 }
 
 type ProfileRow = {
@@ -16,6 +19,9 @@ type ProfileRow = {
   phone_e164: string | null
   timezone: string
   default_event_duration_minutes?: number | null
+  morning_agenda_enabled?: boolean | null
+  reminder_texts_enabled?: boolean | null
+  reminder_lead_minutes?: number | null
 }
 
 export type DashboardProfile = Profile & {
@@ -24,7 +30,8 @@ export type DashboardProfile = Profile & {
   googleCalendarConnected: boolean
 }
 
-const profileSelectColumns = 'id,email,phone_e164,timezone,default_event_duration_minutes'
+const profileSelectColumns =
+  'id,email,phone_e164,timezone,default_event_duration_minutes,morning_agenda_enabled,reminder_texts_enabled,reminder_lead_minutes'
 const legacyProfileSelectColumns = 'id,email,phone_e164,timezone'
 
 export function isMissingDefaultDurationColumnError(error: unknown) {
@@ -39,6 +46,29 @@ export function isMissingDefaultDurationColumnError(error: unknown) {
   return lower.includes('default_event_duration_minutes') && lower.includes('does not exist')
 }
 
+export function isMissingNotificationSettingsColumnError(error: unknown) {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'object' && error && 'message' in error
+        ? String((error as { message?: unknown }).message || '')
+        : ''
+
+  const lower = message.toLowerCase()
+  return (
+    lower.includes('does not exist') &&
+    ['morning_agenda_enabled', 'reminder_texts_enabled', 'reminder_lead_minutes'].some((column) =>
+      lower.includes(column),
+    )
+  )
+}
+
+function isMissingProfilePreferenceColumnError(error: unknown) {
+  return (
+    isMissingDefaultDurationColumnError(error) || isMissingNotificationSettingsColumnError(error)
+  )
+}
+
 function normalizeProfileRow(row: ProfileRow): Profile {
   return {
     id: row.id,
@@ -46,6 +76,9 @@ function normalizeProfileRow(row: ProfileRow): Profile {
     phone_e164: row.phone_e164,
     timezone: row.timezone,
     default_event_duration_minutes: row.default_event_duration_minutes ?? 30,
+    morning_agenda_enabled: row.morning_agenda_enabled ?? true,
+    reminder_texts_enabled: row.reminder_texts_enabled ?? true,
+    reminder_lead_minutes: row.reminder_lead_minutes ?? 15,
   }
 }
 
@@ -53,7 +86,7 @@ async function selectProfileMaybeSingle(
   build: (columns: string) => PromiseLike<{ data: ProfileRow | null; error: unknown }>,
 ) {
   const result = await build(profileSelectColumns)
-  if (result.error && isMissingDefaultDurationColumnError(result.error)) {
+  if (result.error && isMissingProfilePreferenceColumnError(result.error)) {
     const fallback = await build(legacyProfileSelectColumns)
     if (fallback.error) throw fallback.error
     return fallback.data ? normalizeProfileRow(fallback.data) : null
@@ -67,7 +100,7 @@ async function selectProfileSingle(
   build: (columns: string) => PromiseLike<{ data: ProfileRow | null; error: unknown }>,
 ) {
   const result = await build(profileSelectColumns)
-  if (result.error && isMissingDefaultDurationColumnError(result.error)) {
+  if (result.error && isMissingProfilePreferenceColumnError(result.error)) {
     const fallback = await build(legacyProfileSelectColumns)
     if (fallback.error) throw fallback.error
     if (!fallback.data) throw new Error('Profile could not be loaded after saving.')
@@ -232,6 +265,9 @@ export async function findOrCreateProfile({
         phone_e164: normalizedPhone,
         timezone: defaultTimezone(),
         default_event_duration_minutes: 30,
+        morning_agenda_enabled: true,
+        reminder_texts_enabled: true,
+        reminder_lead_minutes: 15,
         sms_opted_out_at: smsConsentGranted ? null : new Date().toISOString(),
       })
       .select(profileSelectColumns)

@@ -69,6 +69,9 @@ type SmsProfile = {
   phone_e164: string | null
   timezone: string
   default_event_duration_minutes: number
+  morning_agenda_enabled: boolean
+  reminder_texts_enabled: boolean
+  reminder_lead_minutes: number
   phone_confirmed_at: string | null
   sms_opted_out_at: string | null
   subscriptionStatus: string
@@ -80,6 +83,9 @@ type SmsProfileRow = {
   phone_e164: string | null
   timezone: string
   default_event_duration_minutes?: number | null
+  morning_agenda_enabled?: boolean | null
+  reminder_texts_enabled?: boolean | null
+  reminder_lead_minutes?: number | null
   phone_confirmed_at?: string | null
   sms_opted_out_at?: string | null
 }
@@ -101,6 +107,7 @@ type PendingKind =
   | 'save_business_contact_phone'
 
 const smsProfileSelectVariants = [
+  'id,email,phone_e164,timezone,default_event_duration_minutes,morning_agenda_enabled,reminder_texts_enabled,reminder_lead_minutes,phone_confirmed_at,sms_opted_out_at',
   'id,email,phone_e164,timezone,default_event_duration_minutes,phone_confirmed_at,sms_opted_out_at',
   'id,email,phone_e164,timezone,phone_confirmed_at,sms_opted_out_at',
   'id,email,phone_e164,timezone,default_event_duration_minutes',
@@ -1358,6 +1365,62 @@ function agendaWindowText(label: string, events: EventSummary[], timeZone?: stri
     .join('\n')}`
 }
 
+function reminderLeadLabel(minutes: number) {
+  return minutes === 60 ? '1 hour' : `${minutes} minutes`
+}
+
+async function applySettingsIntent(profile: SmsProfile, intent: Extract<ParsedSmsIntent, { type: 'settings' }>) {
+  const update: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  }
+
+  if (typeof intent.morningAgendaEnabled === 'boolean') {
+    update.morning_agenda_enabled = intent.morningAgendaEnabled
+  }
+
+  if (typeof intent.reminderTextsEnabled === 'boolean') {
+    update.reminder_texts_enabled = intent.reminderTextsEnabled
+  }
+
+  if (typeof intent.reminderLeadMinutes === 'number') {
+    update.reminder_lead_minutes = intent.reminderLeadMinutes
+    update.reminder_texts_enabled = true
+  }
+
+  if (Object.keys(update).length === 1) {
+    return `You can text things like "turn off morning agenda", "turn reminders on", or "remind me 30 minutes before events."`
+  }
+
+  const { error } = await supabaseAdmin.from('profiles').update(update).eq('id', profile.id)
+  if (error) {
+    if (!isMissingProfileUpdateColumnError(error, Object.keys(update))) {
+      throw error
+    }
+    return `Those notification settings need one more update in the database before I can change them by text.`
+  }
+
+  const replies: string[] = []
+  if (typeof intent.morningAgendaEnabled === 'boolean') {
+    replies.push(
+      intent.morningAgendaEnabled
+        ? `Done. I'll send your morning agenda around 6:30 AM.`
+        : `Done. I won't send the morning agenda text.`,
+    )
+  }
+  if (typeof intent.reminderTextsEnabled === 'boolean' && intent.reminderLeadMinutes == null) {
+    replies.push(
+      intent.reminderTextsEnabled
+        ? `Done. Reminder texts are back on.`
+        : `Done. I won't send reminder texts.`,
+    )
+  }
+  if (typeof intent.reminderLeadMinutes === 'number') {
+    replies.push(`Done. I'll remind you ${reminderLeadLabel(intent.reminderLeadMinutes)} before timed events.`)
+  }
+
+  return replies.join('\n')
+}
+
 function eventLookupText(
   query: string,
   matches: EventSummary[],
@@ -1689,7 +1752,7 @@ function shouldClearResolveInviteesPendingForNewRequest(
   const unresolvedNames = pending.payload.unresolvedInvitees || []
   if (resolveInviteeFollowUp(text, unresolvedNames).resolved.length) return false
 
-  return ['agenda', 'schedule', 'reschedule', 'cancel', 'lookup'].includes(intent.type)
+  return ['agenda', 'schedule', 'reschedule', 'cancel', 'lookup', 'settings'].includes(intent.type)
 }
 
 function shouldClearRecentCreatedPendingForIntent(
@@ -2563,9 +2626,14 @@ function isMissingSmsProfileColumnError(error: unknown) {
   const lower = errorMessage(error).toLowerCase()
   return (
     lower.includes('does not exist') &&
-    ['default_event_duration_minutes', 'phone_confirmed_at', 'sms_opted_out_at'].some((column) =>
-      lower.includes(column),
-    )
+    [
+      'default_event_duration_minutes',
+      'morning_agenda_enabled',
+      'reminder_texts_enabled',
+      'reminder_lead_minutes',
+      'phone_confirmed_at',
+      'sms_opted_out_at',
+    ].some((column) => lower.includes(column))
   )
 }
 
@@ -2578,6 +2646,9 @@ function normalizeSmsProfileRow(row: SmsProfileRow) {
   return {
     ...row,
     default_event_duration_minutes: row.default_event_duration_minutes ?? 30,
+    morning_agenda_enabled: row.morning_agenda_enabled ?? true,
+    reminder_texts_enabled: row.reminder_texts_enabled ?? true,
+    reminder_lead_minutes: row.reminder_lead_minutes ?? DEFAULT_REMINDER_LEAD_MINUTES,
     phone_confirmed_at: row.phone_confirmed_at ?? null,
     sms_opted_out_at: row.sms_opted_out_at ?? null,
   }
@@ -5003,6 +5074,13 @@ export async function handleIncomingSms({
 
   let aiConversation: AiConversationTurn[] = []
   if (!intentOverride) {
+    const directSettingsIntent = parseSmsIntent(intentBody, profile.timezone)
+    if (directSettingsIntent.type === 'settings') {
+      intentOverride = directSettingsIntent
+    }
+  }
+
+  if (!intentOverride) {
     try {
       aiConversation = await listSmsAiIntentContext(profile.id, body)
     } catch (error) {
@@ -5017,6 +5095,11 @@ export async function handleIncomingSms({
     : usedAiIntent && aiIntent
       ? aiIntent
       : parseSmsIntent(intentBody, profile.timezone)
+
+  if (activePending && intent.type === 'settings') {
+    await clearPendingAction(activePending.id)
+    activePending = null
+  }
 
   if (
     activePending?.kind === 'select_cancel_target' &&
@@ -5089,6 +5172,12 @@ export async function handleIncomingSms({
 
     const events = await listAgenda(profile.id, intent.day, profile.timezone)
     const reply = agendaText(intent.day, events)
+    await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+    return reply
+  }
+
+  if (intent.type === 'settings') {
+    const reply = await applySettingsIntent(profile, intent)
     await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
     return reply
   }
