@@ -182,6 +182,11 @@ const weekdayNumbers: Record<string, number> = {
 const stopWords = new Set(['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit'])
 const startWords = new Set(['start', 'unstop'])
 const maxCalendarChoicesToDisplay = 5
+const emojiNumbers = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣']
+
+function emojiListMarker(index: number) {
+  return emojiNumbers[index] || `${index + 1}.`
+}
 
 function optionTimingText(option: ScheduleOption) {
   return option.isAllDay ? `${option.dayLabel} (all day)` : `${option.dayLabel} at ${option.timeLabel}`
@@ -191,14 +196,14 @@ function optionList(options: ScheduleOption[]) {
   return options
     .map(
       (option, index) =>
-        `${index + 1}. ${optionTimingText(option)} on ${option.calendarName}`,
+        `${emojiListMarker(index)} ${optionTimingText(option)} on ${option.calendarName}`,
     )
     .join('\n')
 }
 
 function callPrepOptionList(options: ScheduleOption[]) {
   return options
-    .map((option, index) => `${index + 1}. ${optionTimingText(option)}`)
+    .map((option, index) => `${emojiListMarker(index)} ${optionTimingText(option)}`)
     .join('\n')
 }
 
@@ -241,7 +246,7 @@ function calendarChoiceList(
   allCalendars: CalendarPlacementOption[] = calendars,
 ) {
   return calendars
-    .map((calendar, index) => `${index + 1}. ${calendarChoiceDisplayLabel(calendar, allCalendars)}`)
+    .map((calendar, index) => `${emojiListMarker(index)} ${calendarChoiceDisplayLabel(calendar, allCalendars)}`)
     .join('\n')
 }
 
@@ -275,7 +280,7 @@ function calendarChoiceReply({
   const visibleCalendars = visibleCalendarChoices(calendars)
   const extraCount = calendars.length - visibleCalendars.length
   const lines = [
-    heading,
+    `🗓️ ${heading}`,
     calendarChoiceList(visibleCalendars, calendars),
   ]
 
@@ -306,13 +311,13 @@ function recurrenceLine(options: ScheduleOption[]) {
 
 function bookingText(option: ScheduleOption) {
   const location = option.location?.trim()
-  const locationLine = location ? `\nLocation: ${location}.` : ''
+  const locationLine = location ? `\n📍 Location: ${location}.` : ''
   const summary = recurrenceSummary(option.recurrence, option.start, option.timeZone)
   if (summary) {
-    return `Booked ${option.title} starting ${optionTimingText(option)}.${locationLine}\n${summary}`
+    return `✅ Booked ${option.title} starting ${optionTimingText(option)}.${locationLine}\n${summary}`
   }
 
-  return `Booked ${option.title} for ${optionTimingText(option)}.${locationLine}`
+  return `✅ Booked ${option.title} for ${optionTimingText(option)}.${locationLine}`
 }
 
 function createdEventSummaryFromOption(
@@ -383,10 +388,10 @@ function inviteOutcomeLine(option: ScheduleOption, attendees: Invitee[]) {
 
   const summary = inviteeSummary(attendees)
   if (providerCanSendInvites(option.provider)) {
-    return `I invited ${summary}.`
+    return `✉️ I invited ${summary}.`
   }
 
-  return `${calendarProviderName(option.provider)} Calendar does not send invite emails through Manoa yet, so I booked it on your calendar and saved ${summary} for next time.`
+  return `✉️ ${calendarProviderName(option.provider)} Calendar does not send invite emails through Manoa yet, so I booked it on your calendar and saved ${summary} for next time.`
 }
 
 function exactAvailabilityReply({
@@ -399,19 +404,19 @@ function exactAvailabilityReply({
   unresolvedInvitees: string[]
 }) {
   const lines = [
-    `I confirmed ${optionTimingText(option)} is available on ${option.calendarName}.`,
+    `🕒 I confirmed ${optionTimingText(option)} is available on ${option.calendarName}.`,
   ]
 
   if (option.location?.trim()) {
-    lines.push(`Location: ${option.location.trim()}.`)
+    lines.push(`📍 Location: ${option.location.trim()}.`)
   }
 
   if (attendees.length) {
-    lines.push(`Ready to invite: ${inviteeSummary(attendees)}.`)
+    lines.push(`✉️ Ready to invite: ${inviteeSummary(attendees)}.`)
   }
 
   if (unresolvedInvitees.length) {
-    lines.push(`I still need email${unresolvedInvitees.length > 1 ? 's' : ''} for ${unresolvedInviteeSummary(
+    lines.push(`✉️ I still need email${unresolvedInvitees.length > 1 ? 's' : ''} for ${unresolvedInviteeSummary(
       unresolvedInvitees,
     )}.`)
   }
@@ -497,16 +502,16 @@ function pendingInviteScheduleReply({
   alternatives: ScheduleOption[]
 }) {
   const lines = [
-    `You have a pending invite for "${conflict.title}" at ${conflict.timeLabel}.`,
-    `1. Book over it anyway: ${optionTimingText(requestedOption)} on ${requestedOption.calendarName}`,
+    `⚠️ You have a pending invite for "${conflict.title}" at ${conflict.timeLabel}.`,
+    `${emojiListMarker(0)} Book over it anyway: ${optionTimingText(requestedOption)} on ${requestedOption.calendarName}`,
   ]
 
   if (alternatives[0]) {
-    lines.push(`2. ${optionTimingText(alternatives[0])} on ${alternatives[0].calendarName}`)
+    lines.push(`${emojiListMarker(1)} ${optionTimingText(alternatives[0])} on ${alternatives[0].calendarName}`)
   }
 
   if (alternatives[1]) {
-    lines.push(`3. ${optionTimingText(alternatives[1])} on ${alternatives[1].calendarName}`)
+    lines.push(`${emojiListMarker(2)} ${optionTimingText(alternatives[1])} on ${alternatives[1].calendarName}`)
   }
 
   if (alternatives[1]) {
@@ -530,16 +535,16 @@ function hardConflictScheduleReply({
   alternatives: ScheduleOption[]
 }) {
   const lines = [
-    `That time is already reserved for "${conflict.title}" at ${conflict.timeLabel} on ${conflict.calendarName}.`,
-    `1. Book anyway: ${optionTimingText(requestedOption)} on ${requestedOption.calendarName}`,
+    `⚠️ That time is already reserved for "${conflict.title}" at ${conflict.timeLabel} on ${conflict.calendarName}.`,
+    `${emojiListMarker(0)} Book anyway: ${optionTimingText(requestedOption)} on ${requestedOption.calendarName}`,
   ]
 
   if (alternatives[0]) {
-    lines.push(`2. Adjust to ${optionTimingText(alternatives[0])} on ${alternatives[0].calendarName}`)
+    lines.push(`${emojiListMarker(1)} Adjust to ${optionTimingText(alternatives[0])} on ${alternatives[0].calendarName}`)
   }
 
   if (alternatives[1]) {
-    lines.push(`3. Adjust to ${optionTimingText(alternatives[1])} on ${alternatives[1].calendarName}`)
+    lines.push(`${emojiListMarker(2)} Adjust to ${optionTimingText(alternatives[1])} on ${alternatives[1].calendarName}`)
   }
 
   if (alternatives[1]) {
@@ -563,16 +568,16 @@ function pendingInviteRescheduleReply({
   alternatives: ScheduleOption[]
 }) {
   const lines = [
-    `You have a pending invite for "${conflict.title}" at ${conflict.timeLabel}.`,
-    `1. Move over it anyway: ${optionTimingText(requestedOption)} on ${requestedOption.calendarName}`,
+    `⚠️ You have a pending invite for "${conflict.title}" at ${conflict.timeLabel}.`,
+    `${emojiListMarker(0)} Move over it anyway: ${optionTimingText(requestedOption)} on ${requestedOption.calendarName}`,
   ]
 
   if (alternatives[0]) {
-    lines.push(`2. Adjust to ${optionTimingText(alternatives[0])} on ${alternatives[0].calendarName}`)
+    lines.push(`${emojiListMarker(1)} Adjust to ${optionTimingText(alternatives[0])} on ${alternatives[0].calendarName}`)
   }
 
   if (alternatives[1]) {
-    lines.push(`3. Adjust to ${optionTimingText(alternatives[1])} on ${alternatives[1].calendarName}`)
+    lines.push(`${emojiListMarker(2)} Adjust to ${optionTimingText(alternatives[1])} on ${alternatives[1].calendarName}`)
   }
 
   if (alternatives[1]) {
@@ -596,16 +601,16 @@ function hardConflictRescheduleReply({
   alternatives: ScheduleOption[]
 }) {
   const lines = [
-    `That time is already reserved for "${conflict.title}" at ${conflict.timeLabel} on ${conflict.calendarName}.`,
-    `1. Move anyway: ${optionTimingText(requestedOption)} on ${requestedOption.calendarName}`,
+    `⚠️ That time is already reserved for "${conflict.title}" at ${conflict.timeLabel} on ${conflict.calendarName}.`,
+    `${emojiListMarker(0)} Move anyway: ${optionTimingText(requestedOption)} on ${requestedOption.calendarName}`,
   ]
 
   if (alternatives[0]) {
-    lines.push(`2. Adjust to ${optionTimingText(alternatives[0])} on ${alternatives[0].calendarName}`)
+    lines.push(`${emojiListMarker(1)} Adjust to ${optionTimingText(alternatives[0])} on ${alternatives[0].calendarName}`)
   }
 
   if (alternatives[1]) {
-    lines.push(`3. Adjust to ${optionTimingText(alternatives[1])} on ${alternatives[1].calendarName}`)
+    lines.push(`${emojiListMarker(2)} Adjust to ${optionTimingText(alternatives[1])} on ${alternatives[1].calendarName}`)
   }
 
   if (alternatives[1]) {
@@ -626,7 +631,7 @@ function genericNoOpeningReply({
   calendarLabel?: string | null
   dateLabel?: string | null
 }) {
-  return `I couldn't find an opening${calendarLabel ? ` on ${calendarLabel}` : ''}${dateLabel ? ` for ${dateLabel}` : ''}. Try a specific weekday or a different calendar.`
+  return `⚠️ I couldn't find an opening${calendarLabel ? ` on ${calendarLabel}` : ''}${dateLabel ? ` for ${dateLabel}` : ''}. Try a specific weekday or a different calendar.`
 }
 
 function blockedDayNoOpeningReply({
@@ -644,11 +649,11 @@ function blockedDayNoOpeningReply({
 }) {
   const lines = [
     pendingInvite
-      ? `You have a pending invite for "${conflict.title}" at ${conflict.timeLabel} on ${conflict.calendarName}.`
-      : `That day is already reserved for "${conflict.title}" at ${conflict.timeLabel} on ${conflict.calendarName}.`,
+      ? `⚠️ You have a pending invite for "${conflict.title}" at ${conflict.timeLabel} on ${conflict.calendarName}.`
+      : `⚠️ That day is already reserved for "${conflict.title}" at ${conflict.timeLabel} on ${conflict.calendarName}.`,
     ...options.map(
       (option, index) =>
-        `${index + 1}. Book anyway: ${optionTimingText(option)} on ${option.calendarName}`,
+        `${emojiListMarker(index)} Book anyway: ${optionTimingText(option)} on ${option.calendarName}`,
     ),
   ]
 
@@ -661,11 +666,11 @@ function blockedDayNoOpeningReply({
   }
 
   if (attendees.length) {
-    lines.push(`Ready to invite: ${inviteeSummary(attendees)}.`)
+    lines.push(`✉️ Ready to invite: ${inviteeSummary(attendees)}.`)
   }
   if (unresolvedInvitees.length) {
     lines.push(
-      `I still need email${unresolvedInvitees.length > 1 ? 's' : ''} for ${unresolvedInviteeSummary(
+      `✉️ I still need email${unresolvedInvitees.length > 1 ? 's' : ''} for ${unresolvedInviteeSummary(
         unresolvedInvitees,
       )}.`,
     )
@@ -1348,19 +1353,19 @@ function sortAgendaEvents(events: EventSummary[]) {
 function agendaText(day: 'today' | 'tomorrow', events: EventSummary[]) {
   if (!events.length) {
     return day === 'tomorrow'
-      ? "Tomorrow's schedule is clear."
-      : "You're clear today."
+      ? "📅 Tomorrow's schedule is clear."
+      : "📅 You're clear today."
   }
 
-  const heading = day === 'tomorrow' ? "Tomorrow's schedule:" : 'Today:'
+  const heading = day === 'tomorrow' ? "📅 Tomorrow's schedule:" : '📅 Today:'
   return `${heading}\n${sortAgendaEvents(events)
     .map((event) => `${event.timeLabel} ${event.title} (${event.calendarName})`)
     .join('\n')}`
 }
 
 function agendaWindowText(label: string, events: EventSummary[], timeZone?: string) {
-  if (!events.length) return `Nothing on your calendar for ${label}.`
-  return `${label[0]?.toUpperCase() || ''}${label.slice(1)}:\n${sortAgendaEvents(events)
+  if (!events.length) return `📅 Nothing on your calendar for ${label}.`
+  return `📅 ${label[0]?.toUpperCase() || ''}${label.slice(1)}:\n${sortAgendaEvents(events)
     .map((event) => `${eventDateLabel(event, timeZone)} ${event.title} (${event.calendarName})`)
     .join('\n')}`
 }
@@ -1388,7 +1393,7 @@ async function applySettingsIntent(profile: SmsProfile, intent: Extract<ParsedSm
   }
 
   if (Object.keys(update).length === 1) {
-    return `You can text things like "turn off morning agenda", "turn reminders on", or "remind me 30 minutes before events."`
+    return `⚙️ You can text things like "turn off morning agenda", "turn reminders on", or "remind me 30 minutes before events."`
   }
 
   const { error } = await supabaseAdmin.from('profiles').update(update).eq('id', profile.id)
@@ -1396,26 +1401,26 @@ async function applySettingsIntent(profile: SmsProfile, intent: Extract<ParsedSm
     if (!isMissingProfileUpdateColumnError(error, Object.keys(update))) {
       throw error
     }
-    return `Those notification settings need one more update in the database before I can change them by text.`
+    return `⚠️ Those notification settings need one more update in the database before I can change them by text.`
   }
 
   const replies: string[] = []
   if (typeof intent.morningAgendaEnabled === 'boolean') {
     replies.push(
       intent.morningAgendaEnabled
-        ? `Done. I'll send your morning agenda around 6:30 AM.`
-        : `Done. I won't send the morning agenda text.`,
+        ? `✅ Done. I'll send your morning agenda around 6:30 AM.`
+        : `✅ Done. I won't send the morning agenda text.`,
     )
   }
   if (typeof intent.reminderTextsEnabled === 'boolean' && intent.reminderLeadMinutes == null) {
     replies.push(
       intent.reminderTextsEnabled
-        ? `Done. Reminder texts are back on.`
-        : `Done. I won't send reminder texts.`,
+        ? `✅ Done. Reminder texts are back on.`
+        : `✅ Done. I won't send reminder texts.`,
     )
   }
   if (typeof intent.reminderLeadMinutes === 'number') {
-    replies.push(`Done. I'll remind you ${reminderLeadLabel(intent.reminderLeadMinutes)} before timed events.`)
+    replies.push(`✅ Done. I'll remind you ${reminderLeadLabel(intent.reminderLeadMinutes)} before timed events.`)
   }
 
   return replies.join('\n')
@@ -1429,7 +1434,7 @@ function eventLookupText(
 ) {
   const cleanedQuery = query.trim()
   if (!matches.length) {
-    return `I couldn't find ${cleanedQuery || 'that'} on your upcoming calendar. Try the event name plus a day or time.`
+    return `🔎 I couldn't find ${cleanedQuery || 'that'} on your upcoming calendar. Try the event name plus a day or time.`
   }
 
   const topMatches = sortAgendaEvents(matches).slice(0, 3)
@@ -1437,14 +1442,14 @@ function eventLookupText(
     const event = topMatches[0]
     if (mode === 'where') {
       return event.location
-        ? `${event.title} is at ${event.location} on ${eventDateLabel(event, timeZone)}.`
-        : `${event.title} is ${eventDateLabel(event, timeZone)} on ${event.calendarName}. I don't have a location saved for it.`
+        ? `📍 ${event.title} is at ${event.location} on ${eventDateLabel(event, timeZone)}.`
+        : `📍 ${event.title} is ${eventDateLabel(event, timeZone)} on ${event.calendarName}. I don't have a location saved for it.`
     }
     return `${event.title} is ${eventDateLabel(event, timeZone)} on ${event.calendarName}.`
   }
 
-  return `I found a few matches:\n${topMatches
-    .map((event, index) => `${index + 1}. ${eventDateLabel(event, timeZone)} ${event.title} (${event.calendarName})`)
+  return `🔎 I found a few matches:\n${topMatches
+    .map((event, index) => `${emojiListMarker(index)} ${eventDateLabel(event, timeZone)} ${event.title} (${event.calendarName})`)
     .join('\n')}\nText more of the title, or add the month or day to narrow it down.`
 }
 
@@ -2972,7 +2977,7 @@ async function queueReminderForEvent({
     calendar_id: calendarId || null,
     event_starts_at: startsAt.toISOString(),
     due_at: dueAt.toISOString(),
-    body: `Reminder: ${title} starts at ${formatSmsTime(startsAt, timeZone)}.`,
+    body: `⏰ Reminder: ${title} starts at ${formatSmsTime(startsAt, timeZone)}.`,
     status: 'pending',
   })
 

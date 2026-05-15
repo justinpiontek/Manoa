@@ -36,8 +36,8 @@ function normalizeIso(value: string | null | undefined) {
 }
 
 function agendaText(events: Awaited<ReturnType<typeof listAgenda>>) {
-  if (!events.length) return "Good morning. You're clear today."
-  return `Good morning. Today:\n${sortAgendaEvents(events)
+  if (!events.length) return "📅 Good morning. You're clear today."
+  return `📅 Good morning. Today:\n${sortAgendaEvents(events)
     .map((event) => `${event.timeLabel} ${event.title} (${event.calendarName})`)
     .join('\n')}`
 }
@@ -241,7 +241,7 @@ async function ensureUpcomingReminders() {
         calendar_id: event.calendarId || null,
         event_starts_at: startsAt,
         due_at: dueAt,
-        body: `Reminder: ${event.title} starts at ${event.timeLabel}.`,
+        body: `⏰ Reminder: ${event.title} starts at ${event.timeLabel}.`,
         status: 'pending',
       })
 
