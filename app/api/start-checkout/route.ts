@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { appUrl, missingEnv, requiredEnv } from '@/src/lib/env'
 import { findOrCreateProfile, isPhoneOwnershipConflictError } from '@/src/lib/profiles'
 import { normalizePhone } from '@/src/lib/phone'
+import { checkRateLimit, clientIp } from '@/src/lib/rateLimit'
 import { stripe } from '@/src/lib/stripeClient'
 
 function paymentLinkUrl(baseUrl: string, email: string, profileId: string) {
@@ -46,6 +47,36 @@ export async function POST(request: NextRequest) {
 
   if (!email.includes('@')) {
     return new Response('A valid email is required.', { status: 400 })
+  }
+
+  const ipLimit = checkRateLimit({
+    scope: 'start-checkout-ip',
+    identity: clientIp(request),
+    limit: 8,
+    windowMs: 15 * 60_000,
+  })
+  if (!ipLimit.allowed) {
+    return new Response('Please wait a minute, then try again.', {
+      status: 429,
+      headers: {
+        'Retry-After': String(ipLimit.retryAfterSeconds),
+      },
+    })
+  }
+
+  const emailLimit = checkRateLimit({
+    scope: 'start-checkout-email',
+    identity: email,
+    limit: 4,
+    windowMs: 15 * 60_000,
+  })
+  if (!emailLimit.allowed) {
+    return new Response('Please wait a minute, then try again.', {
+      status: 429,
+      headers: {
+        'Retry-After': String(emailLimit.retryAfterSeconds),
+      },
+    })
   }
 
   const phoneE164 = phone ? normalizePhone(phone) : ''

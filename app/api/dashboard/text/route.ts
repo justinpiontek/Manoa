@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDashboardProfileByEmail } from '@/src/lib/profiles'
 import { handleIncomingSms } from '@/src/lib/sms/agent'
+import { checkRateLimit, clientIp } from '@/src/lib/rateLimit'
 import { dashboardSender } from '@/src/lib/sms/sender'
 import { listSmsThreadEntries, toSmsThreadMessages } from '@/src/lib/sms/thread'
 import { createSupabaseRouteHandlerClient } from '@/src/lib/supabase/server'
@@ -81,6 +82,42 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: 'We could not find your Manoa account right now.' },
       { status: 404 },
+    )
+  }
+
+  const ipLimit = checkRateLimit({
+    scope: 'dashboard-text-ip',
+    identity: clientIp(request),
+    limit: 40,
+    windowMs: 5 * 60_000,
+  })
+  if (!ipLimit.allowed) {
+    return NextResponse.json(
+      { error: 'Too many requests right now. Try again in a minute.' },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(ipLimit.retryAfterSeconds),
+        },
+      },
+    )
+  }
+
+  const profileLimit = checkRateLimit({
+    scope: 'dashboard-text-profile',
+    identity: profile.id,
+    limit: 30,
+    windowMs: 60_000,
+  })
+  if (!profileLimit.allowed) {
+    return NextResponse.json(
+      { error: 'Too many requests right now. Try again in a minute.' },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(profileLimit.retryAfterSeconds),
+        },
+      },
     )
   }
 

@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { normalizePhone } from '@/src/lib/phone'
 import { findProfileByPhone } from '@/src/lib/profiles'
+import { checkRateLimit } from '@/src/lib/rateLimit'
 import { handleIncomingSms, storePhotoBatchCalendarChoicePending } from '@/src/lib/sms/agent'
 import { calendarImageToSmsText, type CalendarImageResult } from '@/src/lib/sms/calendarImage'
 import {
@@ -154,9 +155,45 @@ export async function POST(request: NextRequest) {
       return twilioXmlResponse(messageXml('Missing SMS sender.'), { status: 400 })
     }
 
+    const senderLimit = checkRateLimit({
+      scope: 'twilio-inbound-sender',
+      identity: from,
+      limit: 45,
+      windowMs: 60_000,
+    })
+    if (!senderLimit.allowed) {
+      return twilioXmlResponse(
+        messageXml('Too many messages at once. Try again in a minute.'),
+        {
+          status: 200,
+          headers: {
+            'Retry-After': String(senderLimit.retryAfterSeconds),
+          },
+        },
+      )
+    }
+
     const hasMedia = Number(params.NumMedia || '0') > 0
     let finalBody = body.trim()
     if (hasMedia) {
+      const mediaLimit = checkRateLimit({
+        scope: 'twilio-inbound-media',
+        identity: from,
+        limit: 10,
+        windowMs: 15 * 60_000,
+      })
+      if (!mediaLimit.allowed) {
+        return twilioXmlResponse(
+          messageXml('Too many photo uploads right now. Try again in a few minutes.'),
+          {
+            status: 200,
+            headers: {
+              'Retry-After': String(mediaLimit.retryAfterSeconds),
+            },
+          },
+        )
+      }
+
       const profile = await findProfileByPhone(from)
       if (!profile) {
         const reply = await handleIncomingSms({

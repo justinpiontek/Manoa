@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDashboardProfileByEmail } from '@/src/lib/profiles'
+import { checkRateLimit, clientIp } from '@/src/lib/rateLimit'
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,6 +11,42 @@ export async function POST(request: NextRequest) {
 
     if (!email.includes('@')) {
       return NextResponse.json({ error: 'Enter a valid email address.' }, { status: 400 })
+    }
+
+    const ipLimit = checkRateLimit({
+      scope: 'auth-prepare-login-ip',
+      identity: clientIp(request),
+      limit: 10,
+      windowMs: 10 * 60_000,
+    })
+    if (!ipLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Please wait a minute, then try again.' },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(ipLimit.retryAfterSeconds),
+          },
+        },
+      )
+    }
+
+    const emailLimit = checkRateLimit({
+      scope: 'auth-prepare-login-email',
+      identity: email,
+      limit: 5,
+      windowMs: 10 * 60_000,
+    })
+    if (!emailLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Please wait a minute, then try again.' },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(emailLimit.retryAfterSeconds),
+          },
+        },
+      )
     }
 
     await getDashboardProfileByEmail(email)

@@ -5,6 +5,7 @@ import {
   createCalendarImageBatch,
 } from '@/src/lib/sms/calendarImageBatch'
 import { getDashboardProfileByEmail } from '@/src/lib/profiles'
+import { checkRateLimit, clientIp } from '@/src/lib/rateLimit'
 import { handleIncomingSms, storePhotoBatchCalendarChoicePending } from '@/src/lib/sms/agent'
 import { dashboardSender } from '@/src/lib/sms/sender'
 import { listSmsThreadEntries, toSmsThreadMessages } from '@/src/lib/sms/thread'
@@ -109,6 +110,42 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: 'We could not find your Manoa account right now.' },
       { status: 404 },
+    )
+  }
+
+  const ipLimit = checkRateLimit({
+    scope: 'dashboard-photo-ip',
+    identity: clientIp(request),
+    limit: 12,
+    windowMs: 15 * 60_000,
+  })
+  if (!ipLimit.allowed) {
+    return NextResponse.json(
+      { error: 'Too many photo uploads right now. Try again in a few minutes.' },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(ipLimit.retryAfterSeconds),
+        },
+      },
+    )
+  }
+
+  const profileLimit = checkRateLimit({
+    scope: 'dashboard-photo-profile',
+    identity: profile.id,
+    limit: 8,
+    windowMs: 15 * 60_000,
+  })
+  if (!profileLimit.allowed) {
+    return NextResponse.json(
+      { error: 'Too many photo uploads right now. Try again in a few minutes.' },
+      {
+        status: 429,
+        headers: {
+          'Retry-After': String(profileLimit.retryAfterSeconds),
+        },
+      },
     )
   }
 
