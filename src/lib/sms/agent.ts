@@ -1465,9 +1465,16 @@ function eventLookupText(
     return `${event.title} is ${eventDateLabel(event, timeZone)} on ${event.calendarName}.`
   }
 
-  return `🔎 I found a few matches:\n${topMatches
-    .map((event, index) => `${emojiListMarker(index)} ${eventDateLabel(event, timeZone)} ${event.title} (${event.calendarName})`)
-    .join('\n')}\nText more of the title, or add the month or day to narrow it down.`
+  return sectionedListReply({
+    intro: '🔎 I found a few matches:',
+    list: topMatches
+      .map(
+        (event, index) =>
+          `${emojiListMarker(index)} ${eventDateLabel(event, timeZone)} ${event.title} (${event.calendarName})`,
+      )
+      .join('\n'),
+    footer: 'Text more of the title, or add the month or day to narrow it down.',
+  })
 }
 
 function windowMinutes(window: DateWindow) {
