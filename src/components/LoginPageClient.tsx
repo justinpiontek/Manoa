@@ -25,6 +25,16 @@ function friendlyLoginError(message: string) {
   return message || 'We could not send your login link yet. Try again in a minute.'
 }
 
+function isAccountLookupStyleAuthMiss(message: string) {
+  const lower = message.toLowerCase()
+  return (
+    (lower.includes('signup') && lower.includes('not allowed')) ||
+    lower.includes('user not found') ||
+    lower.includes('email not found') ||
+    lower.includes('invalid login')
+  )
+}
+
 export default function LoginPageClient({
   loginStatus,
   isSupabaseConfigured,
@@ -158,6 +168,15 @@ export default function LoginPageClient({
       })
 
       if (error) {
+        if (isAccountLookupStyleAuthMiss(error.message || '')) {
+          setLocalMessage({
+            tone: 'success',
+            text: `If ${normalizedEmail} is ready for Manoa, we sent a login link there.`,
+          })
+          setEmail('')
+          return
+        }
+
         setLocalMessage({
           tone: 'warning',
           text: friendlyLoginError(error.message || ''),
@@ -167,7 +186,7 @@ export default function LoginPageClient({
 
       setLocalMessage({
         tone: 'success',
-        text: `Login link sent to ${normalizedEmail}. Open that email and tap the link to get back into Manoa.`,
+        text: `If ${normalizedEmail} is ready for Manoa, we sent a login link there.`,
       })
       setEmail('')
     } catch (error) {

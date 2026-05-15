@@ -17,17 +17,6 @@ function calendarErrorCode(error: unknown) {
   return 'unknown'
 }
 
-function calendarErrorDetail(error: unknown) {
-  const message =
-    error instanceof Error
-      ? error.message
-      : typeof error === 'string'
-        ? error
-        : 'Unknown Outlook calendar callback error.'
-
-  return message.replace(/\s+/g, ' ').trim().slice(0, 180)
-}
-
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get('code')
   const rawState = request.nextUrl.searchParams.get('state')
@@ -65,9 +54,8 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Outlook calendar callback failed', error)
     const code = calendarErrorCode(error)
-    const detail = calendarErrorDetail(error)
     const response = NextResponse.redirect(
-      `${appUrl()}/dashboard?calendar=error&calendar_error=${encodeURIComponent(code)}&calendar_error_detail=${encodeURIComponent(detail)}`,
+      `${appUrl()}/dashboard?calendar=error&calendar_error=${encodeURIComponent(code)}`,
       303,
     )
     response.cookies.set(clearCookie.name, clearCookie.value, clearCookie.options)

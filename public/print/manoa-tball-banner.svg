@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="60in" height="36in" viewBox="0 0 3000 1800" fill="none">
+  <rect width="3000" height="1800" fill="#F7FAFF"/>
+  <rect x="45" y="45" width="2910" height="1710" rx="24" fill="#FFFFFF" stroke="#D9E3F2" stroke-width="12"/>
+  <rect x="140" y="140" width="2720" height="1520" rx="20" fill="url(#panelGlow)"/>
+
+  <image
+    href="/print/manoa-wordmark.png"
+    x="390"
+    y="395"
+    width="2220"
+    height="599"
+    preserveAspectRatio="xMidYMid meet"
+  />
+
+  <text
+    x="1500"
+    y="1225"
+    text-anchor="middle"
+    font-family="Inter, Avenir Next, Helvetica Neue, Arial, sans-serif"
+    font-size="212"
+    font-weight="800"
+    letter-spacing="0"
+    fill="#0F172A"
+  >
+    textmanoa.com
+  </text>
+
+  <text
+    x="1500"
+    y="1410"
+    text-anchor="middle"
+    font-family="Inter, Avenir Next, Helvetica Neue, Arial, sans-serif"
+    font-size="92"
+    font-weight="700"
+    letter-spacing="0"
+    fill="#2457C5"
+  >
+    Calendar assistant by text
+  </text>
+
+  <rect x="310" y="1500" width="2380" height="8" rx="4" fill="#E3ECFA"/>
+
+  <defs>
+    <linearGradient id="panelGlow" x1="1500" y1="140" x2="1500" y2="1660" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F8FBFF"/>
+    </linearGradient>
+  </defs>
+</svg>

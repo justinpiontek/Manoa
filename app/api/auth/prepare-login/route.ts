@@ -12,16 +12,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Enter a valid email address.' }, { status: 400 })
     }
 
-    const profile = await getDashboardProfileByEmail(email)
-    if (!profile) {
-      return NextResponse.json(
-        {
-          error:
-            "I couldn't find a Manoa account for that email yet. Use the email you signed up with.",
-        },
-        { status: 404 },
-      )
-    }
+    await getDashboardProfileByEmail(email)
 
     return NextResponse.json({ ok: true })
   } catch (error) {

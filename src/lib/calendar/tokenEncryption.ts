@@ -5,7 +5,9 @@ const tokenSalt = 'manoa-calendar-token-salt-v1'
 
 function tokenKey() {
   const secret = process.env.CALENDAR_TOKEN_ENCRYPTION_KEY?.trim()
-  if (!secret) return null
+  if (!secret) {
+    throw new Error('Missing required environment variable: CALENDAR_TOKEN_ENCRYPTION_KEY')
+  }
   return crypto.scryptSync(secret, tokenSalt, 32)
 }
 
@@ -14,7 +16,6 @@ export function encryptCalendarToken(value: string | null | undefined) {
   if (value.startsWith(`${tokenPrefix}:`)) return value
 
   const key = tokenKey()
-  if (!key) return value
 
   const iv = crypto.randomBytes(12)
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv)
@@ -34,9 +35,6 @@ export function decryptCalendarToken(value: string | null | undefined) {
   if (!value.startsWith(`${tokenPrefix}:`)) return value
 
   const key = tokenKey()
-  if (!key) {
-    throw new Error('Missing required environment variable: CALENDAR_TOKEN_ENCRYPTION_KEY')
-  }
 
   const [, ivPart, tagPart, dataPart] = value.split(':')
   if (!ivPart || !tagPart || !dataPart) {

@@ -25,7 +25,6 @@ type DashboardPageProps = {
     session_id?: string
     calendar?: string
     calendar_error?: string
-    calendar_error_detail?: string
     login?: string
     billing?: string
     settings?: string
@@ -73,32 +72,30 @@ function accountBookingSummary(calendars: Awaited<ReturnType<typeof listConfigur
   return `Books to ${names.join(', ')}${extraCount > 0 ? ` +${extraCount} more` : ''}`
 }
 
-function calendarErrorMessage(code: string | undefined, detail?: string) {
-  const extra = detail ? ` Details: ${detail}` : ''
-
+function calendarErrorMessage(code: string | undefined) {
   switch (code) {
     case 'account_limit':
-      return `Manoa hit the current account limit for that calendar provider.${extra}`
+      return 'Manoa hit the current account limit for that calendar provider.'
     case 'no_calendars':
-      return `That calendar account connected, but it did not return any usable calendars for Manoa yet.${extra}`
+      return 'That calendar account connected, but it did not return any usable calendars for Manoa yet.'
     case 'insufficient_scopes':
-      return `Google approved the sign-in, but Manoa still needs one more calendar permission to finish adding that account. Reconnect once after the latest deploy and it should ask for the missing access.${extra}`
+      return 'Google approved the sign-in, but Manoa still needs one more calendar permission to finish adding that account. Reconnect once after the latest deploy and it should ask for the missing access.'
     case 'apple_auth':
-      return `Apple did not accept that iCloud email and app-specific password.${extra}`
+      return 'Apple did not accept that iCloud email and app-specific password.'
     case 'apple_connect':
-      return `Apple Calendar could not be connected yet.${extra}`
+      return 'Apple Calendar could not be connected yet.'
     case 'mailbox_missing':
-      return `Microsoft signed you in, but that Outlook account does not seem to have a usable mailbox/calendar behind it yet.${extra}`
+      return 'Microsoft signed you in, but that Outlook account does not seem to have a usable mailbox/calendar behind it yet.'
     case 'permissions':
-      return `Microsoft signed you in, but the calendar permission step did not fully go through.${extra}`
+      return 'Microsoft signed you in, but the calendar permission step did not fully go through.'
     case 'duplicate':
-      return `That calendar account looks like it has a calendar Manoa already knows about, and the save step collided.${extra}`
+      return 'That calendar account looks like it has a calendar Manoa already knows about, and the save step collided.'
     case 'db_constraint':
-      return `The database save rules for calendars are still out of sync with the app.${extra}`
+      return 'The database save rules for calendars are still out of sync with the app.'
     case 'migration_missing':
-      return `The database is still missing part of the newer multi-calendar schema.${extra}`
+      return 'The database is still missing part of the newer multi-calendar schema.'
     default:
-      return `We couldn't finish that calendar connection yet. The callback is returning a real error, but it still needs one more fix.${extra}`
+      return "We couldn't finish that calendar connection yet. The callback is returning a real error, but it still needs one more fix."
   }
 }
 
@@ -270,7 +267,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
         {calendarError ? (
           <div className="notice warning" role="status" aria-live="polite">
-            {calendarErrorMessage(params.calendar_error, params.calendar_error_detail)}
+            {calendarErrorMessage(params.calendar_error)}
           </div>
         ) : null}
 

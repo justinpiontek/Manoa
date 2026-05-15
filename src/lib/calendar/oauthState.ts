@@ -11,6 +11,32 @@ type CalendarOAuthCookiePayload = {
 
 const oauthCookieMaxAgeSeconds = 10 * 60
 
+function oauthStateSecret() {
+  const explicit = process.env.CALENDAR_OAUTH_STATE_SECRET?.trim()
+  if (explicit) return explicit
+
+  const fallback = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+  if (fallback) return fallback
+
+  throw new Error(
+    'Missing required environment variable: CALENDAR_OAUTH_STATE_SECRET or SUPABASE_SERVICE_ROLE_KEY',
+  )
+}
+
+function signCookieValue(provider: CalendarOAuthProvider, payloadBase64: string) {
+  return crypto
+    .createHmac('sha256', oauthStateSecret())
+    .update(`${provider}.${payloadBase64}`)
+    .digest('base64url')
+}
+
+function timingSafeEqualString(left: string, right: string) {
+  const leftBuffer = Buffer.from(left)
+  const rightBuffer = Buffer.from(right)
+  if (leftBuffer.length !== rightBuffer.length) return false
+  return crypto.timingSafeEqual(leftBuffer, rightBuffer)
+}
+
 function cookieName(provider: CalendarOAuthProvider) {
   return `manoa_${provider}_oauth`
 }
@@ -32,11 +58,14 @@ export function createCalendarOAuthState(
     issuedAt: Date.now(),
   }
 
+  const payloadBase64 = Buffer.from(JSON.stringify(cookiePayload), 'utf8').toString('base64url')
+  const signature = signCookieValue(provider, payloadBase64)
+
   return {
     state: cookiePayload.nonce,
     cookie: {
       name: cookieName(provider),
-      value: Buffer.from(JSON.stringify(cookiePayload), 'utf8').toString('base64url'),
+      value: `${payloadBase64}.${signature}`,
       options: {
         httpOnly: true,
         sameSite: 'lax' as const,
@@ -56,8 +85,13 @@ export function readCalendarOAuthState(
   if (!cookieValue || !state) return null
 
   try {
+    const [payloadBase64, signature] = cookieValue.split('.')
+    if (!payloadBase64 || !signature) return null
+    const expectedSignature = signCookieValue(provider, payloadBase64)
+    if (!timingSafeEqualString(signature, expectedSignature)) return null
+
     const parsed = JSON.parse(
-      Buffer.from(cookieValue, 'base64url').toString('utf8'),
+      Buffer.from(payloadBase64, 'base64url').toString('utf8'),
     ) as CalendarOAuthCookiePayload
 
     if (!parsed?.nonce || !parsed?.profileId) return null

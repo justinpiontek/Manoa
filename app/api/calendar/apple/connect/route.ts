@@ -61,11 +61,11 @@ export async function POST(request: NextRequest) {
 
     return Response.redirect(`${appUrl()}/dashboard?calendar=connected`, 303)
   } catch (error) {
+    console.error('Apple calendar connect failed', error)
     const classified = classifyAppleError(error)
     const redirect = new URL(`${appUrl()}/dashboard`)
     redirect.searchParams.set('calendar', 'error')
     redirect.searchParams.set('calendar_error', classified.code)
-    redirect.searchParams.set('calendar_error_detail', classified.detail)
     return Response.redirect(redirect, 303)
   }
 }
