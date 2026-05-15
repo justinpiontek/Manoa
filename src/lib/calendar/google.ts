@@ -1873,7 +1873,11 @@ async function getLegacyCalendarConnections(profileId: string) {
   }))
 }
 
-async function getCalendarConnections(profileId: string, provider?: CalendarProvider) {
+async function getCalendarConnections(
+  profileId: string,
+  provider?: CalendarProvider,
+  options?: { decryptTokens?: boolean },
+) {
   let query = supabaseAdmin
     .from('calendar_connections')
     .select(
@@ -1910,10 +1914,14 @@ async function getCalendarConnections(profileId: string, provider?: CalendarProv
     throw error
   }
 
+  const decryptTokens = options?.decryptTokens !== false
+
   return ((data || []) as CalendarConnection[]).map((connection) => ({
     ...connection,
-    access_token: decryptCalendarToken(connection.access_token) || '',
-    refresh_token: decryptCalendarToken(connection.refresh_token),
+    access_token: decryptTokens ? decryptCalendarToken(connection.access_token) || '' : connection.access_token,
+    refresh_token: decryptTokens
+      ? decryptCalendarToken(connection.refresh_token)
+      : connection.refresh_token,
   }))
 }
 
@@ -2261,22 +2269,30 @@ function configuredAccountsFromConnections(connections: CalendarConnection[]) {
 }
 
 export async function listConfiguredCalendarAccounts(profileId: string) {
-  const connections = visibleConfiguredCalendars(await getCalendarConnections(profileId))
+  const connections = visibleConfiguredCalendars(
+    await getCalendarConnections(profileId, undefined, { decryptTokens: false }),
+  )
   return configuredAccountsFromConnections(connections)
 }
 
 export async function listConfiguredGoogleCalendars(profileId: string) {
-  const connections = visibleConfiguredCalendars(await getGoogleConnections(profileId))
+  const connections = visibleConfiguredCalendars(
+    await getCalendarConnections(profileId, 'google', { decryptTokens: false }),
+  )
   return configuredAccountsFromConnections(connections)
 }
 
 export async function listConfiguredOutlookCalendars(profileId: string) {
-  const connections = visibleConfiguredCalendars(await getOutlookConnections(profileId))
+  const connections = visibleConfiguredCalendars(
+    await getCalendarConnections(profileId, 'outlook', { decryptTokens: false }),
+  )
   return configuredAccountsFromConnections(connections)
 }
 
 export async function listConfiguredAppleCalendars(profileId: string) {
-  const connections = visibleConfiguredCalendars(await getAppleConnections(profileId))
+  const connections = visibleConfiguredCalendars(
+    await getCalendarConnections(profileId, 'apple', { decryptTokens: false }),
+  )
   return configuredAccountsFromConnections(connections)
 }
 
