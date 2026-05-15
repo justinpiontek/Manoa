@@ -3445,10 +3445,11 @@ async function handleResolveInviteesReply({
       : null
 
     if (!target) {
-      return `Which event should I add them to?\n${inviteTargetChoiceList(
-        pending.payload.events,
-        profile.timezone,
-      )}\nReply 1, 2, or 3.`
+      return sectionedListReply({
+        intro: 'Which event should I add them to?',
+        list: inviteTargetChoiceList(pending.payload.events, profile.timezone),
+        footer: 'Reply 1, 2, or 3.',
+      })
     }
 
     await clearPendingAction(pending.id)
@@ -3913,7 +3914,7 @@ async function handleChoice({
 
       return `I can send the invite, but I still need email${
         unresolvedInvitees.length > 1 ? 's' : ''
-      } for ${unresolvedInviteeSummary(unresolvedInvitees)}.\nReply like "Sam sam@company.com" or say "book it without invites."`
+      } for ${unresolvedInviteeSummary(unresolvedInvitees)}.\n\nReply like "Sam sam@company.com" or say "book it without invites."`
     }
 
     const eventAttendees = attendeesForCalendarEvent(option, attendees)
@@ -4024,7 +4025,11 @@ async function handleChoice({
       payload: { target: event, options, authority },
     })
 
-    return `I can move ${event.title} to one of these:\n${optionList(options)}\nReply 1, 2, or 3.`
+    return sectionedListReply({
+      intro: `I can move ${event.title} to one of these:`,
+      list: optionList(options),
+      footer: 'Reply 1, 2, or 3.',
+    })
   }
 
   if (pending.kind === 'select_cancel_target') {
@@ -4090,7 +4095,11 @@ async function handleChoice({
           },
         })
 
-        return `I can move just this ${target.title} to:\n${optionList(options)}\nReply 1, 2, or 3.`
+        return sectionedListReply({
+          intro: `I can move just this ${target.title} to:`,
+          list: optionList(options),
+          footer: 'Reply 1, 2, or 3.',
+        })
       }
 
       if (choice === 2) {
@@ -4137,7 +4146,11 @@ async function handleChoice({
           },
         })
 
-        let reply = `I can move the whole series to:\n${optionList(options)}\nReply 1, 2, or 3.`
+        let reply = sectionedListReply({
+          intro: 'I can move the whole series to:',
+          list: optionList(options),
+          footer: 'Reply 1, 2, or 3.',
+        })
         const recurring = recurrenceLine(options)
         if (recurring) {
           reply += `\n${recurring}`
@@ -4232,7 +4245,11 @@ async function handleChoice({
         },
       })
 
-      return `I can hold one of these times on your calendar while you coordinate with the organizer:\n${optionList(options)}\nReply 1, 2, or 3.`
+      return sectionedListReply({
+        intro: 'I can hold one of these times on your calendar while you coordinate with the organizer:',
+        list: optionList(options),
+        footer: 'Reply 1, 2, or 3.',
+      })
     }
 
     if (choice === 2) {
@@ -5060,10 +5077,11 @@ export async function handleIncomingSms({
         },
       })
 
-      const reply = `Which event should I add them to?\n${inviteTargetChoiceList(
-        matches,
-        profile.timezone,
-      )}\nReply 1, 2, or 3.`
+      const reply = sectionedListReply({
+        intro: 'Which event should I add them to?',
+        list: inviteTargetChoiceList(matches, profile.timezone),
+        footer: 'Reply 1, 2, or 3.',
+      })
       await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
       return reply
     }
@@ -5437,9 +5455,13 @@ export async function handleIncomingSms({
         },
       })
 
-      const reply = `Which one should I move?\n${topEvents
-        .map((event, index) => `${index + 1}. ${event.timeLabel} ${event.title}`)
-        .join('\n')}\nReply 1, 2, or 3.`
+      const reply = sectionedListReply({
+        intro: 'Which one should I move?',
+        list: topEvents
+          .map((event, index) => `${index + 1}. ${event.timeLabel} ${event.title}`)
+          .join('\n'),
+        footer: 'Reply 1, 2, or 3.',
+      })
       await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
       return reply
     }
@@ -5529,7 +5551,11 @@ export async function handleIncomingSms({
       payload: { target, options, authority },
     })
 
-    const reply = `I can move ${target.title} to:\n${optionList(options)}\nReply 1, 2, or 3.`
+    const reply = sectionedListReply({
+      intro: `I can move ${target.title} to:`,
+      list: optionList(options),
+      footer: 'Reply 1, 2, or 3.',
+    })
     await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
     return reply
   }
@@ -5551,9 +5577,16 @@ export async function handleIncomingSms({
         kind: 'select_cancel_target',
         payload: { events: topEvents },
       })
-      const reply = `Which one should I cancel?\n${topEvents
-        .map((event, index) => `${index + 1}. ${eventDateLabel(event, profile.timezone)} ${event.title}`)
-        .join('\n')}\nReply 1, 2, or 3.`
+      const reply = sectionedListReply({
+        intro: 'Which one should I cancel?',
+        list: topEvents
+          .map(
+            (event, index) =>
+              `${index + 1}. ${eventDateLabel(event, profile.timezone)} ${event.title}`,
+          )
+          .join('\n'),
+        footer: 'Reply 1, 2, or 3.',
+      })
       await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
       return reply
     }
