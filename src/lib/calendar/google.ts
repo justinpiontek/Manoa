@@ -1916,13 +1916,31 @@ async function getCalendarConnections(
 
   const decryptTokens = options?.decryptTokens !== false
 
-  return ((data || []) as CalendarConnection[]).map((connection) => ({
-    ...connection,
-    access_token: decryptTokens ? decryptCalendarToken(connection.access_token) || '' : connection.access_token,
-    refresh_token: decryptTokens
-      ? decryptCalendarToken(connection.refresh_token)
-      : connection.refresh_token,
-  }))
+  const normalizedConnections: CalendarConnection[] = []
+
+  for (const connection of (data || []) as CalendarConnection[]) {
+    try {
+      normalizedConnections.push({
+        ...connection,
+        access_token: decryptTokens
+          ? decryptCalendarToken(connection.access_token) || ''
+          : connection.access_token,
+        refresh_token: decryptTokens
+          ? decryptCalendarToken(connection.refresh_token)
+          : connection.refresh_token,
+      })
+    } catch (error) {
+      console.error('Skipping unreadable calendar connection token.', {
+        profileId,
+        provider: connection.provider,
+        accountId: connection.account_id,
+        calendarId: connection.calendar_id,
+        error: error instanceof Error ? error.message : error,
+      })
+    }
+  }
+
+  return normalizedConnections
 }
 
 async function getGoogleConnections(profileId: string) {
