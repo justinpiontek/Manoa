@@ -279,24 +279,37 @@ function calendarChoiceReply({
 }) {
   const visibleCalendars = visibleCalendarChoices(calendars)
   const extraCount = calendars.length - visibleCalendars.length
-  const lines = [
-    `🗓️ ${heading}`,
-    calendarChoiceList(visibleCalendars, calendars),
-  ]
+  const footerLines: string[] = []
 
   if (extraCount > 0) {
-    lines.push(`There are ${extraCount} more calendars hidden. You can type the exact calendar name instead.`)
+    footerLines.push(`There are ${extraCount} more calendars hidden. You can type the exact calendar name instead.`)
   }
 
-  lines.push('Reply with a number or calendar name.')
+  footerLines.push('Reply with a number or calendar name.')
   return {
-    reply: lines.join('\n'),
+    reply: sectionedListReply({
+      intro: `🗓️ ${heading}`,
+      list: calendarChoiceList(visibleCalendars, calendars),
+      footer: footerLines.join('\n'),
+    }),
     visibleCount: visibleCalendars.length,
   }
 }
 
 function actionChoiceList(lines: string[]) {
   return lines.join('\n')
+}
+
+function sectionedListReply({
+  intro,
+  list,
+  footer,
+}: {
+  intro: string
+  list: string
+  footer: string
+}) {
+  return [intro, list, footer].filter(Boolean).join('\n\n')
 }
 
 function recurrenceLine(options: ScheduleOption[]) {
@@ -647,36 +660,40 @@ function blockedDayNoOpeningReply({
   attendees: Invitee[]
   unresolvedInvitees: string[]
 }) {
-  const lines = [
-    pendingInvite
-      ? `⚠️ You have a pending invite for "${conflict.title}" at ${conflict.timeLabel} on ${conflict.calendarName}.`
-      : `⚠️ That day is already reserved for "${conflict.title}" at ${conflict.timeLabel} on ${conflict.calendarName}.`,
-    ...options.map(
-      (option, index) =>
-        `${emojiListMarker(index)} Book anyway: ${optionTimingText(option)} on ${option.calendarName}`,
-    ),
-  ]
+  const intro = pendingInvite
+    ? `⚠️ You have a pending invite for "${conflict.title}" at ${conflict.timeLabel} on ${conflict.calendarName}.`
+    : `⚠️ That day is already reserved for "${conflict.title}" at ${conflict.timeLabel} on ${conflict.calendarName}.`
+  const footerLines: string[] = []
 
   if (options.length >= 3) {
-    lines.push('Reply 1, 2, or 3.')
+    footerLines.push('Reply 1, 2, or 3.')
   } else if (options.length === 2) {
-    lines.push('Reply 1 or 2.')
+    footerLines.push('Reply 1 or 2.')
   } else {
-    lines.push('Reply 1 to book anyway, or text a different day or time.')
+    footerLines.push('Reply 1 to book anyway, or text a different day or time.')
   }
 
   if (attendees.length) {
-    lines.push(`✉️ Ready to invite: ${inviteeSummary(attendees)}.`)
+    footerLines.push(`✉️ Ready to invite: ${inviteeSummary(attendees)}.`)
   }
   if (unresolvedInvitees.length) {
-    lines.push(
+    footerLines.push(
       `✉️ I still need email${unresolvedInvitees.length > 1 ? 's' : ''} for ${unresolvedInviteeSummary(
         unresolvedInvitees,
       )}.`,
     )
   }
 
-  return lines.join('\n')
+  return sectionedListReply({
+    intro,
+    list: options
+      .map(
+        (option, index) =>
+          `${emojiListMarker(index)} Book anyway: ${optionTimingText(option)} on ${option.calendarName}`,
+      )
+      .join('\n'),
+    footer: footerLines.join('\n'),
+  })
 }
 
 async function explainNoOpeningDayConflict({
@@ -1735,6 +1752,12 @@ function isInviteeResolutionAbort(text: string) {
   return /^(?:skip|cancel|never mind|nevermind|no invite|no invites)[.!]*$/i.test(text.trim())
 }
 
+function isInviteeResolutionBookWithoutInvites(text: string) {
+  return /\b(skip|just book it|book it anyway|without invites|without invite|no invites|dont invite|don't invite)\b/i.test(
+    text.trim(),
+  )
+}
+
 function resolveInviteesPendingHasContext(pending: PendingAction) {
   return Boolean(
     pending.payload.selectedOption ||
@@ -1750,6 +1773,7 @@ function shouldClearResolveInviteesPendingForNewRequest(
 ) {
   if (!resolveInviteesPendingHasContext(pending)) return true
   if (isInviteeResolutionAbort(text)) return false
+  if (isInviteeResolutionBookWithoutInvites(text)) return false
 
   const intent = parseSmsIntent(text, timeZone)
   if (intent.type === 'choice' && pending.payload.events?.length) return false
@@ -3502,11 +3526,7 @@ async function handleResolveInviteesReply({
     return 'Send the scheduling request again and I will set it up.'
   }
 
-  if (
-    /\b(skip|just book it|book it anyway|without invites|without invite|no invites|dont invite|don't invite)\b/.test(
-      lower,
-    )
-  ) {
+  if (isInviteeResolutionBookWithoutInvites(lower)) {
     const eventAttendees = attendeesForCalendarEvent(option, existingInvitees)
     const created = await createCalendarEvent(profile.id, {
       ...option,
