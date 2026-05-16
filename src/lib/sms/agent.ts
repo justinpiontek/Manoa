@@ -1534,6 +1534,12 @@ function isSingleScheduleDecline(text: string) {
   )
 }
 
+function isSingleScheduleConfirmation(text: string) {
+  return /^(?:yes|yep|yeah|y|ok|okay|sure|sounds good|perfect|confirm|confirmed|book it|book|do it|go ahead|please do|looks good)(?:\s+please)?[.!]*$/i.test(
+    text.trim(),
+  )
+}
+
 function isCancelPendingRequest(text: string) {
   return /^(?:actually\s+)?(?:cancel that|cancel it|cancel this|never mind|nevermind|scratch that|forget it|drop that|stop that|leave it)[.!]*$/i.test(
     text.trim(),
@@ -2656,6 +2662,32 @@ function errorMessage(error: unknown) {
     : typeof error === 'object' && error && 'message' in error
       ? String((error as { message?: unknown }).message || '')
       : ''
+}
+
+function rescheduleFailureReply({
+  target,
+  calendarName,
+  error,
+}: {
+  target: EventSummary
+  calendarName: string
+  error: unknown
+}) {
+  const message = errorMessage(error)
+
+  if (/calendar is not connected|reconnect/i.test(message)) {
+    return `I found ${target.title}, but I need you to reconnect ${calendarName} in Manoa before I can move it.`
+  }
+
+  if (/403|forbidden|read.?only|not allowed|permission/i.test(message)) {
+    return `I found ${target.title}, but that calendar will not let Manoa move it. Try moving it directly in ${calendarName}, or turn off read-only calendars in Manoa.`
+  }
+
+  if (/400|bad request|rejected/i.test(message)) {
+    return `I found ${target.title}, but ${calendarName} rejected the move request. Try another time or move it directly there.`
+  }
+
+  return `I found ${target.title}, but I could not move it from Manoa yet. Try another time or move it directly in ${calendarName}.`
 }
 
 function isMissingSmsProfileColumnError(error: unknown) {
@@ -4170,45 +4202,53 @@ async function handleChoice({
     if (!option || !target) return 'Reply with 1, 2, or 3.'
 
     const sendUpdates = pending.payload.authority === 'owned_meeting' ? 'all' : 'none'
-    if (pending.payload.scope === 'series' && pending.payload.seriesTarget && pending.payload.recurrence) {
-      await updateCalendarEvent(
-        profile.id,
-        pending.payload.seriesTarget.id,
-        {
-          ...option,
-          title: pending.payload.seriesTarget.title,
-          calendarId: pending.payload.seriesTarget.calendarId,
-          calendarName: pending.payload.seriesTarget.calendarName,
-          recurrence: pending.payload.recurrence,
-        },
-        sendUpdates,
-      )
-      await clearPendingRemindersForEvent(profile.id, target.id)
-      await clearPendingRemindersForEvent(profile.id, pending.payload.seriesTarget.id)
+    try {
+      if (pending.payload.scope === 'series' && pending.payload.seriesTarget && pending.payload.recurrence) {
+        await updateCalendarEvent(
+          profile.id,
+          pending.payload.seriesTarget.id,
+          {
+            ...option,
+            title: pending.payload.seriesTarget.title,
+            calendarId: pending.payload.seriesTarget.calendarId,
+            calendarName: pending.payload.seriesTarget.calendarName,
+            recurrence: pending.payload.recurrence,
+          },
+          sendUpdates,
+        )
+        await clearPendingRemindersForEvent(profile.id, target.id)
+        await clearPendingRemindersForEvent(profile.id, pending.payload.seriesTarget.id)
+        await clearPendingAction(pending.id)
+
+        if (pending.payload.authority === 'owned_meeting') {
+          return `Moved the whole ${target.title} series to ${option.dayLabel} at ${option.timeLabel} and sent the update.`
+        }
+
+        return `Moved the whole ${target.title} series to ${option.dayLabel} at ${option.timeLabel}.`
+      }
+
+      await updateCalendarEvent(profile.id, target.id, option, sendUpdates)
+      await maybeQueueReminderForOption({
+        profile,
+        option,
+        calendarEventId: target.id,
+        calendarId: target.calendarId,
+        title: option.title,
+      })
       await clearPendingAction(pending.id)
 
       if (pending.payload.authority === 'owned_meeting') {
-        return `Moved the whole ${target.title} series to ${option.dayLabel} at ${option.timeLabel} and sent the update.`
+        return `Moved ${target.title} to ${option.dayLabel} at ${option.timeLabel} and sent the update.`
       }
 
-      return `Moved the whole ${target.title} series to ${option.dayLabel} at ${option.timeLabel}.`
+      return `Moved ${target.title} to ${option.dayLabel} at ${option.timeLabel}.`
+    } catch (error) {
+      return rescheduleFailureReply({
+        target,
+        calendarName: target.calendarName,
+        error,
+      })
     }
-
-    await updateCalendarEvent(profile.id, target.id, option, sendUpdates)
-    await maybeQueueReminderForOption({
-      profile,
-      option,
-      calendarEventId: target.id,
-      calendarId: target.calendarId,
-      title: option.title,
-    })
-    await clearPendingAction(pending.id)
-
-    if (pending.payload.authority === 'owned_meeting') {
-      return `Moved ${target.title} to ${option.dayLabel} at ${option.timeLabel} and sent the update.`
-    }
-
-    return `Moved ${target.title} to ${option.dayLabel} at ${option.timeLabel}.`
   }
 
   if (pending.kind === 'invited_reschedule_action') {
@@ -5000,12 +5040,11 @@ export async function handleIncomingSms({
   }
 
   if (activePending?.kind === 'schedule' && (activePending.payload.options || []).length === 1) {
-    const confirmedChoice = resolvePendingChoice(body, activePending, profile.timezone)
     const inviteeEmailFollowUp = isInviteeEmailFollowUp(
       body,
       activePending.payload.unresolvedInvitees || [],
     )
-    if (confirmedChoice === 1 || inviteeEmailFollowUp) {
+    if (isSingleScheduleConfirmation(body) || inviteeEmailFollowUp) {
       const reply = await handleChoice({
         profile,
         smsFrom: from,
@@ -5152,6 +5191,16 @@ export async function handleIncomingSms({
   }
 
   if (
+    activePending?.kind === 'schedule' &&
+    (activePending.payload.options || []).length === 1 &&
+    intent.type !== 'unknown' &&
+    intent.type !== 'choice'
+  ) {
+    await clearPendingAction(activePending.id)
+    activePending = null
+  }
+
+  if (
     activePending?.kind === 'select_cancel_target' &&
     activePending.payload.recentlyCreated &&
     shouldClearRecentCreatedPendingForIntent(body, intent)
@@ -5162,7 +5211,12 @@ export async function handleIncomingSms({
 
   const pendingChoice = activePending ? resolvePendingChoice(body, activePending, profile.timezone) : null
 
-  if (activePending && (intent.type === 'choice' || pendingChoice)) {
+  if (
+    activePending &&
+    (intent.type === 'choice' ||
+      (pendingChoice &&
+        !(activePending.kind === 'schedule' && (activePending.payload.options || []).length === 1)))
+  ) {
     const reply = await handleChoice({
       profile,
       smsFrom: from,
