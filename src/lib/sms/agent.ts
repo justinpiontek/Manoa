@@ -2690,6 +2690,32 @@ function rescheduleFailureReply({
   return `I found ${target.title}, but I could not move it from Manoa yet. Try another time or move it directly in ${calendarName}.`
 }
 
+function scheduleFailureReply({
+  title,
+  calendarName,
+  error,
+}: {
+  title: string
+  calendarName: string
+  error: unknown
+}) {
+  const message = errorMessage(error)
+
+  if (/calendar is not connected|reconnect/i.test(message)) {
+    return `I found ${title}, but I need you to reconnect ${calendarName} in Manoa before I can add it there.`
+  }
+
+  if (/403|forbidden|read.?only|not allowed|permission/i.test(message)) {
+    return `I found ${title}, but that calendar will not let Manoa add it there. Try a different calendar, or turn off read-only calendars in Manoa.`
+  }
+
+  if (/400|bad request|rejected/i.test(message)) {
+    return `I found ${title}, but ${calendarName} rejected the booking request. Try a different time or calendar.`
+  }
+
+  return `I found ${title}, but I could not add it to ${calendarName} from Manoa yet. Try a different calendar or try again in a minute.`
+}
+
 function isMissingSmsProfileColumnError(error: unknown) {
   const lower = errorMessage(error).toLowerCase()
   return (
@@ -3074,6 +3100,70 @@ async function maybeQueueReminderForOption({
     leadMinutes,
     timeZone: profile.timezone,
   })
+}
+
+async function finalizeScheduledBooking({
+  profile,
+  smsFrom,
+  pendingId,
+  option,
+  attendees,
+  organizerEmail,
+}: {
+  profile: SmsProfile
+  smsFrom: string
+  pendingId: string
+  option: ScheduleOption
+  attendees: Invitee[]
+  organizerEmail?: string | null
+}) {
+  const eventAttendees = attendeesForCalendarEvent(option, attendees)
+
+  let created: { id?: string | null }
+  try {
+    created = await createCalendarEvent(profile.id, {
+      ...option,
+      attendees: eventAttendees,
+    })
+  } catch (error) {
+    return scheduleFailureReply({
+      title: option.title,
+      calendarName: option.calendarName,
+      error,
+    })
+  }
+
+  try {
+    await maybeQueueReminderForOption({
+      profile,
+      option,
+      calendarEventId: created.id || null,
+      calendarId: option.calendarId,
+      title: option.title,
+    })
+  } catch (error) {
+    console.error('Could not queue reminder after booking event', error)
+  }
+
+  try {
+    await clearPendingAction(pendingId)
+  } catch (error) {
+    console.error('Could not clear pending action after booking event', error)
+  }
+
+  await storeRecentCreatedEvent({
+    profileId: profile.id,
+    smsFrom,
+    option: { ...option, attendees: eventAttendees },
+    eventId: created.id || null,
+    organizerEmail: organizerEmail || profile.email,
+  })
+
+  if (attendees.length) {
+    return `${bookingText(option)}\n${inviteOutcomeLine(option, attendees)}\nI'll remind you before it starts.`
+  }
+
+  return `${bookingText(option)}\nI'll remind you before it starts.`
 }
 
 async function classifyTargetEvent(
@@ -3909,28 +3999,14 @@ async function handleChoice({
           } for ${unresolvedInviteeSummary(resolution.unresolvedNames)}.`
         }
 
-        const eventAttendees = attendeesForCalendarEvent(option, mergedInvitees)
-        const created = await createCalendarEvent(profile.id, {
-          ...option,
-          attendees: eventAttendees,
-        })
-        await maybeQueueReminderForOption({
+        return finalizeScheduledBooking({
           profile,
-          option,
-          calendarEventId: created.id || null,
-          calendarId: option.calendarId,
-          title: option.title,
-        })
-        await clearPendingAction(pending.id)
-        await storeRecentCreatedEvent({
-          profileId: profile.id,
           smsFrom,
-          option: { ...option, attendees: eventAttendees },
-          eventId: created.id || null,
+          pendingId: pending.id,
+          option,
+          attendees: mergedInvitees,
           organizerEmail: profile.email,
         })
-
-        return `${bookingText(option)}\n${inviteOutcomeLine(option, mergedInvitees)}\nI'll remind you before it starts.`
       }
 
       await storePendingAction({
@@ -3949,32 +4025,14 @@ async function handleChoice({
       } for ${unresolvedInviteeSummary(unresolvedInvitees)}.\n\nReply like "Sam sam@company.com" or say "book it without invites."`
     }
 
-    const eventAttendees = attendeesForCalendarEvent(option, attendees)
-    const created = await createCalendarEvent(profile.id, {
-      ...option,
-      attendees: eventAttendees,
-    })
-    await maybeQueueReminderForOption({
+    return finalizeScheduledBooking({
       profile,
-      option,
-      calendarEventId: created.id || null,
-      calendarId: option.calendarId,
-      title: option.title,
-    })
-    await clearPendingAction(pending.id)
-    await storeRecentCreatedEvent({
-      profileId: profile.id,
       smsFrom,
-      option: { ...option, attendees: eventAttendees },
-      eventId: created.id || null,
+      pendingId: pending.id,
+      option,
+      attendees,
       organizerEmail: profile.email,
     })
-
-    if (attendees.length) {
-      return `${bookingText(option)}\n${inviteOutcomeLine(option, attendees)}\nI'll remind you before it starts.`
-    }
-
-    return `${bookingText(option)}\nI'll remind you before it starts.`
   }
 
   if (pending.kind === 'select_reschedule_target') {
