@@ -280,7 +280,7 @@ export async function findOrCreateProfile({
       .single<ProfileRow>()
 
   let createdProfile: Profile
-  if (created.error && isMissingDefaultDurationColumnError(created.error)) {
+  if (created.error && isMissingProfilePreferenceColumnError(created.error)) {
     const legacyCreated = await supabaseAdmin
       .from('profiles')
       .insert({
