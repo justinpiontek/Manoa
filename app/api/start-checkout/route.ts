@@ -32,6 +32,61 @@ function checkoutError(message: string, status: number, wantsJson: boolean) {
   return Response.redirect(redirectUrl, 303)
 }
 
+function checkoutRedirectPage(url: string) {
+  const escapedUrl = JSON.stringify(url)
+  const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="refresh" content="0;url=${url.replace(/"/g, '&quot;')}" />
+    <title>Opening Stripe Checkout…</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #f6f8fc;
+        color: #14213d;
+      }
+      main {
+        max-width: 32rem;
+        padding: 24px;
+        border: 1px solid #d9e1f0;
+        border-radius: 12px;
+        background: white;
+        text-align: center;
+        box-shadow: 0 16px 40px rgba(20, 33, 61, 0.08);
+      }
+      a {
+        color: #3158d4;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Opening Stripe checkout…</h1>
+      <p>If nothing happens, <a href="${url}">tap here to continue to Stripe</a>.</p>
+    </main>
+    <script>
+      window.location.replace(${escapedUrl});
+    </script>
+  </body>
+</html>`
+
+  return new Response(html, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store',
+    },
+  })
+}
+
 export async function POST(request: NextRequest) {
   const wantsJson = Boolean(request.headers.get('accept')?.includes('application/json'))
   const paymentLink = process.env.STRIPE_PAYMENT_LINK_URL?.trim()
@@ -155,7 +210,7 @@ export async function POST(request: NextRequest) {
     if (wantsJson) {
       return Response.json({ url })
     }
-    return Response.redirect(url, 303)
+    return checkoutRedirectPage(url)
   }
 
   const checkoutSession = await stripe.checkout.sessions.create({
@@ -204,5 +259,5 @@ export async function POST(request: NextRequest) {
     return Response.json({ url: checkoutSession.url })
   }
 
-  return Response.redirect(checkoutSession.url, 303)
+  return checkoutRedirectPage(checkoutSession.url)
 }
