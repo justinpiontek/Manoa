@@ -5,10 +5,9 @@ import { normalizePhone } from '@/src/lib/phone'
 import { checkRateLimit, clientIp } from '@/src/lib/rateLimit'
 import { stripe } from '@/src/lib/stripeClient'
 
-function paymentLinkUrl(baseUrl: string, email: string, profileId: string) {
+function paymentLinkUrl(baseUrl: string, email: string) {
   const url = new URL(baseUrl)
   url.searchParams.set('prefilled_email', email)
-  url.searchParams.set('client_reference_id', profileId)
   return url.toString()
 }
 
@@ -150,7 +149,7 @@ export async function POST(request: NextRequest) {
   const baseUrl = appUrl()
 
   if (paymentLink) {
-    const url = paymentLinkUrl(paymentLink, email, profile.id)
+    const url = paymentLinkUrl(paymentLink, email)
     if (wantsJson) {
       return Response.json({ url })
     }

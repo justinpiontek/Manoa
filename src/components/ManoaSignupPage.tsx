@@ -133,6 +133,7 @@ export default function ManoaSignupPage() {
   const [demoInput, setDemoInput] = useState(DEMO_STARTER_INPUT)
   const [demoPending, setDemoPending] = useState(false)
   const [checkoutPending, setCheckoutPending] = useState(false)
+  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null)
   const [checkoutNotice, setCheckoutNotice] = useState<{
     tone: 'success' | 'warning'
     text: string
@@ -231,6 +232,7 @@ export default function ManoaSignupPage() {
     if (checkoutPending) return
 
     setCheckoutPending(true)
+    setCheckoutUrl(null)
     setCheckoutNotice(null)
     setStatusNotice(null)
 
@@ -257,7 +259,14 @@ export default function ManoaSignupPage() {
         )
       }
 
-      window.location.href = payload.url
+      const checkoutDestination = payload.url
+      setCheckoutUrl(checkoutDestination)
+      window.location.href = checkoutDestination
+      setTimeout(() => {
+        if (document.visibilityState === 'visible') {
+          window.location.replace(checkoutDestination)
+        }
+      }, 250)
       return
     } catch (error) {
       const message =
@@ -533,6 +542,11 @@ export default function ManoaSignupPage() {
               <div className={`notice ${checkoutNotice.tone}`} role="status" aria-live="polite">
                 {checkoutNotice.text}
               </div>
+            ) : null}
+            {checkoutPending && checkoutUrl ? (
+              <p className="pricing-optional-note">
+                If Stripe does not open, <a href={checkoutUrl}>tap here to open checkout</a>.
+              </p>
             ) : null}
             <p className="pricing-trial-note">Start with 14 days free. Cancel before billing if it is not for you.</p>
             <label className="consent-check pricing-consent" htmlFor="sms-consent">

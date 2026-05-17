@@ -12,6 +12,32 @@ const activeWelcomeStatuses = new Set<Stripe.Subscription.Status>(['active', 'tr
 const welcomeText =
   'Welcome to Manoa. Your account is set up. Connect Google, Outlook, or Apple in your dashboard to get started. Reply STOP to opt out or HELP for help.'
 
+async function findProfileIdForCheckoutSession(session: Stripe.Checkout.Session) {
+  const directProfileId = session.metadata?.profile_id || session.client_reference_id
+  if (directProfileId) {
+    return directProfileId
+  }
+
+  const email =
+    session.customer_details?.email?.trim().toLowerCase() ||
+    session.customer_email?.trim().toLowerCase() ||
+    ''
+
+  if (!email) {
+    return null
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .select('id')
+    .eq('email', email)
+    .limit(1)
+    .maybeSingle<{ id: string }>()
+
+  if (error) throw error
+  return data?.id || null
+}
+
 async function handleSubscription(subscription: Stripe.Subscription) {
   const profileId =
     subscription.metadata.profile_id ||
@@ -96,7 +122,7 @@ export async function POST(request: NextRequest) {
 
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session
-    const profileId = session.metadata?.profile_id || session.client_reference_id
+    const profileId = await findProfileIdForCheckoutSession(session)
 
     if (profileId && typeof session.subscription === 'string') {
       const subscription = await stripe.subscriptions.retrieve(session.subscription)
