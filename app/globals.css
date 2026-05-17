@@ -496,6 +496,19 @@ button {
   line-height: 1.04;
 }
 
+.pricing-trial {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 14px auto 0;
+  padding: 6px 10px;
+  border: 1px solid #d7e3f7;
+  border-radius: 8px;
+  color: var(--blue);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
 .pricing-lede {
   max-width: 36rem;
   margin: 14px auto 0;
@@ -533,6 +546,14 @@ button {
 
 .pricing-button {
   margin-top: 14px;
+}
+
+.pricing-trial-note {
+  margin: 10px 0 0;
+  color: var(--ink);
+  font-size: 0.92rem;
+  font-weight: 600;
+  text-align: center;
 }
 
 .pricing-optional-note {

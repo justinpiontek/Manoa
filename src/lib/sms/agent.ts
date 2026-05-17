@@ -388,6 +388,30 @@ async function storeRecentCreatedEvent({
   }
 }
 
+async function restoreRecentCreatedPending({
+  profileId,
+  smsFrom,
+  event,
+}: {
+  profileId: string
+  smsFrom: string
+  event: EventSummary
+}) {
+  try {
+    await storePendingAction({
+      profileId,
+      smsFrom,
+      kind: 'select_cancel_target',
+      payload: {
+        events: [event],
+        recentlyCreated: true,
+      },
+    })
+  } catch (error) {
+    console.error('Could not restore recent created event pending action', error)
+  }
+}
+
 function providerCanSendInvites(provider: ScheduleOption['provider']) {
   return ['apple', 'google', 'outlook'].includes(provider)
 }
@@ -2542,6 +2566,11 @@ function recentEventFromPending(pending: PendingAction | null | undefined) {
   return pending.payload.events?.[0] || null
 }
 
+function recentCreatedContextEventFromPending(pending: PendingAction | null | undefined) {
+  if (!pending?.payload.recentlyCreated || pending.kind === 'select_cancel_target') return null
+  return pending.payload.target || (pending.payload.events?.length === 1 ? pending.payload.events[0] : null)
+}
+
 function eventContextFromPending(pending: PendingAction | null | undefined) {
   if (!pending) return null
 
@@ -4112,7 +4141,14 @@ async function handleChoice({
       profileId: profile.id,
       smsFrom,
       kind: 'reschedule',
-      payload: { target: event, options, authority },
+      payload: {
+        target: event,
+        options,
+        authority,
+        recentlyCreated:
+          Boolean(pending.payload.recentlyCreated && pending.payload.target) &&
+          isSameEventSummaryIdentity(event, pending.payload.target as EventSummary),
+      },
     })
 
     return sectionedListReply({
@@ -4923,7 +4959,15 @@ export async function handleIncomingSms({
   }
 
   if (activePending && isPendingEscapeRequest(body)) {
+    const restoreRecentEvent = recentCreatedContextEventFromPending(activePending)
     await clearPendingAction(activePending.id)
+    if (restoreRecentEvent) {
+      await restoreRecentCreatedPending({
+        profileId: profile.id,
+        smsFrom: from,
+        event: restoreRecentEvent,
+      })
+    }
     const reply = 'Got it, starting fresh. What would you like to do?'
     await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
     return reply
@@ -5534,6 +5578,7 @@ export async function handleIncomingSms({
   }
 
   if (intent.type === 'reschedule') {
+    const recentCreatedContextEvent = recentEventFromPending(activePending)
     const preferredDay = agendaDayForBaseDate(intent.baseDate, profile.timezone)
     const fallbackDay = preferredDay === 'today' ? 'tomorrow' : 'today'
     const preferredEvents = await listAgenda(profile.id, preferredDay, profile.timezone)
@@ -5546,6 +5591,10 @@ export async function handleIncomingSms({
       findEventByQuery(preferredEvents, intent.query) ||
       findEventByQuery(nearbyEvents, intent.query) ||
       findEventByQuery(candidateEvents, intent.query)
+    const preserveRecentCreatedContext = Boolean(
+      recentCreatedContextEvent &&
+        isGenericEventReference(intent.query),
+    )
 
     if (!target) {
       const matchedUpcomingEvents = matchingEventsByQuery(candidateEvents, intent.query)
@@ -5562,8 +5611,10 @@ export async function handleIncomingSms({
         kind: 'select_reschedule_target',
         payload: {
           events: topEvents,
+          target: preserveRecentCreatedContext ? (recentCreatedContextEvent ?? undefined) : undefined,
           requestedBaseDate: intent.dateWindow ? intent.baseDate.toISOString() : undefined,
           exactTime: intent.exactTime,
+          recentlyCreated: preserveRecentCreatedContext,
         },
       })
 
@@ -5660,7 +5711,16 @@ export async function handleIncomingSms({
       profileId: profile.id,
       smsFrom: from,
       kind: 'reschedule',
-      payload: { target, options, authority },
+      payload: {
+        target,
+        options,
+        authority,
+        recentlyCreated:
+          preserveRecentCreatedContext &&
+          recentCreatedContextEvent
+            ? isSameEventSummaryIdentity(target, recentCreatedContextEvent)
+            : false,
+      },
     })
 
     const reply = sectionedListReply({

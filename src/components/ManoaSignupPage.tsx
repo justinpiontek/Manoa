@@ -443,6 +443,7 @@ export default function ManoaSignupPage() {
       <section id="pricing" className="home-section pricing-section anchor-section" aria-label="Pricing">
         <p className="section-label">Simple pricing</p>
         <h2 className="pricing-title">$19.99 / month</h2>
+        <p className="pricing-trial">14-day free trial</p>
         <p className="pricing-lede">Your availability handled for you — by text.</p>
 
         <aside id="signup" className="panel pricing-card" aria-label="Start Manoa">
@@ -477,6 +478,7 @@ export default function ManoaSignupPage() {
             <button className="button pricing-button" type="submit">
               Start setup
             </button>
+            <p className="pricing-trial-note">Start with 14 days free. Cancel before billing if it is not for you.</p>
             <label className="consent-check pricing-consent" htmlFor="sms-consent">
               <input
                 id="sms-consent"

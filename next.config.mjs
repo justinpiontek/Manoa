@@ -33,7 +33,7 @@ const nextConfig = {
           {
             key: 'Content-Security-Policy',
             value:
-              "base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://checkout.stripe.com; object-src 'none'; upgrade-insecure-requests",
+              "base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://checkout.stripe.com https://buy.stripe.com; object-src 'none'; upgrade-insecure-requests",
           },
         ],
       },
