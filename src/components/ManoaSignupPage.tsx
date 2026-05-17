@@ -3,7 +3,7 @@
 import ManoaWordmark from '@/src/components/ManoaWordmark'
 import { DEMO_STARTER_INPUT, applyDemoText, createDemoState } from '@/src/lib/demoSms'
 import { siteSupportEmail } from '@/src/lib/siteMetadata'
-import { type FormEvent, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 const homepageUseCases = [
   {
@@ -132,12 +132,6 @@ export default function ManoaSignupPage() {
   const [demoState, setDemoState] = useState(() => createDemoState())
   const [demoInput, setDemoInput] = useState(DEMO_STARTER_INPUT)
   const [demoPending, setDemoPending] = useState(false)
-  const [checkoutPending, setCheckoutPending] = useState(false)
-  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null)
-  const [checkoutNotice, setCheckoutNotice] = useState<{
-    tone: 'success' | 'warning'
-    text: string
-  } | null>(null)
   const [statusNotice, setStatusNotice] = useState<{
     tone: 'success' | 'warning'
     text: string
@@ -167,6 +161,15 @@ export default function ManoaSignupPage() {
       setStatusNotice({
         tone: 'warning',
         text: 'Checkout was cancelled. You can come back here any time and start again.',
+      })
+      return
+    }
+
+    const checkoutError = params.get('checkout_error')
+    if (checkoutError) {
+      setStatusNotice({
+        tone: 'warning',
+        text: checkoutError,
       })
       return
     }
@@ -225,60 +228,6 @@ export default function ManoaSignupPage() {
   function resetDemo() {
     setDemoState(createDemoState())
     setDemoInput(DEMO_STARTER_INPUT)
-  }
-
-  async function handleCheckoutSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (checkoutPending) return
-
-    setCheckoutPending(true)
-    setCheckoutUrl(null)
-    setCheckoutNotice(null)
-    setStatusNotice(null)
-
-    try {
-      const form = event.currentTarget
-      const response = await fetch('/api/start-checkout', {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-        },
-        body: new FormData(form),
-      })
-
-      const contentType = response.headers.get('content-type') || ''
-      const payload = contentType.includes('application/json')
-        ? ((await response.json().catch(() => null)) as { url?: string; error?: string } | null)
-        : null
-      const textBody =
-        payload === null ? (await response.text().catch(() => '')).trim() : ''
-
-      if (!response.ok || !payload?.url) {
-        throw new Error(
-          payload?.error || textBody || 'Checkout could not start right now.',
-        )
-      }
-
-      const checkoutDestination = payload.url
-      setCheckoutUrl(checkoutDestination)
-      window.location.href = checkoutDestination
-      setTimeout(() => {
-        if (document.visibilityState === 'visible') {
-          window.location.replace(checkoutDestination)
-        }
-      }, 250)
-      return
-    } catch (error) {
-      const message =
-        error instanceof Error && error.message
-          ? error.message
-          : 'Checkout could not start right now. Please try again.'
-      setCheckoutNotice({
-        tone: 'warning',
-        text: message,
-      })
-      setCheckoutPending(false)
-    }
   }
 
   return (
@@ -507,7 +456,7 @@ export default function ManoaSignupPage() {
         <p className="pricing-lede">Your availability handled for you — by text.</p>
 
         <aside id="signup" className="panel pricing-card" aria-label="Start Manoa">
-          <form action="/api/start-checkout" method="post" onSubmit={handleCheckoutSubmit}>
+          <form action="/api/start-checkout" method="post">
             <input type="hidden" name="plan" value="personal_monthly_1999" />
             <div className="pricing-form-grid">
               <div className="field">
@@ -535,19 +484,9 @@ export default function ManoaSignupPage() {
                 />
               </div>
             </div>
-            <button className="button pricing-button" type="submit" disabled={checkoutPending}>
-              {checkoutPending ? 'Opening checkout...' : 'Start setup'}
+            <button className="button pricing-button" type="submit">
+              Start setup
             </button>
-            {checkoutNotice ? (
-              <div className={`notice ${checkoutNotice.tone}`} role="status" aria-live="polite">
-                {checkoutNotice.text}
-              </div>
-            ) : null}
-            {checkoutPending && checkoutUrl ? (
-              <p className="pricing-optional-note">
-                If Stripe does not open, <a href={checkoutUrl}>tap here to open checkout</a>.
-              </p>
-            ) : null}
             <p className="pricing-trial-note">Start with 14 days free. Cancel before billing if it is not for you.</p>
             <label className="consent-check pricing-consent" htmlFor="sms-consent">
               <input

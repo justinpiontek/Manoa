@@ -27,7 +27,9 @@ function checkoutError(message: string, status: number, wantsJson: boolean) {
   if (wantsJson) {
     return Response.json({ error: message }, { status })
   }
-  return new Response(message, { status })
+  const redirectUrl = new URL(appUrl())
+  redirectUrl.searchParams.set('checkout_error', message)
+  return Response.redirect(redirectUrl, 303)
 }
 
 export async function POST(request: NextRequest) {
