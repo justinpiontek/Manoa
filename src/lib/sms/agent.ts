@@ -3023,6 +3023,17 @@ async function clearPendingAction(id: string) {
   if (error) throw error
 }
 
+async function safeClearPendingAction(id: string) {
+  try {
+    await clearPendingAction(id)
+  } catch (error) {
+    console.error('Could not clear pending action.', {
+      pendingActionId: id,
+      error,
+    })
+  }
+}
+
 async function markSmsOptOut(profileId: string, optedOut: boolean) {
   const now = new Date().toISOString()
   const attemptedUpdates = [
@@ -3058,6 +3069,18 @@ async function clearPendingRemindersForEvent(profileId: string, calendarEventId?
     .eq('status', 'pending')
 
   if (error) throw error
+}
+
+async function safeClearPendingRemindersForEvent(profileId: string, calendarEventId?: string | null) {
+  try {
+    await clearPendingRemindersForEvent(profileId, calendarEventId)
+  } catch (error) {
+    console.error('Could not clear pending reminders for event.', {
+      profileId,
+      calendarEventId: calendarEventId || null,
+      error,
+    })
+  }
 }
 
 async function queueReminderForEvent({
@@ -4310,9 +4333,9 @@ async function handleChoice({
           },
           sendUpdates,
         )
-        await clearPendingRemindersForEvent(profile.id, target.id)
-        await clearPendingRemindersForEvent(profile.id, pending.payload.seriesTarget.id)
-        await clearPendingAction(pending.id)
+        await safeClearPendingRemindersForEvent(profile.id, target.id)
+        await safeClearPendingRemindersForEvent(profile.id, pending.payload.seriesTarget.id)
+        await safeClearPendingAction(pending.id)
 
         if (pending.payload.authority === 'owned_meeting') {
           return `Moved the whole ${target.title} series to ${option.dayLabel} at ${option.timeLabel} and sent the update.`
@@ -4322,20 +4345,6 @@ async function handleChoice({
       }
 
       await updateCalendarEvent(profile.id, target.id, option, sendUpdates)
-      await maybeQueueReminderForOption({
-        profile,
-        option,
-        calendarEventId: target.id,
-        calendarId: target.calendarId,
-        title: option.title,
-      })
-      await clearPendingAction(pending.id)
-
-      if (pending.payload.authority === 'owned_meeting') {
-        return `Moved ${target.title} to ${option.dayLabel} at ${option.timeLabel} and sent the update.`
-      }
-
-      return `Moved ${target.title} to ${option.dayLabel} at ${option.timeLabel}.`
     } catch (error) {
       return rescheduleFailureReply({
         target,
@@ -4343,6 +4352,30 @@ async function handleChoice({
         error,
       })
     }
+
+    try {
+      await maybeQueueReminderForOption({
+        profile,
+        option,
+        calendarEventId: target.id,
+        calendarId: target.calendarId,
+        title: option.title,
+      })
+    } catch (error) {
+      console.error('Could not queue reminder after moving event.', {
+        profileId: profile.id,
+        eventId: target.id,
+        error,
+      })
+    }
+
+    await safeClearPendingAction(pending.id)
+
+    if (pending.payload.authority === 'owned_meeting') {
+      return `Moved ${target.title} to ${option.dayLabel} at ${option.timeLabel} and sent the update.`
+    }
+
+    return `Moved ${target.title} to ${option.dayLabel} at ${option.timeLabel}.`
   }
 
   if (pending.kind === 'invited_reschedule_action') {
@@ -4791,17 +4824,35 @@ export async function handleIncomingSms({
 
     if (isNewExternalAppointment && isBareExternalAppointmentConfirmation(body)) {
       const option = optionFromHeldExternalAppointment(target, profile.timezone)
-      await updateCalendarEvent(profile.id, target.id, option, 'none')
-      await queueReminderForEvent({
-        profileId: profile.id,
-        phoneE164: profile.phone_e164,
-        calendarEventId: target.id,
-        calendarId: target.calendarId,
-        title: target.title,
-        start: target.start,
-        timeZone: profile.timezone,
-      })
-      await clearPendingAction(externalReschedulePending.id)
+      try {
+        await updateCalendarEvent(profile.id, target.id, option, 'none')
+      } catch (error) {
+        const reply = rescheduleFailureReply({
+          target,
+          calendarName: target.calendarName,
+          error,
+        })
+        await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+        return reply
+      }
+      try {
+        await queueReminderForEvent({
+          profileId: profile.id,
+          phoneE164: profile.phone_e164,
+          calendarEventId: target.id,
+          calendarId: target.calendarId,
+          title: target.title,
+          start: target.start,
+          timeZone: profile.timezone,
+        })
+      } catch (error) {
+        console.error('Could not queue reminder after confirming external appointment.', {
+          profileId: profile.id,
+          eventId: target.id,
+          error,
+        })
+      }
+      await safeClearPendingAction(externalReschedulePending.id)
       const reply = `Great. I marked ${target.title} as confirmed for ${option.dayLabel} at ${option.timeLabel}.`
       await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
       return reply
@@ -4858,28 +4909,54 @@ export async function handleIncomingSms({
         followUp.exactTime,
         profile.timezone,
       )
-      await updateCalendarEvent(profile.id, target.id, option, 'none')
-      await queueReminderForEvent({
-        profileId: profile.id,
-        phoneE164: profile.phone_e164,
-        calendarEventId: target.id,
-        calendarId: target.calendarId,
-        title: target.title,
-        start: option.start,
-        timeZone: profile.timezone,
-      })
-
-      if (externalReschedulePending.payload.holdEventId && !isNewExternalAppointment) {
-        await deleteCalendarEvent(
-          profile.id,
-          externalReschedulePending.payload.holdEventId,
-          externalReschedulePending.payload.holdCalendarId || option.calendarId,
-          'none',
-        )
-        await clearPendingRemindersForEvent(profile.id, externalReschedulePending.payload.holdEventId)
+      try {
+        await updateCalendarEvent(profile.id, target.id, option, 'none')
+      } catch (error) {
+        const reply = rescheduleFailureReply({
+          target,
+          calendarName: target.calendarName,
+          error,
+        })
+        await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+        return reply
+      }
+      try {
+        await queueReminderForEvent({
+          profileId: profile.id,
+          phoneE164: profile.phone_e164,
+          calendarEventId: target.id,
+          calendarId: target.calendarId,
+          title: target.title,
+          start: option.start,
+          timeZone: profile.timezone,
+        })
+      } catch (error) {
+        console.error('Could not queue reminder after external reschedule confirmation.', {
+          profileId: profile.id,
+          eventId: target.id,
+          error,
+        })
       }
 
-      await clearPendingAction(externalReschedulePending.id)
+      if (externalReschedulePending.payload.holdEventId && !isNewExternalAppointment) {
+        try {
+          await deleteCalendarEvent(
+            profile.id,
+            externalReschedulePending.payload.holdEventId,
+            externalReschedulePending.payload.holdCalendarId || option.calendarId,
+            'none',
+          )
+        } catch (error) {
+          console.error('Could not clear temporary call hold after external reschedule confirmation.', {
+            profileId: profile.id,
+            holdEventId: externalReschedulePending.payload.holdEventId,
+            error,
+          })
+        }
+        await safeClearPendingRemindersForEvent(profile.id, externalReschedulePending.payload.holdEventId)
+      }
+
+      await safeClearPendingAction(externalReschedulePending.id)
       const reply = isNewExternalAppointment
         ? `Added ${target.title} for ${option.dayLabel} at ${option.timeLabel} on your calendar.\nI turned the temporary call hold into the real appointment.`
         : `Updated ${target.title} to ${option.dayLabel} at ${option.timeLabel} on your calendar.\nI also cleared the call hold.`
