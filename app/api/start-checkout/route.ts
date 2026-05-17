@@ -24,8 +24,15 @@ function isOptionalPhoneMigrationError(error: unknown) {
   return lower.includes('phone_e164') && (lower.includes('null value') || lower.includes('not-null'))
 }
 
+function checkoutError(message: string, status: number, wantsJson: boolean) {
+  if (wantsJson) {
+    return Response.json({ error: message }, { status })
+  }
+  return new Response(message, { status })
+}
+
 export async function POST(request: NextRequest) {
-  const wantsJson = request.headers.get('accept')?.includes('application/json')
+  const wantsJson = Boolean(request.headers.get('accept')?.includes('application/json'))
   const paymentLink = process.env.STRIPE_PAYMENT_LINK_URL?.trim()
   const missing = missingEnv(
     paymentLink
@@ -34,9 +41,10 @@ export async function POST(request: NextRequest) {
   )
 
   if (missing.length) {
-    return new Response(
+    return checkoutError(
       `Checkout is not configured yet. Add these to .env.local: ${missing.join(', ')}`,
-      { status: 503 },
+      503,
+      wantsJson,
     )
   }
 
@@ -47,50 +55,70 @@ export async function POST(request: NextRequest) {
   const smsConsent = String(formData.get('sms_consent') || '').trim().toLowerCase()
 
   if (!email.includes('@')) {
-    return new Response('A valid email is required.', { status: 400 })
+    return checkoutError('A valid email is required.', 400, wantsJson)
   }
 
   const ipLimit = checkRateLimit({
     scope: 'start-checkout-ip',
     identity: clientIp(request),
-    limit: 8,
+    limit: 12,
     windowMs: 15 * 60_000,
   })
   if (!ipLimit.allowed) {
-    return new Response('Please wait a minute, then try again.', {
-      status: 429,
-      headers: {
-        'Retry-After': String(ipLimit.retryAfterSeconds),
-      },
-    })
+    return wantsJson
+      ? Response.json(
+          { error: 'Please wait a minute, then try again.' },
+          {
+            status: 429,
+            headers: {
+              'Retry-After': String(ipLimit.retryAfterSeconds),
+            },
+          },
+        )
+      : new Response('Please wait a minute, then try again.', {
+          status: 429,
+          headers: {
+            'Retry-After': String(ipLimit.retryAfterSeconds),
+          },
+        })
   }
 
   const emailLimit = checkRateLimit({
     scope: 'start-checkout-email',
     identity: email,
-    limit: 4,
+    limit: 8,
     windowMs: 15 * 60_000,
   })
   if (!emailLimit.allowed) {
-    return new Response('Please wait a minute, then try again.', {
-      status: 429,
-      headers: {
-        'Retry-After': String(emailLimit.retryAfterSeconds),
-      },
-    })
+    return wantsJson
+      ? Response.json(
+          { error: 'Please wait a minute, then try again.' },
+          {
+            status: 429,
+            headers: {
+              'Retry-After': String(emailLimit.retryAfterSeconds),
+            },
+          },
+        )
+      : new Response('Please wait a minute, then try again.', {
+          status: 429,
+          headers: {
+            'Retry-After': String(emailLimit.retryAfterSeconds),
+          },
+        })
   }
 
   const phoneE164 = phone ? normalizePhone(phone) : ''
   if (phone && phoneE164.length < 8) {
-    return new Response('If you add a phone number, it needs to be valid.', { status: 400 })
+    return checkoutError('If you add a phone number, it needs to be valid.', 400, wantsJson)
   }
 
   if (plan !== 'personal_monthly_1999') {
-    return new Response('Unknown plan.', { status: 400 })
+    return checkoutError('Unknown plan.', 400, wantsJson)
   }
   const smsConsentGranted = smsConsent === 'yes'
   if (smsConsentGranted && phoneE164.length < 8) {
-    return new Response('Add a phone number to turn texting on.', { status: 400 })
+    return checkoutError('Add a phone number to turn texting on.', 400, wantsJson)
   }
 
   let profile
@@ -102,16 +130,18 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     if (isPhoneOwnershipConflictError(error)) {
-      return new Response(
+      return checkoutError(
         'That phone number is already connected to another Manoa account. Use the original email for that number, or leave the phone field blank and finish setup without texting.',
-        { status: 409 },
+        409,
+        wantsJson,
       )
     }
 
     if (isOptionalPhoneMigrationError(error)) {
-      return new Response(
+      return checkoutError(
         'Signup can work without a phone, but the latest Supabase migration still needs to be run first.',
-        { status: 503 },
+        503,
+        wantsJson,
       )
     }
 
@@ -166,7 +196,7 @@ export async function POST(request: NextRequest) {
   })
 
   if (!checkoutSession.url) {
-    return new Response('Stripe did not return a checkout URL.', { status: 500 })
+    return checkoutError('Stripe did not return a checkout URL.', 500, wantsJson)
   }
 
   if (wantsJson) {

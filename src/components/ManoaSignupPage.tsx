@@ -133,6 +133,10 @@ export default function ManoaSignupPage() {
   const [demoInput, setDemoInput] = useState(DEMO_STARTER_INPUT)
   const [demoPending, setDemoPending] = useState(false)
   const [checkoutPending, setCheckoutPending] = useState(false)
+  const [checkoutNotice, setCheckoutNotice] = useState<{
+    tone: 'success' | 'warning'
+    text: string
+  } | null>(null)
   const [statusNotice, setStatusNotice] = useState<{
     tone: 'success' | 'warning'
     text: string
@@ -227,6 +231,7 @@ export default function ManoaSignupPage() {
     if (checkoutPending) return
 
     setCheckoutPending(true)
+    setCheckoutNotice(null)
     setStatusNotice(null)
 
     try {
@@ -239,25 +244,27 @@ export default function ManoaSignupPage() {
         body: new FormData(form),
       })
 
-      const payload = (await response.json().catch(() => null)) as
-        | { url?: string }
-        | null
+      const contentType = response.headers.get('content-type') || ''
+      const payload = contentType.includes('application/json')
+        ? ((await response.json().catch(() => null)) as { url?: string; error?: string } | null)
+        : null
+      const textBody =
+        payload === null ? (await response.text().catch(() => '')).trim() : ''
 
       if (!response.ok || !payload?.url) {
-        const fallbackMessage =
-          payload && typeof payload === 'object' && 'message' in payload
-            ? String((payload as { message?: unknown }).message || '')
-            : ''
-        throw new Error(fallbackMessage || 'Checkout could not start right now.')
+        throw new Error(
+          payload?.error || textBody || 'Checkout could not start right now.',
+        )
       }
 
-      window.location.assign(payload.url)
+      window.location.href = payload.url
+      return
     } catch (error) {
       const message =
         error instanceof Error && error.message
           ? error.message
           : 'Checkout could not start right now. Please try again.'
-      setStatusNotice({
+      setCheckoutNotice({
         tone: 'warning',
         text: message,
       })
@@ -522,6 +529,11 @@ export default function ManoaSignupPage() {
             <button className="button pricing-button" type="submit" disabled={checkoutPending}>
               {checkoutPending ? 'Opening checkout...' : 'Start setup'}
             </button>
+            {checkoutNotice ? (
+              <div className={`notice ${checkoutNotice.tone}`} role="status" aria-live="polite">
+                {checkoutNotice.text}
+              </div>
+            ) : null}
             <p className="pricing-trial-note">Start with 14 days free. Cancel before billing if it is not for you.</p>
             <label className="consent-check pricing-consent" htmlFor="sms-consent">
               <input
