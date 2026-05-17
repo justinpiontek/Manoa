@@ -2745,6 +2745,54 @@ function scheduleFailureReply({
   return `I found ${title}, but I could not add it to ${calendarName} from Manoa yet. Try a different calendar or try again in a minute.`
 }
 
+function genericRescheduleFailureReply(query: string) {
+  const trimmed = query.trim()
+  if (!trimmed) {
+    return 'I found that event, but I could not move it from Manoa yet. Try another day or time.'
+  }
+
+  return `I found ${trimmed}, but I could not move it from Manoa yet. Try another day or time.`
+}
+
+function pendingChoiceFailureReply({
+  pending,
+  error,
+}: {
+  pending: PendingAction
+  error: unknown
+}) {
+  const target =
+    pending.payload.target ||
+    pending.payload.seriesTarget ||
+    pending.payload.events?.[0] ||
+    null
+
+  if (
+    (pending.kind === 'reschedule' ||
+      pending.kind === 'select_reschedule_target' ||
+      pending.kind === 'invited_reschedule_action' ||
+      pending.kind === 'invited_reschedule_hold') &&
+    target
+  ) {
+    return rescheduleFailureReply({
+      target,
+      calendarName: target.calendarName,
+      error,
+    })
+  }
+
+  const option = pending.payload.options?.[0] || pending.payload.selectedOption || null
+  if (pending.kind === 'schedule' && option) {
+    return scheduleFailureReply({
+      title: option.title,
+      calendarName: option.calendarName,
+      error,
+    })
+  }
+
+  return 'I could not finish that request from Manoa yet. Try again in a minute.'
+}
+
 function isMissingSmsProfileColumnError(error: unknown) {
   const lower = errorMessage(error).toLowerCase()
   return (
@@ -5396,13 +5444,27 @@ export async function handleIncomingSms({
       (pendingChoice &&
         !(activePending.kind === 'schedule' && (activePending.payload.options || []).length === 1)))
   ) {
-    const reply = await handleChoice({
-      profile,
-      smsFrom: from,
-      body,
-      choice: intent.type === 'choice' ? intent.choice : (pendingChoice as number),
-      pending: activePending,
-    })
+    let reply: string
+    try {
+      reply = await handleChoice({
+        profile,
+        smsFrom: from,
+        body,
+        choice: intent.type === 'choice' ? intent.choice : (pendingChoice as number),
+        pending: activePending,
+      })
+    } catch (error) {
+      console.error('Could not complete pending SMS choice.', {
+        profileId: profile.id,
+        pendingKind: activePending.kind,
+        pendingId: activePending.id,
+        error,
+      })
+      reply = pendingChoiceFailureReply({
+        pending: activePending,
+        error,
+      })
+    }
     await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
     return reply
   }
@@ -5655,29 +5717,132 @@ export async function handleIncomingSms({
   }
 
   if (intent.type === 'reschedule') {
-    const recentCreatedContextEvent = recentEventFromPending(activePending)
-    const preferredDay = agendaDayForBaseDate(intent.baseDate, profile.timezone)
-    const fallbackDay = preferredDay === 'today' ? 'tomorrow' : 'today'
-    const preferredEvents = await listAgenda(profile.id, preferredDay, profile.timezone)
-    const fallbackEvents = await listAgenda(profile.id, fallbackDay, profile.timezone)
-    const upcomingEvents = await searchUpcomingEvents(profile.id, profile.timezone)
-    const nearbyEvents = sortEventsByStart([...preferredEvents, ...fallbackEvents])
-    const candidateEvents = sortEventsByStart(uniqueEvents([...nearbyEvents, ...upcomingEvents]))
-    const target =
-      contextualEventTarget(activePending, intent.query) ||
-      findEventByQuery(preferredEvents, intent.query) ||
-      findEventByQuery(nearbyEvents, intent.query) ||
-      findEventByQuery(candidateEvents, intent.query)
-    const preserveRecentCreatedContext = Boolean(
-      recentCreatedContextEvent &&
-        isGenericEventReference(intent.query),
-    )
+    try {
+      const recentCreatedContextEvent = recentEventFromPending(activePending)
+      const preferredDay = agendaDayForBaseDate(intent.baseDate, profile.timezone)
+      const fallbackDay = preferredDay === 'today' ? 'tomorrow' : 'today'
+      const preferredEvents = await listAgenda(profile.id, preferredDay, profile.timezone)
+      const fallbackEvents = await listAgenda(profile.id, fallbackDay, profile.timezone)
+      const upcomingEvents = await searchUpcomingEvents(profile.id, profile.timezone)
+      const nearbyEvents = sortEventsByStart([...preferredEvents, ...fallbackEvents])
+      const candidateEvents = sortEventsByStart(uniqueEvents([...nearbyEvents, ...upcomingEvents]))
+      const target =
+        contextualEventTarget(activePending, intent.query) ||
+        findEventByQuery(preferredEvents, intent.query) ||
+        findEventByQuery(nearbyEvents, intent.query) ||
+        findEventByQuery(candidateEvents, intent.query)
+      const preserveRecentCreatedContext = Boolean(
+        recentCreatedContextEvent &&
+          isGenericEventReference(intent.query),
+      )
 
-    if (!target) {
-      const matchedUpcomingEvents = matchingEventsByQuery(candidateEvents, intent.query)
-      const topEvents = (matchedUpcomingEvents.length ? matchedUpcomingEvents : candidateEvents).slice(0, 3)
-      if (!topEvents.length) {
-        const reply = "I don't see anything to move there."
+      if (!target) {
+        const matchedUpcomingEvents = matchingEventsByQuery(candidateEvents, intent.query)
+        const topEvents = (matchedUpcomingEvents.length ? matchedUpcomingEvents : candidateEvents).slice(0, 3)
+        if (!topEvents.length) {
+          const reply = "I don't see anything to move there."
+          await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+          return reply
+        }
+
+        await storePendingAction({
+          profileId: profile.id,
+          smsFrom: from,
+          kind: 'select_reschedule_target',
+          payload: {
+            events: topEvents,
+            target: preserveRecentCreatedContext ? (recentCreatedContextEvent ?? undefined) : undefined,
+            requestedBaseDate: intent.dateWindow ? intent.baseDate.toISOString() : undefined,
+            exactTime: intent.exactTime,
+            recentlyCreated: preserveRecentCreatedContext,
+          },
+        })
+
+        const reply = sectionedListReply({
+          intro: 'Which one should I move?',
+          list: topEvents
+            .map((event, index) => `${index + 1}. ${event.timeLabel} ${event.title}`)
+            .join('\n'),
+          footer: 'Reply 1, 2, or 3.',
+        })
+        await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+        return reply
+      }
+
+      const { authority, contact } = await classifyTargetEvent(profile, target)
+      const rescheduleBaseDate = rescheduleBaseDateForTarget({
+        requestedBaseDate: intent.baseDate,
+        explicitDateRequested: Boolean(intent.dateWindow),
+        exactTime: intent.exactTime,
+        target,
+        timeZone: profile.timezone,
+      })
+
+      if (authority === 'external_appointment') {
+        const reply = await prepareExternalCallPrep({
+          profile,
+          smsFrom: from,
+          target,
+          baseDate: rescheduleBaseDate,
+          exactTime: intent.exactTime,
+          contact,
+        })
+        await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+        return reply
+      }
+
+      if (authority === 'invited_meeting' || authority === 'unknown') {
+        const reply = await prepareInvitedReschedule({
+          profile,
+          smsFrom: from,
+          target,
+          baseDate: rescheduleBaseDate,
+          exactTime: intent.exactTime,
+        })
+        await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+        return reply
+      }
+
+      if (isRecurringEvent(target)) {
+        const reply = await prepareRecurringRescheduleScope({
+          profileId: profile.id,
+          smsFrom: from,
+          target,
+          authority,
+          baseDate: rescheduleBaseDate,
+          exactTime: intent.exactTime,
+        })
+        await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+        return reply
+      }
+
+      const exactRescheduleReply = await maybeConfirmExactRescheduleTime({
+        profile,
+        smsFrom: from,
+        target,
+        baseDate: rescheduleBaseDate,
+        exactTime: intent.exactTime,
+        durationMinutes: eventDurationMinutes(target),
+        authority,
+      })
+
+      if (exactRescheduleReply) {
+        await logSms({ profileId: profile.id, from, body: exactRescheduleReply, direction: 'outbound' })
+        return exactRescheduleReply
+      }
+
+      const options = await findScheduleOptions({
+        profileId: profile.id,
+        title: target.title,
+        baseDate: rescheduleBaseDate,
+        exactTime: intent.exactTime,
+        calendarHint: target.calendarName,
+        durationMinutes: eventDurationMinutes(target),
+        location: target.location || null,
+      })
+
+      if (!options.length) {
+        const reply = `I found ${target.title}, but I could not find an opening to move it. Try another day or time.`
         await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
         return reply
       }
@@ -5685,128 +5850,36 @@ export async function handleIncomingSms({
       await storePendingAction({
         profileId: profile.id,
         smsFrom: from,
-        kind: 'select_reschedule_target',
+        kind: 'reschedule',
         payload: {
-          events: topEvents,
-          target: preserveRecentCreatedContext ? (recentCreatedContextEvent ?? undefined) : undefined,
-          requestedBaseDate: intent.dateWindow ? intent.baseDate.toISOString() : undefined,
-          exactTime: intent.exactTime,
-          recentlyCreated: preserveRecentCreatedContext,
+          target,
+          options,
+          authority,
+          recentlyCreated:
+            preserveRecentCreatedContext &&
+            recentCreatedContextEvent
+              ? isSameEventSummaryIdentity(target, recentCreatedContextEvent)
+              : false,
         },
       })
 
       const reply = sectionedListReply({
-        intro: 'Which one should I move?',
-        list: topEvents
-          .map((event, index) => `${index + 1}. ${event.timeLabel} ${event.title}`)
-          .join('\n'),
+        intro: `I can move ${target.title} to:`,
+        list: optionList(options),
         footer: 'Reply 1, 2, or 3.',
       })
       await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
       return reply
-    }
-
-    const { authority, contact } = await classifyTargetEvent(profile, target)
-    const rescheduleBaseDate = rescheduleBaseDateForTarget({
-      requestedBaseDate: intent.baseDate,
-      explicitDateRequested: Boolean(intent.dateWindow),
-      exactTime: intent.exactTime,
-      target,
-      timeZone: profile.timezone,
-    })
-
-    if (authority === 'external_appointment') {
-      const reply = await prepareExternalCallPrep({
-        profile,
-        smsFrom: from,
-        target,
-        baseDate: rescheduleBaseDate,
-        exactTime: intent.exactTime,
-        contact,
-      })
-      await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
-      return reply
-    }
-
-    if (authority === 'invited_meeting' || authority === 'unknown') {
-      const reply = await prepareInvitedReschedule({
-        profile,
-        smsFrom: from,
-        target,
-        baseDate: rescheduleBaseDate,
-        exactTime: intent.exactTime,
-      })
-      await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
-      return reply
-    }
-
-    if (isRecurringEvent(target)) {
-      const reply = await prepareRecurringRescheduleScope({
+    } catch (error) {
+      console.error('Could not prepare reschedule flow.', {
         profileId: profile.id,
-        smsFrom: from,
-        target,
-        authority,
-        baseDate: rescheduleBaseDate,
-        exactTime: intent.exactTime,
+        query: intent.query,
+        error,
       })
+      const reply = genericRescheduleFailureReply(intent.query)
       await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
       return reply
     }
-
-    const exactRescheduleReply = await maybeConfirmExactRescheduleTime({
-      profile,
-      smsFrom: from,
-      target,
-      baseDate: rescheduleBaseDate,
-      exactTime: intent.exactTime,
-      durationMinutes: eventDurationMinutes(target),
-      authority,
-    })
-
-    if (exactRescheduleReply) {
-      await logSms({ profileId: profile.id, from, body: exactRescheduleReply, direction: 'outbound' })
-      return exactRescheduleReply
-    }
-
-    const options = await findScheduleOptions({
-      profileId: profile.id,
-      title: target.title,
-      baseDate: rescheduleBaseDate,
-      exactTime: intent.exactTime,
-      calendarHint: target.calendarName,
-      durationMinutes: eventDurationMinutes(target),
-      location: target.location || null,
-    })
-
-    if (!options.length) {
-      const reply = `I found ${target.title}, but I could not find an opening to move it. Try another day or time.`
-      await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
-      return reply
-    }
-
-    await storePendingAction({
-      profileId: profile.id,
-      smsFrom: from,
-      kind: 'reschedule',
-      payload: {
-        target,
-        options,
-        authority,
-        recentlyCreated:
-          preserveRecentCreatedContext &&
-          recentCreatedContextEvent
-            ? isSameEventSummaryIdentity(target, recentCreatedContextEvent)
-            : false,
-      },
-    })
-
-    const reply = sectionedListReply({
-      intro: `I can move ${target.title} to:`,
-      list: optionList(options),
-      footer: 'Reply 1, 2, or 3.',
-    })
-    await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
-    return reply
   }
 
   if (intent.type === 'cancel') {
