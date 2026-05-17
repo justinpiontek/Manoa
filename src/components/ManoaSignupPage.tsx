@@ -3,7 +3,7 @@
 import ManoaWordmark from '@/src/components/ManoaWordmark'
 import { DEMO_STARTER_INPUT, applyDemoText, createDemoState } from '@/src/lib/demoSms'
 import { siteSupportEmail } from '@/src/lib/siteMetadata'
-import { useEffect, useRef, useState } from 'react'
+import { type FormEvent, useEffect, useRef, useState } from 'react'
 
 const homepageUseCases = [
   {
@@ -132,6 +132,7 @@ export default function ManoaSignupPage() {
   const [demoState, setDemoState] = useState(() => createDemoState())
   const [demoInput, setDemoInput] = useState(DEMO_STARTER_INPUT)
   const [demoPending, setDemoPending] = useState(false)
+  const [checkoutPending, setCheckoutPending] = useState(false)
   const [statusNotice, setStatusNotice] = useState<{
     tone: 'success' | 'warning'
     text: string
@@ -219,6 +220,49 @@ export default function ManoaSignupPage() {
   function resetDemo() {
     setDemoState(createDemoState())
     setDemoInput(DEMO_STARTER_INPUT)
+  }
+
+  async function handleCheckoutSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (checkoutPending) return
+
+    setCheckoutPending(true)
+    setStatusNotice(null)
+
+    try {
+      const form = event.currentTarget
+      const response = await fetch('/api/start-checkout', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+        },
+        body: new FormData(form),
+      })
+
+      const payload = (await response.json().catch(() => null)) as
+        | { url?: string }
+        | null
+
+      if (!response.ok || !payload?.url) {
+        const fallbackMessage =
+          payload && typeof payload === 'object' && 'message' in payload
+            ? String((payload as { message?: unknown }).message || '')
+            : ''
+        throw new Error(fallbackMessage || 'Checkout could not start right now.')
+      }
+
+      window.location.assign(payload.url)
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : 'Checkout could not start right now. Please try again.'
+      setStatusNotice({
+        tone: 'warning',
+        text: message,
+      })
+      setCheckoutPending(false)
+    }
   }
 
   return (
@@ -447,7 +491,7 @@ export default function ManoaSignupPage() {
         <p className="pricing-lede">Your availability handled for you — by text.</p>
 
         <aside id="signup" className="panel pricing-card" aria-label="Start Manoa">
-          <form action="/api/start-checkout" method="post">
+          <form action="/api/start-checkout" method="post" onSubmit={handleCheckoutSubmit}>
             <input type="hidden" name="plan" value="personal_monthly_1999" />
             <div className="pricing-form-grid">
               <div className="field">
@@ -475,8 +519,8 @@ export default function ManoaSignupPage() {
                 />
               </div>
             </div>
-            <button className="button pricing-button" type="submit">
-              Start setup
+            <button className="button pricing-button" type="submit" disabled={checkoutPending}>
+              {checkoutPending ? 'Opening checkout...' : 'Start setup'}
             </button>
             <p className="pricing-trial-note">Start with 14 days free. Cancel before billing if it is not for you.</p>
             <label className="consent-check pricing-consent" htmlFor="sms-consent">

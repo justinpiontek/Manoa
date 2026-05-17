@@ -25,6 +25,7 @@ function isOptionalPhoneMigrationError(error: unknown) {
 }
 
 export async function POST(request: NextRequest) {
+  const wantsJson = request.headers.get('accept')?.includes('application/json')
   const paymentLink = process.env.STRIPE_PAYMENT_LINK_URL?.trim()
   const missing = missingEnv(
     paymentLink
@@ -119,7 +120,11 @@ export async function POST(request: NextRequest) {
   const baseUrl = appUrl()
 
   if (paymentLink) {
-    return Response.redirect(paymentLinkUrl(paymentLink, email, profile.id), 303)
+    const url = paymentLinkUrl(paymentLink, email, profile.id)
+    if (wantsJson) {
+      return Response.json({ url })
+    }
+    return Response.redirect(url, 303)
   }
 
   const checkoutSession = await stripe.checkout.sessions.create({
@@ -162,6 +167,10 @@ export async function POST(request: NextRequest) {
 
   if (!checkoutSession.url) {
     return new Response('Stripe did not return a checkout URL.', { status: 500 })
+  }
+
+  if (wantsJson) {
+    return Response.json({ url: checkoutSession.url })
   }
 
   return Response.redirect(checkoutSession.url, 303)
