@@ -194,10 +194,12 @@ export async function findOrCreateProfile({
   email,
   phoneE164,
   smsConsentGranted = false,
+  ensureAuthUser = true,
 }: {
   email: string
   phoneE164?: string | null
   smsConsentGranted?: boolean
+  ensureAuthUser?: boolean
 }) {
   const normalizedEmail = email.trim().toLowerCase()
   const normalizedPhone = phoneE164?.trim() || null
@@ -236,7 +238,9 @@ export async function findOrCreateProfile({
         .single<ProfileRow>(),
     )
 
-    await ensureAuthUserForEmail(normalizedEmail)
+    if (ensureAuthUser) {
+      await ensureAuthUserForEmail(normalizedEmail)
+    }
     return updated
   }
 
@@ -254,7 +258,9 @@ export async function findOrCreateProfile({
         .single<ProfileRow>(),
     )
 
-    await ensureAuthUserForEmail(normalizedEmail)
+    if (ensureAuthUser) {
+      await ensureAuthUserForEmail(normalizedEmail)
+    }
     return updated
   }
 
@@ -295,7 +301,9 @@ export async function findOrCreateProfile({
     createdProfile = normalizeProfileRow(created.data)
   }
 
-  await ensureAuthUserForEmail(normalizedEmail)
+  if (ensureAuthUser) {
+    await ensureAuthUserForEmail(normalizedEmail)
+  }
   return createdProfile
 }
 

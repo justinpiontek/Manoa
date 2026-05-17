@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDashboardProfileByEmail } from '@/src/lib/profiles'
+import { ensureAuthUserForEmail, getDashboardProfileByEmail } from '@/src/lib/profiles'
 import { checkRateLimit, clientIp } from '@/src/lib/rateLimit'
 
 export async function POST(request: NextRequest) {
@@ -49,7 +49,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    await getDashboardProfileByEmail(email)
+    const profile = await getDashboardProfileByEmail(email)
+    if (profile) {
+      await ensureAuthUserForEmail(email)
+    }
 
     return NextResponse.json({ ok: true })
   } catch (error) {
