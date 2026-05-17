@@ -2934,6 +2934,8 @@ export async function findScheduleOptions({
   timeZone?: string
 }) {
   const resolvedTimeZone = timeZone || (await getProfileTimeZone(profileId))
+  const safeDurationMinutes =
+    Number.isFinite(durationMinutes) && durationMinutes > 0 ? durationMinutes : 30
   const connections = visibleConfiguredCalendars(await getCalendarConnections(profileId))
   if (!connections.length) return []
 
@@ -2963,7 +2965,12 @@ export async function findScheduleOptions({
   if (!futureCandidateStarts.length) return []
 
   const timeMin = futureCandidateStarts[0]
-  const timeMax = addMinutes(futureCandidateStarts[futureCandidateStarts.length - 1], durationMinutes)
+  const lastCandidateStart = futureCandidateStarts[futureCandidateStarts.length - 1]
+  const proposedTimeMax = addMinutes(lastCandidateStart, safeDurationMinutes)
+  const timeMax =
+    proposedTimeMax.getTime() > timeMin.getTime()
+      ? proposedTimeMax
+      : addMinutes(timeMin, Math.max(15, safeDurationMinutes))
   const skippedConnectionIds = new Set<string>()
   const busy = await busyBlocks(connections, timeMin, timeMax, timeZone, { skippedConnectionIds })
 
@@ -2974,7 +2981,7 @@ export async function findScheduleOptions({
   return futureCandidateStarts
     .map((start) => ({
       start,
-      end: addMinutes(start, durationMinutes),
+      end: addMinutes(start, safeDurationMinutes),
     }))
     .filter((candidate) => !overlaps(candidate, busy))
     .slice(0, 3)
