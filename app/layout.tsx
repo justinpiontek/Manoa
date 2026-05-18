@@ -1,9 +1,12 @@
 import type { Metadata } from 'next'
+import Script from 'next/script'
 import { appUrl } from '@/src/lib/env'
 import { siteDescription, siteTitle } from '@/src/lib/siteMetadata'
 import './globals.css'
 
 const baseUrl = appUrl()
+const googleAnalyticsId = 'G-T8WDT7SRYQ'
+const analyticsEnabled = process.env.NODE_ENV === 'production'
 
 export const metadata: Metadata = {
   metadataBase: new URL(baseUrl),
@@ -42,7 +45,25 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {analyticsEnabled ? (
+          <>
+            <Script
+              src={`https://www.googletagmanager.com/gtag/js?id=${googleAnalyticsId}`}
+              strategy="afterInteractive"
+            />
+            <Script id="google-analytics" strategy="afterInteractive">
+              {`
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                gtag('js', new Date());
+                gtag('config', '${googleAnalyticsId}');
+              `}
+            </Script>
+          </>
+        ) : null}
+        {children}
+      </body>
     </html>
   )
 }
