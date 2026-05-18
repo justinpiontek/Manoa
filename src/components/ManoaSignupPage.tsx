@@ -14,6 +14,20 @@ const homepageUseCases = [
       'Text what you need, get a few open times, and confirm with 1, 2, or 3 instead of opening your calendar.',
   },
   {
+    href: '/add-event-from-screenshot',
+    label: 'Add event from screenshot',
+    title: 'Turn screenshots into calendar events',
+    description:
+      'Send an invitation, reminder card, or screenshot and let Manoa pull out the date, time, and place for you.',
+  },
+  {
+    href: '/school-flyer-to-calendar',
+    label: 'School flyer to calendar',
+    title: 'Pull school dates off flyers',
+    description:
+      'Send school handouts and important-dates pages so Manoa can help you add the real events to your family calendar.',
+  },
+  {
     href: '/calendar-reminders-by-text',
     label: 'Agenda and reminders',
     title: 'Stay on top of the day',
@@ -35,18 +49,11 @@ const homepageUseCases = [
       'Use simple hints like work or personal so Manoa can help across the calendars that matter.',
   },
   {
-    href: '/invite-people-by-text',
-    label: 'Invitees',
-    title: 'Set up meetings with people by text',
+    href: '/multiple-calendars-by-text',
+    label: 'Multiple calendars',
+    title: 'Keep work, home, and family straight',
     description:
-      'Start the meeting from a text and let Manoa handle known contacts while asking for missing emails once.',
-  },
-  {
-    href: '/recurring-events-by-text',
-    label: 'Recurring events',
-    title: 'Create weekly and monthly repeats',
-    description:
-      'Text recurring schedules in plain language instead of clicking through repeat-rule menus.',
+      'Use simple hints like work or family so Manoa can route events to the right calendar and check the right conflicts.',
   },
 ]
 
@@ -93,7 +100,7 @@ const homepageSoftwareApplicationStructuredData = {
   operatingSystem: 'Any',
   url: siteUrl,
   description:
-    'Manoa is a calendar assistant you text. Book meetings, read photos and screenshots, get reminders, and manage your calendar by text.',
+    'Manoa is a calendar assistant by text. Schedule meetings, add events from screenshots and flyers, get reminders, and manage your calendar without opening another app.',
   offers: {
     '@type': 'Offer',
     price: '19.99',
@@ -293,9 +300,10 @@ export default function ManoaSignupPage() {
 
       <section className="simple-hero" aria-label="Text Manoa">
         <p className="eyebrow">Calendar assistant by text</p>
-        <h1>Stop checking your calendar. Just text Manoa.</h1>
+        <h1>Text your calendar instead of opening it.</h1>
         <p className="simple-hero-lede">
-          Book meetings, get reminders, and manage your calendar — all by text.
+          Manoa is a calendar assistant by text. Schedule meetings, add events from screenshots
+          and flyers, and get reminders without opening another app.
         </p>
 
         <div className="simple-thread" aria-label="Example conversation">
@@ -324,8 +332,8 @@ export default function ManoaSignupPage() {
           <p className="section-label section-label-left">Send what you have</p>
           <h2>Text it, snap it, or paste it.</h2>
           <p>
-            Manoa can read event details from normal messages and photos, then ask before adding
-            anything to your calendar.
+            Manoa can read event details from text messages, screenshots, school flyers, and
+            photos, then ask before adding anything to your calendar.
           </p>
         </div>
         <div className="capability-grid">
@@ -345,6 +353,24 @@ export default function ManoaSignupPage() {
             <strong>Asks when unclear</strong>
             <span>If the date, time, calendar, or person is missing, Manoa asks.</span>
           </article>
+        </div>
+      </section>
+
+      <section className="home-section" aria-label="Popular ways to use Manoa">
+        <p className="section-label section-label-left">Popular searches</p>
+        <h2>Start with the calendar problem you already have.</h2>
+        <p className="use-case-lede">
+          These pages cover the ways people are most likely to find and use Manoa: scheduling by
+          text, adding events from screenshots, turning school flyers into calendar events, and
+          getting reminders by text.
+        </p>
+        <div className="use-case-list-grid">
+          {homepageUseCases.map((useCase) => (
+            <a key={useCase.href} className="use-case-link-card" href={useCase.href}>
+              <strong>{useCase.title}</strong>
+              <span>{useCase.description}</span>
+            </a>
+          ))}
         </div>
       </section>
 

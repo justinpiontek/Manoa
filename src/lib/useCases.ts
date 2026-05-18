@@ -185,6 +185,150 @@ export const useCases: UseCase[] = [
     ],
   },
   {
+    slug: 'add-event-from-screenshot',
+    href: '/add-event-from-screenshot',
+    cardTitle: 'Add an event from a screenshot',
+    cardDescription:
+      'Send a screenshot, invitation, appointment card, or confirmation image and let Manoa turn it into a calendar event by text.',
+    eyebrow: 'Add event from screenshot',
+    title: 'Add an event from a screenshot by text.',
+    description:
+      'Manoa can read screenshots, invitations, appointment cards, and confirmation images, then help you add the event to your calendar by text.',
+    intro:
+      'Instead of retyping dates and times from a screenshot, send the image to Manoa. It reads the event details, asks which calendar to use, and confirms before booking.',
+    exampleUser: 'send screenshot of dentist reminder',
+    exampleManoa:
+      'I found Dentist Appointment on Thu, Jun 4 at 2:30 PM. Which calendar should I put that on? 1. Work 2. Home 3. Family',
+    benefits: [
+      {
+        title: 'Turn screenshots into calendar events',
+        body: 'Send the image you already have instead of copying dates, times, and addresses by hand.',
+      },
+      {
+        title: 'Works for normal reminder images',
+        body: 'Appointment cards, invitation screenshots, confirmation emails, and event reminders all fit this flow.',
+      },
+      {
+        title: 'Still asks before booking',
+        body: 'Manoa reads the event details first, then lets you confirm the calendar and timing by text.',
+      },
+    ],
+    idealFor: [
+      'People who get event details in screenshots, texts, emails, or reminder images.',
+      'Parents and busy professionals who want less copy-and-paste calendar work.',
+      'Anyone who would rather forward an image than manually retype event details.',
+    ],
+    steps: [
+      {
+        title: '1. Send the screenshot or photo',
+        body: 'Text the image to Manoa instead of retyping the date, time, and location yourself.',
+      },
+      {
+        title: '2. Pick the calendar',
+        body: 'If you use more than one calendar, Manoa asks where the event should go.',
+      },
+      {
+        title: '3. Confirm the event',
+        body: 'Once the details look right, Manoa books it on the connected calendar.',
+      },
+    ],
+    faqs: [
+      {
+        question: 'Can Manoa read screenshots and photos?',
+        answer: 'Yes. Manoa can read screenshots, photos, invitation cards, and confirmation-style event images.',
+      },
+      {
+        question: 'Do I still confirm before the event gets booked?',
+        answer: 'Yes. Manoa reads the image first, then asks before placing the event on your calendar.',
+      },
+      {
+        question: 'What if the image has more than one event?',
+        answer: 'For multi-event images, Manoa can guide you through batch-style adds when it recognizes more than one dated item.',
+      },
+      {
+        question: 'Does this work with my regular calendar?',
+        answer: 'Yes. Manoa adds the event to your connected Google Calendar, Outlook, or Apple Calendar.',
+      },
+    ],
+    relatedSlugs: [
+      'school-flyer-to-calendar',
+      'schedule-by-text',
+      'calendar-reminders-by-text',
+    ],
+  },
+  {
+    slug: 'school-flyer-to-calendar',
+    href: '/school-flyer-to-calendar',
+    cardTitle: 'Turn school flyers into calendar events',
+    cardDescription:
+      'Send school flyers, preschool handouts, and important-dates pages to Manoa so key dates land on your calendar by text.',
+    eyebrow: 'School flyer to calendar',
+    title: 'Turn a school flyer into calendar events by text.',
+    description:
+      'Manoa can read school flyers and important-dates handouts, pull out the real calendar items, and help you add them without typing each one in by hand.',
+    intro:
+      "This is one of Manoa's clearest family use cases. Send the flyer, let Manoa pull out dates like no school, concerts, graduations, and activity days, then choose the calendar.",
+    exampleUser: 'send school flyer photo',
+    exampleManoa:
+      'I found 4 events from that flyer. Tell me which calendar to add them to: Home, Family, or Work.',
+    benefits: [
+      {
+        title: 'Catch dates before they get buried',
+        body: 'Important school events often live on paper handouts or screenshots. Manoa helps pull them into the calendar quickly.',
+      },
+      {
+        title: 'Batch school events at once',
+        body: 'When a flyer has multiple dates on it, Manoa can help you add the real event list instead of one item at a time.',
+      },
+      {
+        title: 'Works well for family calendars',
+        body: 'Choose the family or home calendar and keep school events where the rest of the household can see them.',
+      },
+    ],
+    idealFor: [
+      'Parents juggling school, preschool, daycare, camp, and sports handouts.',
+      'Families who miss dates because the flyer never made it into the calendar.',
+      'Anyone who wants school events to live in the real calendar instead of in a photo album.',
+    ],
+    steps: [
+      {
+        title: '1. Send the flyer',
+        body: 'Text the school handout, important-dates page, or photo of the printed flyer to Manoa.',
+      },
+      {
+        title: '2. Choose the calendar',
+        body: 'Manoa pulls out the dated events and asks which calendar should get them.',
+      },
+      {
+        title: '3. Let Manoa add the dates',
+        body: 'Once you confirm the destination calendar, Manoa adds the recognized events for you.',
+      },
+    ],
+    faqs: [
+      {
+        question: 'Can Manoa handle multiple school events from one flyer?',
+        answer: 'Yes. This flow is designed for important-dates pages and similar flyers with more than one event on them.',
+      },
+      {
+        question: 'What kinds of school pages work best?',
+        answer: 'Important dates sheets, preschool flyers, graduation notices, no-school lists, and activity handouts are all good fits.',
+      },
+      {
+        question: 'Can I add the events to a family calendar?',
+        answer: 'Yes. Manoa can ask which calendar should get the dates, including a family or home calendar.',
+      },
+      {
+        question: 'What if one event is already on my calendar?',
+        answer: 'Manoa is designed to check what is already there and avoid creating a messy duplicate-heavy flow.',
+      },
+    ],
+    relatedSlugs: [
+      'add-event-from-screenshot',
+      'multiple-calendars-by-text',
+      'calendar-reminders-by-text',
+    ],
+  },
+  {
     slug: 'reschedule-appointments-by-text',
     href: '/reschedule-appointments-by-text',
     cardTitle: 'Reschedule appointments by text',
@@ -477,7 +621,7 @@ export const useCases: UseCase[] = [
   {
     slug: 'invite-people-by-text',
     href: '/invite-people-by-text',
-    cardTitle: 'Invite people by text',
+    cardTitle: 'Invite people to meetings by text',
     cardDescription:
       'Set up meetings with invitees by text and let Manoa handle known contacts while asking for missing emails only once.',
     eyebrow: 'Invite people by text',
@@ -549,7 +693,7 @@ export const useCases: UseCase[] = [
   {
     slug: 'multiple-calendars-by-text',
     href: '/multiple-calendars-by-text',
-    cardTitle: 'Work and personal calendars by text',
+    cardTitle: 'Manage multiple calendars by text',
     cardDescription:
       'Use Manoa across work, personal, and family calendars so the right calendar gets the event and the wrong one does not get ignored.',
     eyebrow: 'Multiple calendars by text',

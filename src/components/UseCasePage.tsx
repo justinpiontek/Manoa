@@ -148,8 +148,8 @@ export default function UseCasePage({
             <p className="use-case-panel-label">Start with Manoa</p>
             <h2 className="use-case-cta-title">Use the same signup flow you already have.</h2>
             <p className="use-case-copy">
-              Sign up once, connect Google Calendar or Outlook, and then handle this workflow by
-              text from your phone.
+              Sign up once, connect Google Calendar, Outlook, or Apple Calendar, and then handle
+              this workflow by text from your phone.
             </p>
             <div className="use-case-cta-list">
               <span>$19.99 per month</span>

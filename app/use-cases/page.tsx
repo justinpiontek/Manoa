@@ -5,7 +5,7 @@ import { useCases } from '@/src/lib/useCases'
 export const metadata: Metadata = {
   title: 'Use Cases | Manoa',
   description:
-    'Explore ways to use Manoa to schedule by text, get calendar reminders, and handle appointment changes without opening another app.',
+    'Explore ways to use Manoa to schedule by text, add events from screenshots and school flyers, get calendar reminders, and handle appointment changes without opening another app.',
 }
 
 export default function UseCasesPage() {
@@ -54,6 +54,13 @@ export default function UseCasesPage() {
               <span>
                 Start with reschedule appointments by text if the tricky part is changing
                 dentist, doctor, salon, or service appointments honestly.
+              </span>
+            </a>
+            <a className="use-case-link-card" href="/add-event-from-screenshot">
+              <strong>I need to add something from a screenshot or flyer</strong>
+              <span>
+                Start with add event from screenshot if the hard part is getting dates off an
+                invitation, appointment card, or school handout and onto the calendar quickly.
               </span>
             </a>
           </div>
