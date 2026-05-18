@@ -251,9 +251,82 @@ export const useCases: UseCase[] = [
       },
     ],
     relatedSlugs: [
+      'add-invitation-to-calendar-from-photo',
       'school-flyer-to-calendar',
       'schedule-by-text',
       'calendar-reminders-by-text',
+    ],
+  },
+  {
+    slug: 'add-invitation-to-calendar-from-photo',
+    href: '/add-invitation-to-calendar-from-photo',
+    cardTitle: 'Add an invitation to your calendar from a photo',
+    cardDescription:
+      'Send a graduation card, birthday invite, baby shower, wedding invite, or event flyer photo and let Manoa turn it into a calendar event by text.',
+    eyebrow: 'Invitation photo to calendar',
+    title: 'Add an invitation to your calendar from a photo by text.',
+    description:
+      'Manoa can read invitation photos and cards, pull out the event details, and help you add the date, time, and location to your calendar by text.',
+    intro:
+      'This page is for the real-world stuff that usually lives in a photo: graduation parties, birthday invitations, baby showers, wedding events, and printed cards. Send the image to Manoa and let it help turn that invite into a calendar event.',
+    exampleUser: 'send graduation invitation photo',
+    exampleManoa:
+      'I found Graduation Celebration for Sat, Jun 6 at 3:00 PM at 7619 River Ridge Road, Wabeno, WI. Which calendar should I put that on? 1. Home 2. Family 3. Work',
+    benefits: [
+      {
+        title: 'Use the invitation photo you already have',
+        body: 'Instead of retyping the event from a saved photo or screenshot, just send it to Manoa.',
+      },
+      {
+        title: 'Helpful for parties and family events',
+        body: 'This flow fits invitations that come from texts, print cards, screenshots, and social posts.',
+      },
+      {
+        title: 'Keep location and timing together',
+        body: 'Manoa can pull out the event name, time, and address so the calendar entry is more complete.',
+      },
+    ],
+    idealFor: [
+      'Parents and families saving invitation photos for birthdays, graduations, and school events.',
+      'People who get party and social-event details in texts or camera roll photos.',
+      'Anyone who wants invitations to become real calendar events before they get forgotten.',
+    ],
+    steps: [
+      {
+        title: '1. Send the invitation image',
+        body: 'Text Manoa the invitation photo, screenshot, or flyer instead of manually typing it in.',
+      },
+      {
+        title: '2. Pick the calendar',
+        body: 'If you use more than one calendar, Manoa asks where the event belongs.',
+      },
+      {
+        title: '3. Confirm the event details',
+        body: 'Once the date, time, and place look right, Manoa books the event on your connected calendar.',
+      },
+    ],
+    faqs: [
+      {
+        question: 'Can Manoa read invitation cards from a photo?',
+        answer: 'Yes. Invitation cards and photos are a strong fit for this image-to-calendar flow.',
+      },
+      {
+        question: 'What kinds of invitations work best?',
+        answer: 'Graduation parties, birthdays, showers, wedding events, and similar social invitations are all good fits.',
+      },
+      {
+        question: 'Will Manoa still ask before adding it?',
+        answer: 'Yes. Manoa reads the event details first, then asks before placing the event on your calendar.',
+      },
+      {
+        question: 'Can it include the location too?',
+        answer: 'Yes. When the address is readable in the image, Manoa can include it in the calendar event.',
+      },
+    ],
+    relatedSlugs: [
+      'add-event-from-screenshot',
+      'school-flyer-to-calendar',
+      'family-calendar-by-text',
     ],
   },
   {
@@ -324,8 +397,81 @@ export const useCases: UseCase[] = [
     ],
     relatedSlugs: [
       'add-event-from-screenshot',
+      'family-calendar-by-text',
       'multiple-calendars-by-text',
       'calendar-reminders-by-text',
+    ],
+  },
+  {
+    slug: 'family-calendar-by-text',
+    href: '/family-calendar-by-text',
+    cardTitle: 'Family calendar by text',
+    cardDescription:
+      'Use Manoa as a family calendar assistant by text for school events, sports, appointments, reminders, and the day-to-day schedule that families juggle.',
+    eyebrow: 'Family calendar by text',
+    title: 'Manage a family calendar by text.',
+    description:
+      'Manoa helps families keep up with school dates, sports, appointments, reminders, and day-to-day plans by letting you text the calendar instead of constantly reopening it.',
+    intro:
+      'If your calendar is full of school flyers, sports, appointments, and things other people text you at the last minute, Manoa fits that reality well. It can add events, send reminders, and help keep the family calendar visible by text.',
+    exampleUser: "What's on our schedule tomorrow?",
+    exampleManoa:
+      "Tomorrow: 8:00 AM Dentist Appointment (Family) 3:30 PM Soccer Practice (Family) 6:00 PM Parent Meeting (Home)",
+    benefits: [
+      {
+        title: 'Keep the family schedule visible',
+        body: 'Morning agenda texts and reminders help keep the day from disappearing into calendar clutter.',
+      },
+      {
+        title: 'Handle school and activity dates faster',
+        body: 'Send school flyers, invitations, and reminders instead of typing every family event by hand.',
+      },
+      {
+        title: 'Works across real calendars',
+        body: 'Use Manoa with your connected calendars while still keeping home, family, and work separated where it matters.',
+      },
+    ],
+    idealFor: [
+      'Parents juggling school, sports, appointments, activities, and reminders across the week.',
+      'Families who already live in text messages and want the calendar to feel easier to manage.',
+      'People who want a family calendar assistant without another app to learn.',
+    ],
+    steps: [
+      {
+        title: '1. Connect the calendars you use',
+        body: 'Connect the home, family, or personal calendars you want Manoa to help with.',
+      },
+      {
+        title: '2. Text Manoa what changed',
+        body: 'Schedule something new, ask what is coming up, or send a flyer or invitation photo.',
+      },
+      {
+        title: '3. Let reminders keep the day visible',
+        body: 'Use morning agenda texts and reminders so family plans stay in front of you.',
+      },
+    ],
+    faqs: [
+      {
+        question: 'Can Manoa help with a family calendar?',
+        answer: 'Yes. Family scheduling is one of the clearest fits for Manoa because so much of that work already happens by text.',
+      },
+      {
+        question: 'Can I add school and sports events by photo?',
+        answer: 'Yes. Manoa can read screenshots, school flyers, invitations, and reminder-style images.',
+      },
+      {
+        question: 'Can Manoa send reminders for family events?',
+        answer: 'Yes. Morning agenda texts and short reminders are part of the product.',
+      },
+      {
+        question: 'Do I need to switch away from my current calendar?',
+        answer: 'No. Manoa works on top of your connected calendars instead of replacing them.',
+      },
+    ],
+    relatedSlugs: [
+      'school-flyer-to-calendar',
+      'add-invitation-to-calendar-from-photo',
+      'multiple-calendars-by-text',
     ],
   },
   {
@@ -400,6 +546,78 @@ export const useCases: UseCase[] = [
       'schedule-by-text',
       'calendar-reminders-by-text',
       'google-calendar-by-text',
+    ],
+  },
+  {
+    slug: 'text-to-calendar-app',
+    href: '/text-to-calendar-app',
+    cardTitle: 'Text to calendar app',
+    cardDescription:
+      'Use Manoa as a text to calendar app so you can schedule, move, and manage events by text instead of opening a traditional calendar app every time.',
+    eyebrow: 'Text to calendar app',
+    title: 'Use a text to calendar app instead of opening your calendar.',
+    description:
+      'Manoa is a text to calendar app for people who would rather send a message than keep opening a full calendar app just to book, move, or check an event.',
+    intro:
+      'The basic promise is simple: text what you need, get a clear answer back, and keep your real calendar updated underneath. Manoa fits the people who already live in messages and want their calendar to feel lighter.',
+    exampleUser: 'Schedule lunch Monday at noon',
+    exampleManoa:
+      'I found three good times. 1. Mon 12:00 PM on Home 2. Mon 1:00 PM on Home 3. Tue 12:00 PM on Home. Reply 1, 2, or 3.',
+    benefits: [
+      {
+        title: 'Fewer taps for small calendar jobs',
+        body: 'Quick scheduling and reminder tasks can happen in a text thread instead of a full app flow.',
+      },
+      {
+        title: 'Works with your real calendar',
+        body: 'Manoa sits on top of your connected calendar instead of asking you to start over somewhere new.',
+      },
+      {
+        title: 'More than just booking',
+        body: 'You can schedule, move, cancel, ask for your agenda, and add events from photos or screenshots.',
+      },
+    ],
+    idealFor: [
+      'People who want a text to calendar app instead of another productivity app with menus and tabs.',
+      'Busy users who already live in SMS and want a lighter way to manage events.',
+      'Anyone who wants scheduling, reminders, and screenshot-to-calendar help in one thread.',
+    ],
+    steps: [
+      {
+        title: '1. Connect your calendar',
+        body: 'Connect Google Calendar, Outlook, or Apple Calendar once during setup.',
+      },
+      {
+        title: '2. Text what you need',
+        body: 'Schedule, move, cancel, or ask about your calendar in normal language.',
+      },
+      {
+        title: '3. Confirm by text',
+        body: 'Reply with the option you want and Manoa updates the connected calendar.',
+      },
+    ],
+    faqs: [
+      {
+        question: 'Is Manoa a text to calendar app?',
+        answer: 'Yes. Manoa is built around texting your calendar instead of opening a traditional calendar app for every small change.',
+      },
+      {
+        question: 'Can it work with Google Calendar, Outlook, and Apple Calendar?',
+        answer: 'Yes. Manoa supports Google Calendar, Outlook, and Apple Calendar connections.',
+      },
+      {
+        question: 'Can it add events from screenshots too?',
+        answer: 'Yes. Manoa can read screenshots, invitation photos, and school flyers as part of the same workflow.',
+      },
+      {
+        question: 'Do I still need to confirm before it books something?',
+        answer: 'Yes. Manoa keeps the flow clear by asking you to confirm the option you want.',
+      },
+    ],
+    relatedSlugs: [
+      'schedule-by-text',
+      'add-event-from-screenshot',
+      'multiple-calendars-by-text',
     ],
   },
   {

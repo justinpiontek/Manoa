@@ -1615,6 +1615,15 @@ footer {
   margin-top: 18px;
 }
 
+.hero-example-bubble strong,
+.hero-example-bubble span {
+  display: block;
+}
+
+.hero-example-bubble strong {
+  margin-bottom: 6px;
+}
+
 .use-case-benefit-grid,
 .use-case-list-grid,
 .use-case-faq-grid,
