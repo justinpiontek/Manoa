@@ -526,6 +526,10 @@ const transcriptDateAnywherePattern = new RegExp(
   'ig',
 )
 const transcriptWeekdayOnlyPattern = new RegExp(`^\\s*(?:${transcriptWeekdaySource})\\s*$`, 'i')
+const headingPositivePattern =
+  /\b(night|party|celebration|graduation|ceremony|meeting|game|camp|recital|concert|show|showcase|festival|fair|picnic|lunch|dinner|breakfast|open house|clinic|workshop|class|tournament|practice|birthday|reunion|conference|family|no school)\b/i
+const headingNegativePattern =
+  /\b(language|culture|native americans|advisory|association|foundation|office|department|district|committee|library|museum|center|centre|campus|tribal|nation|council|wisconsin)\b/i
 
 function normalizeTranscriptLine(line: string) {
   return cleanText(
@@ -649,6 +653,40 @@ function looksTranscriptHeading(line: string) {
   return stripped === stripped.toUpperCase()
 }
 
+function scoreHeadingCandidate(line: string) {
+  const normalized = cleanText(line)
+  if (!normalized) return Number.NEGATIVE_INFINITY
+  if (/\d/.test(normalized)) return -4
+
+  const words = normalized.split(/\s+/)
+  let score = 0
+
+  if (words.length >= 1 && words.length <= 4) score += 2
+  if (normalized.length >= 6 && normalized.length <= 28) score += 2
+  if (headingPositivePattern.test(normalized)) score += 6
+  if (headingNegativePattern.test(normalized)) score -= 5
+  if (looksLocationLine(normalized) || looksAddressLikeLine(normalized)) score -= 6
+  if (isGenericTranscriptHeading(normalized)) score -= 6
+
+  return score
+}
+
+function chooseBestHeadingCandidate(candidates: string[]) {
+  let best: string | null = null
+  let bestScore = Number.NEGATIVE_INFINITY
+
+  for (const candidate of candidates) {
+    const score = scoreHeadingCandidate(candidate)
+    if (score > bestScore) {
+      best = candidate
+      bestScore = score
+    }
+  }
+
+  if (best && bestScore > 0) return best
+  return candidates[candidates.length - 1] || null
+}
+
 function parseTranscriptEvents(outputText: string, timeZone: string) {
   const lines = outputText
     .split(/\r?\n+/)
@@ -658,11 +696,17 @@ function parseTranscriptEvents(outputText: string, timeZone: string) {
 
   const events: CalendarImageEvent[] = []
   let currentHeading: string | null = null
+  let recentHeadings: string[] = []
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index]
     if (looksTranscriptHeading(line)) {
-      currentHeading = isGenericTranscriptHeading(line) ? null : line
+      if (isGenericTranscriptHeading(line)) {
+        currentHeading = null
+      } else {
+        recentHeadings = [...recentHeadings.slice(-4), line]
+        currentHeading = chooseBestHeadingCandidate(recentHeadings)
+      }
       continue
     }
 
@@ -728,6 +772,9 @@ function parseTranscriptEvents(outputText: string, timeZone: string) {
       notes,
       smsText,
     })
+
+    recentHeadings = []
+    currentHeading = null
   }
 
   return events
@@ -748,17 +795,20 @@ function parseTranscriptEventsFromBlocks(outputText: string, timeZone: string) {
     .filter(Boolean)
     .filter((line) => !/^no_event$/i.test(line))
 
-  const headingCandidates = lines.filter(looksTranscriptHeading).map((line) =>
-    isGenericTranscriptHeading(line) ? null : line,
-  )
   let currentHeading: string | null = null
+  let recentHeadings: string[] = []
   const events: CalendarImageEvent[] = []
   const seen = new Set<string>()
 
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
     const line = lines[lineIndex]
     if (looksTranscriptHeading(line)) {
-      currentHeading = isGenericTranscriptHeading(line) ? null : line
+      if (isGenericTranscriptHeading(line)) {
+        currentHeading = null
+      } else {
+        recentHeadings = [...recentHeadings.slice(-4), line]
+        currentHeading = chooseBestHeadingCandidate(recentHeadings)
+      }
       continue
     }
 
@@ -841,6 +891,9 @@ function parseTranscriptEventsFromBlocks(outputText: string, timeZone: string) {
           : `add ${title} on ${displayDate(dateYmd)} at ${displayTime(time24h)}${location ? ` at ${location}` : ''}${visibleTimeRange?.durationMinutes ? ` for ${visibleTimeRange.durationMinutes} minutes` : ''}`,
       })
     }
+
+    recentHeadings = []
+    currentHeading = null
   }
 
   return events
