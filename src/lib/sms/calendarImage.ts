@@ -485,7 +485,7 @@ function parseLineItemToEvent(line: string, timeZone: string): CalendarImageEven
   if (!isAllDay && !time24h) return null
 
   const dateYmd = ymdFromDate(date, timeZone)
-  const location = locationOrNotes || null
+  const location = locationOrNotes || extractLocationFromFreeformText(locationOrNotes) || null
   const smsText = isAllDay
     ? `add ${title} on ${displayDate(dateYmd)} all day${location ? ` at ${location}` : ''}`
     : `add ${title} on ${displayDate(dateYmd)} at ${displayTime(time24h)}${location ? ` at ${location}` : ''}${range?.durationMinutes ? ` for ${range.durationMinutes} minutes` : ''}`
@@ -566,6 +566,47 @@ function looksAddressLikeLine(line: string) {
   )
 }
 
+function normalizeLocationText(text: string) {
+  return cleanText(
+    text
+      .replace(/[•|]+/g, ', ')
+      .replace(/\s+-\s+/g, ' - ')
+      .replace(/\s*,\s*/g, ', '),
+  )
+}
+
+function extractAddressFromText(text: string) {
+  const normalized = normalizeLocationText(text)
+  const match = normalized.match(
+    /\b\d{2,}\s+[A-Za-z0-9.'-]+(?:\s+[A-Za-z0-9.'-]+){0,8}\s+(?:street|st|road|rd|drive|dr|avenue|ave|boulevard|blvd|lane|ln|court|ct|highway|hwy|parkway|pkwy)\b(?:[^.;\n]*)/i,
+  )
+  return match ? cleanText(match[0]) : null
+}
+
+function extractLocationFromFreeformText(text: string) {
+  const lines = text
+    .split(/\r?\n+/)
+    .map((line) => normalizeLocationText(line))
+    .filter(Boolean)
+
+  if (!lines.length) return null
+
+  const directAddress = extractAddressFromText(lines.join('\n'))
+  const venueIndex = lines.findIndex((line) => looksLocationLine(line) && !looksTimeOnlyLine(line))
+
+  if (directAddress && venueIndex >= 0) {
+    const venue = lines[venueIndex]
+    if (venue && !venue.includes(directAddress)) {
+      return cleanText(`${venue}, ${directAddress}`)
+    }
+  }
+
+  if (directAddress) return directAddress
+
+  const venueLine = lines.find((line) => looksLocationLine(line) && !looksTimeOnlyLine(line))
+  return venueLine || null
+}
+
 function extractLocationFromSupportingLines(lines: string[]) {
   const startIndex = lines.findIndex((line) => looksLocationLine(line) || looksAddressLikeLine(line))
   if (startIndex === -1) return null
@@ -585,8 +626,8 @@ function extractLocationFromSupportingLines(lines: string[]) {
     collected.push(line)
   }
 
-  const combined = cleanText(collected.join(', '))
-  return combined || null
+  const combined = normalizeLocationText(collected.join(', '))
+  return combined || extractLocationFromFreeformText(lines.join('\n'))
 }
 
 function extractVisibleTimes(text: string) {
@@ -903,7 +944,12 @@ function calendarImageItemToEvent(item: CalendarImageItemPayload): CalendarImage
     (cleanText(item.organizer_or_source)
       ? `${cleanText(item.organizer_or_source)} ${item.item_type || 'event'}`
       : item.item_type || 'event')
-  const location = cleanText(item.location || item.organizer_or_source)
+  const location =
+    cleanText(item.location) ||
+    extractLocationFromFreeformText(
+      [item.location, item.notes, item.organizer_or_source].filter(Boolean).join('\n'),
+    ) ||
+    cleanText(item.organizer_or_source)
   const sourceText = [title, location, cleanText(item.organizer_or_source), cleanText(item.notes)]
     .filter(Boolean)
     .join(' ')
