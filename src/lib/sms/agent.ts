@@ -296,6 +296,12 @@ function calendarChoiceReply({
   }
 }
 
+function eventTitleCalendarChoiceHeading(title: string | null | undefined) {
+  const cleaned = (title || '').replace(/\s+/g, ' ').trim()
+  if (!cleaned) return 'Which calendar should I put that on?'
+  return `Which calendar should I put "${cleaned}" on?`
+}
+
 function actionChoiceList(lines: string[]) {
   return lines.join('\n')
 }
@@ -5562,7 +5568,7 @@ export async function handleIncomingSms({
         heading:
           placement.matches.length === 0 && !placement.genericHint
             ? `I couldn't tell which calendar "${scheduleIntent.calendarHint}" means. Which calendar should I use?`
-            : 'Which calendar should I put that on?',
+            : eventTitleCalendarChoiceHeading(scheduleIntent.title),
         calendars: calendarChoices,
       })
 

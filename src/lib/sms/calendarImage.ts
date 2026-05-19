@@ -74,6 +74,7 @@ function structuredImageInstructions(timeZone: string) {
     'For poster-style flyers, use the main event name or headline as the title, not a weekday or a date fragment.\n' +
     'Items like "No School", birthdays, last day of school, graduations, games, and ceremonies should each become their own event if they have a date.\n' +
     'For reservations, hotel stays, campground stays, and travel confirmations, use the arrival date as the start date and the departure date as the final included calendar date when no time is shown.\n' +
+    'If a timed event shows a range like "5:00 - 7:00 PM", use the first time as the event start and the full span as the duration.\n' +
     'If no event time is shown but the item clearly spans full dates, mark it as all-day.\n' +
     'If a month/day/time is clear but the year is missing, infer the next upcoming matching year from the current local date.\n' +
     'If the image shows multiple clear events, return them all.\n' +
@@ -91,6 +92,7 @@ function multiEventImageInstructions(timeZone: string) {
     'Extract every separate dated calendar item you can clearly read, not just the most prominent one.\n' +
     'For poster-style flyers, use the main event name or headline as the title, not a weekday or a date fragment.\n' +
     'Each dated line or block should become its own event.\n' +
+    'If a timed event shows a range like "5:00 - 7:00 PM", use the first time as the event start and the full span as the duration.\n' +
     'Examples include no school days, birthdays, graduations, ceremonies, games, deadlines, arrival dates, and departure dates.\n' +
     'If no event time is shown, mark that event as all-day.\n' +
     'If an item spans multiple dates, include both the start date and the end date.\n' +
@@ -111,6 +113,7 @@ function fallbackImageInstructions(timeZone: string) {
     'For flyers, newsletters, school notices, church bulletins, and "important dates" lists, output one separate line for each dated event you can clearly read.\n' +
     'For poster-style flyers, use the main event name or headline as the title, not a weekday or a date fragment.\n' +
     'For reservations, hotel stays, campground stays, and travel confirmations, include both arrival and departure dates.\n' +
+    'If a timed event shows a range like "5:00 - 7:00 PM", use the first time as the event start and include the duration instead of the ending time as the start.\n' +
     'If no time is shown and the event clearly spans full dates, use "all day".\n' +
     'Ignore app chrome, chat bubbles, and decorative text unless they contain the event itself.\n' +
     'Each line must start with "add " for fixed/confirmed events or "schedule " for tentative ones.\n' +
@@ -129,6 +132,7 @@ function lineItemImageInstructions(timeZone: string) {
     'For poster-style flyers, use the main event name or headline as the title, not a weekday or a date fragment.\n' +
     'Return one line per clear dated event using this exact format:\n' +
     'DATE || TITLE || TIME_OR_ALL_DAY || LOCATION_OR_NOTES\n' +
+    'If the flyer shows a time range, put the full range in TIME_OR_ALL_DAY, not just the ending time.\n' +
     'Use compact numeric dates like 5/20/2026.\n' +
     'If the event has no clear time, write ALL_DAY in the third field.\n' +
     'If a section heading provides the event title, use it as the title.\n' +
@@ -315,6 +319,67 @@ function parseTimeTo24h(value: string | null | undefined) {
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
 }
 
+function parseClockTokenToMinutes(token: string, meridiem: 'am' | 'pm') {
+  const match = cleanText(token).toLowerCase().match(/^(\d{1,2})(?::(\d{2}))?$/)
+  if (!match) return null
+  let hour = Number(match[1]) % 12
+  const minute = Number(match[2] || '0')
+  if (meridiem === 'pm') hour += 12
+  return hour * 60 + minute
+}
+
+function minutesTo24h(totalMinutes: number) {
+  const minutes = ((totalMinutes % (24 * 60)) + 24 * 60) % (24 * 60)
+  const hour = Math.floor(minutes / 60)
+  const minute = minutes % 60
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
+
+function extractTimeRangeDetails(text: string) {
+  const match = text.match(
+    /\b(\d{1,2}(?::\d{2})?)\s*(am|pm)?\s*(?:-|–|—|to)\s*(\d{1,2}(?::\d{2})?)\s*(am|pm)?\b/i,
+  )
+  if (!match) return null
+
+  let startSuffix = (match[2]?.toLowerCase() as 'am' | 'pm' | undefined) || undefined
+  let endSuffix = (match[4]?.toLowerCase() as 'am' | 'pm' | undefined) || undefined
+  if (!startSuffix && !endSuffix) return null
+
+  const startHour = Number((match[1].match(/^\d{1,2}/) || ['0'])[0])
+  const endHour = Number((match[3].match(/^\d{1,2}/) || ['0'])[0])
+
+  if (!startSuffix && endSuffix) {
+    startSuffix = endSuffix
+    if (startHour > endHour) {
+      startSuffix = endSuffix === 'pm' ? 'am' : 'pm'
+    }
+  }
+
+  if (!endSuffix && startSuffix) {
+    endSuffix = startSuffix
+  }
+
+  if (!startSuffix || !endSuffix) return null
+
+  const startMinutes = parseClockTokenToMinutes(match[1], startSuffix)
+  let endMinutes = parseClockTokenToMinutes(match[3], endSuffix)
+  if (startMinutes == null || endMinutes == null) return null
+
+  while (endMinutes <= startMinutes) {
+    endMinutes += 12 * 60
+    if (endMinutes - startMinutes > 12 * 60) break
+  }
+
+  const durationMinutes = endMinutes - startMinutes
+  if (durationMinutes <= 0) return null
+
+  return {
+    startTime24h: minutesTo24h(startMinutes),
+    endTime24h: minutesTo24h(endMinutes),
+    durationMinutes,
+  }
+}
+
 function parseFallbackLineToEvent(line: string, timeZone: string): CalendarImageEvent | null {
   const cleaned = cleanText(line.replace(/^[-*]\s+/, '').replace(/[.]+$/, ''))
   const prefixMatch = cleaned.match(/^(add|schedule)\s+(.+)$/i)
@@ -413,7 +478,9 @@ function parseLineItemToEvent(line: string, timeZone: string): CalendarImageEven
   const title = parts[1] || 'event'
   const timeOrAllDay = (parts[2] || '').toUpperCase()
   const locationOrNotes = parts[3] || ''
-  const time24h = timeOrAllDay === 'ALL_DAY' ? null : parseTimeTo24h(parts[2])
+  const range = timeOrAllDay === 'ALL_DAY' ? null : extractTimeRangeDetails(parts[2])
+  const time24h =
+    timeOrAllDay === 'ALL_DAY' ? null : range?.startTime24h || parseTimeTo24h(parts[2])
   const isAllDay = timeOrAllDay === 'ALL_DAY'
   if (!isAllDay && !time24h) return null
 
@@ -421,7 +488,7 @@ function parseLineItemToEvent(line: string, timeZone: string): CalendarImageEven
   const location = locationOrNotes || null
   const smsText = isAllDay
     ? `add ${title} on ${displayDate(dateYmd)} all day${location ? ` at ${location}` : ''}`
-    : `add ${title} on ${displayDate(dateYmd)} at ${displayTime(time24h)}${location ? ` at ${location}` : ''}`
+    : `add ${title} on ${displayDate(dateYmd)} at ${displayTime(time24h)}${location ? ` at ${location}` : ''}${range?.durationMinutes ? ` for ${range.durationMinutes} minutes` : ''}`
 
   return {
     title,
@@ -429,7 +496,7 @@ function parseLineItemToEvent(line: string, timeZone: string): CalendarImageEven
     endDateYmd: null,
     time24h,
     isAllDay,
-    durationMinutes: null,
+    durationMinutes: range?.durationMinutes || null,
     location,
     organizerOrSource: null,
     itemType: 'other',
@@ -564,7 +631,9 @@ function parseTranscriptEvents(outputText: string, timeZone: string) {
 
     if (!title) title = currentHeading || 'event'
 
-    const visibleTimes = extractVisibleTimes([line, ...supportingLines].join(' '))
+    const detailText = [line, ...supportingLines].join(' ')
+    const visibleTimeRange = extractTimeRangeDetails(detailText)
+    const visibleTimes = visibleTimeRange ? [visibleTimeRange.startTime24h] : extractVisibleTimes(detailText)
     const locationLine = supportingLines.find(looksLocationLine) || null
     const location = locationLine
       ? supportingLines
@@ -577,7 +646,7 @@ function parseTranscriptEvents(outputText: string, timeZone: string) {
     const dateYmd = ymdFromDate(date, timeZone)
     const smsText = isAllDay
       ? `add ${title} on ${displayDate(dateYmd)} all day${location ? ` at ${location}` : ''}`
-      : `add ${title} on ${displayDate(dateYmd)} at ${displayTime(time24h)}${location ? ` at ${location}` : ''}`
+      : `add ${title} on ${displayDate(dateYmd)} at ${displayTime(time24h)}${location ? ` at ${location}` : ''}${visibleTimeRange?.durationMinutes ? ` for ${visibleTimeRange.durationMinutes} minutes` : ''}`
 
     events.push({
       title,
@@ -585,7 +654,7 @@ function parseTranscriptEvents(outputText: string, timeZone: string) {
       endDateYmd: null,
       time24h,
       isAllDay,
-      durationMinutes: null,
+      durationMinutes: visibleTimeRange?.durationMinutes || null,
       location,
       organizerOrSource: null,
       itemType: 'school',
@@ -677,7 +746,9 @@ function parseTranscriptEventsFromBlocks(outputText: string, timeZone: string) {
 
       if (!title) title = heading || 'event'
 
-      const visibleTimes = extractVisibleTimes([remainder, ...supportingLines].join(' '))
+      const detailText = [remainder, ...supportingLines].join(' ')
+      const visibleTimeRange = extractTimeRangeDetails(detailText)
+      const visibleTimes = visibleTimeRange ? [visibleTimeRange.startTime24h] : extractVisibleTimes(detailText)
       const locationLine = supportingLines.find(looksLocationLine) || null
       const location = locationLine
         ? supportingLines
@@ -698,7 +769,7 @@ function parseTranscriptEventsFromBlocks(outputText: string, timeZone: string) {
         endDateYmd: null,
         time24h,
         isAllDay,
-        durationMinutes: null,
+        durationMinutes: visibleTimeRange?.durationMinutes || null,
         location,
         organizerOrSource: null,
         itemType: 'school',
@@ -707,7 +778,7 @@ function parseTranscriptEventsFromBlocks(outputText: string, timeZone: string) {
         notes,
         smsText: isAllDay
           ? `add ${title} on ${displayDate(dateYmd)} all day${location ? ` at ${location}` : ''}`
-          : `add ${title} on ${displayDate(dateYmd)} at ${displayTime(time24h)}${location ? ` at ${location}` : ''}`,
+          : `add ${title} on ${displayDate(dateYmd)} at ${displayTime(time24h)}${location ? ` at ${location}` : ''}${visibleTimeRange?.durationMinutes ? ` for ${visibleTimeRange.durationMinutes} minutes` : ''}`,
       })
     }
   }
@@ -806,7 +877,6 @@ export function calendarImagePayloadToEvents(payload: CalendarImagePayload): Cal
 function calendarImageItemToEvent(item: CalendarImageItemPayload): CalendarImageEvent | null {
   const date = displayDate(item.date_ymd)
   const endDate = displayDate(item.end_date_ymd)
-  const time = displayTime(item.time_24h)
   if (!date) return null
 
   const title =
@@ -818,19 +888,29 @@ function calendarImageItemToEvent(item: CalendarImageItemPayload): CalendarImage
   const sourceText = [title, location, cleanText(item.organizer_or_source), cleanText(item.notes)]
     .filter(Boolean)
     .join(' ')
+  const visibleTimeRange = extractTimeRangeDetails(sourceText)
   const looksTravelReservation =
     item.item_type === 'travel' || looksTravelReservationText(sourceText)
   const hasDateRange = Boolean(endDate && endDate !== date)
-  const isAllDay = Boolean(item.is_all_day || (looksTravelReservation && hasDateRange))
+  const isAllDay = Boolean(
+    (item.is_all_day || (looksTravelReservation && hasDateRange)) &&
+      !visibleTimeRange,
+  )
   const isConfirmedOrFixed = Boolean(
     item.is_confirmed_or_fixed ||
       (looksTravelReservation &&
         /\b(reservation|confirmed|confirmation|itinerary|booking|arrival|departure)\b/i.test(sourceText)),
   )
+  const resolvedTime = isAllDay ? null : item.time_24h || visibleTimeRange?.startTime24h || null
+  const resolvedDuration =
+    item.duration_minutes && item.duration_minutes > 0
+      ? item.duration_minutes
+      : visibleTimeRange?.durationMinutes || null
+  const time = displayTime(resolvedTime)
   if (!time && !isAllDay) return null
 
-  const duration = item.duration_minutes && item.duration_minutes > 0
-    ? ` for ${item.duration_minutes} minutes`
+  const duration = resolvedDuration && resolvedDuration > 0
+    ? ` for ${resolvedDuration} minutes`
     : ''
 
   const prefix = isConfirmedOrFixed ? 'add' : 'schedule'
@@ -842,9 +922,9 @@ function calendarImageItemToEvent(item: CalendarImageItemPayload): CalendarImage
     title,
     dateYmd: item.date_ymd as string,
     endDateYmd: item.end_date_ymd || null,
-    time24h: isAllDay ? null : item.time_24h || null,
+    time24h: isAllDay ? null : resolvedTime,
     isAllDay,
-    durationMinutes: item.duration_minutes,
+    durationMinutes: resolvedDuration,
     location: location || null,
     organizerOrSource: cleanText(item.organizer_or_source) || null,
     itemType: item.item_type,
