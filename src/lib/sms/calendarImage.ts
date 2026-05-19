@@ -71,6 +71,7 @@ function structuredImageInstructions(timeZone: string) {
     'Focus on the event details, not the surrounding app chrome.\n' +
     'For screenshots of a single calendar item or invitation, prefer the obvious main event.\n' +
     'For flyers, newsletters, school notices, church bulletins, and "important dates" lists, extract every separate dated event line you can clearly read.\n' +
+    'For poster-style flyers, use the main event name or headline as the title, not a weekday or a date fragment.\n' +
     'Items like "No School", birthdays, last day of school, graduations, games, and ceremonies should each become their own event if they have a date.\n' +
     'For reservations, hotel stays, campground stays, and travel confirmations, use the arrival date as the start date and the departure date as the final included calendar date when no time is shown.\n' +
     'If no event time is shown but the item clearly spans full dates, mark it as all-day.\n' +
@@ -88,6 +89,7 @@ function multiEventImageInstructions(timeZone: string) {
     `Current local date: ${currentLocalDateString(timeZone)}.\n` +
     'This image may contain a flyer, newsletter, school notice, church bulletin, travel confirmation, or an "important dates" list.\n' +
     'Extract every separate dated calendar item you can clearly read, not just the most prominent one.\n' +
+    'For poster-style flyers, use the main event name or headline as the title, not a weekday or a date fragment.\n' +
     'Each dated line or block should become its own event.\n' +
     'Examples include no school days, birthdays, graduations, ceremonies, games, deadlines, arrival dates, and departure dates.\n' +
     'If no event time is shown, mark that event as all-day.\n' +
@@ -107,6 +109,7 @@ function fallbackImageInstructions(timeZone: string) {
     'Read the image and turn each clear event into one direct Manoa command line.\n' +
     'This includes screenshots of calendar events, invitation cards, reminder cards, email screenshots, and text screenshots.\n' +
     'For flyers, newsletters, school notices, church bulletins, and "important dates" lists, output one separate line for each dated event you can clearly read.\n' +
+    'For poster-style flyers, use the main event name or headline as the title, not a weekday or a date fragment.\n' +
     'For reservations, hotel stays, campground stays, and travel confirmations, include both arrival and departure dates.\n' +
     'If no time is shown and the event clearly spans full dates, use "all day".\n' +
     'Ignore app chrome, chat bubbles, and decorative text unless they contain the event itself.\n' +
@@ -123,6 +126,7 @@ function lineItemImageInstructions(timeZone: string) {
     `Current timezone: ${timeZone}.\n` +
     `Current local date: ${currentLocalDateString(timeZone)}.\n` +
     'This image may be a school flyer, preschool notice, church bulletin, newsletter, invitation, or important-dates sheet.\n' +
+    'For poster-style flyers, use the main event name or headline as the title, not a weekday or a date fragment.\n' +
     'Return one line per clear dated event using this exact format:\n' +
     'DATE || TITLE || TIME_OR_ALL_DAY || LOCATION_OR_NOTES\n' +
     'Use compact numeric dates like 5/20/2026.\n' +
@@ -454,6 +458,7 @@ const transcriptDateAnywherePattern = new RegExp(
   `(?:${transcriptWeekdaySource}\\s+)?((?:${transcriptMonthNameSource})\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s+\\d{4})?|\\d{1,2}(?:st|nd|rd|th)?\\s+(?:of\\s+)?(?:${transcriptMonthNameSource})\\.?\\b(?:,?\\s+\\d{4})?)\\*?`,
   'ig',
 )
+const transcriptWeekdayOnlyPattern = new RegExp(`^\\s*(?:${transcriptWeekdaySource})\\s*$`, 'i')
 
 function normalizeTranscriptLine(line: string) {
   return cleanText(
@@ -469,8 +474,37 @@ function isGenericTranscriptHeading(line: string) {
   return /\b(important dates?|preschool|school calendar|newsletter|upcoming events?)\b/i.test(line)
 }
 
+function isStandaloneWeekdayLine(line: string) {
+  return transcriptWeekdayOnlyPattern.test(line)
+}
+
+function looksTimeOnlyLine(line: string) {
+  const cleaned = line.toLowerCase().replace(/\s+/g, ' ').trim()
+  if (!cleaned) return false
+  if (!/\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/i.test(cleaned)) return false
+  return !/[a-z]{3,}.*\b(?:street|st|road|rd|drive|dr|avenue|ave|boulevard|blvd|lane|ln|court|ct|highway|hwy|parkway|pkwy|suite|level|room|center|centre|library|museum|school|church|gym|field|park)\b/i.test(
+    cleaned,
+  )
+}
+
+function looksLocationLine(line: string) {
+  return /\b(center|centre|library|museum|school|church|gym|field|park|hall|campus|campground|auditorium|room|suite|level|drive|dr|street|st|road|rd|avenue|ave|boulevard|blvd|lane|ln|court|ct|highway|hwy|wisconsin|wi)\b/i.test(
+    line,
+  )
+}
+
+function extractVisibleTimes(text: string) {
+  return Array.from(
+    new Set(
+      (text.match(/\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/gi) || [])
+        .map((value) => parseTimeTo24h(value))
+        .filter((value): value is string => Boolean(value)),
+    ),
+  )
+}
+
 function looksTranscriptHeading(line: string) {
-  if (!line || parseExplicitDate(line)) return false
+  if (!line || parseExplicitDate(line) || isStandaloneWeekdayLine(line)) return false
   const stripped = line.replace(/[!:.]/g, '').trim()
   if (!stripped) return false
   const lettersOnly = stripped.replace(/[^A-Za-z]/g, '')
@@ -488,7 +522,8 @@ function parseTranscriptEvents(outputText: string, timeZone: string) {
   const events: CalendarImageEvent[] = []
   let currentHeading: string | null = null
 
-  for (const line of lines) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]
     if (looksTranscriptHeading(line)) {
       currentHeading = isGenericTranscriptHeading(line) ? null : line
       continue
@@ -502,12 +537,22 @@ function parseTranscriptEvents(outputText: string, timeZone: string) {
     const date = parseExplicitDate(dateText, timeZone)
     if (!date) continue
 
+    const supportingLines: string[] = []
+    for (let offset = index + 1; offset < lines.length && supportingLines.length < 3; offset += 1) {
+      const candidate = lines[offset]
+      if (!candidate) break
+      if (looksTranscriptHeading(candidate)) break
+      if (candidate.match(transcriptDatePrefixPattern)) break
+      supportingLines.push(candidate)
+    }
+
+    const supportingText = [remainder, ...supportingLines].filter(Boolean).join(' ')
     let title = ''
     let notes: string | null = null
 
-    if (remainder.startsWith('(') && currentHeading) {
+    if ((remainder.startsWith('(') || !remainder || looksTimeOnlyLine(remainder) || looksLocationLine(remainder)) && currentHeading) {
       title = currentHeading
-      notes = remainder.replace(/^\((.*)\)$/, '$1') || remainder
+      notes = cleanText(remainder.replace(/^\((.*)\)$/, '$1') || supportingText) || null
     } else if (remainder.includes('(')) {
       const [beforeParen, ...rest] = remainder.split('(')
       title = cleanText(beforeParen)
@@ -519,20 +564,20 @@ function parseTranscriptEvents(outputText: string, timeZone: string) {
 
     if (!title) title = currentHeading || 'event'
 
-    const visibleTimes = Array.from(
-      new Set(
-        (line.match(/\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/gi) || [])
-          .map((value) => parseTimeTo24h(value))
-          .filter((value): value is string => Boolean(value)),
-      ),
-    )
+    const visibleTimes = extractVisibleTimes([line, ...supportingLines].join(' '))
+    const locationLine = supportingLines.find(looksLocationLine) || null
+    const location = locationLine
+      ? supportingLines
+          .filter((candidate) => candidate === locationLine || /^\d/.test(candidate))
+          .join(' ')
+      : null
 
     const isAllDay = visibleTimes.length === 0
     const time24h = isAllDay ? null : visibleTimes[0]
     const dateYmd = ymdFromDate(date, timeZone)
     const smsText = isAllDay
-      ? `add ${title} on ${displayDate(dateYmd)} all day`
-      : `add ${title} on ${displayDate(dateYmd)} at ${displayTime(time24h)}`
+      ? `add ${title} on ${displayDate(dateYmd)} all day${location ? ` at ${location}` : ''}`
+      : `add ${title} on ${displayDate(dateYmd)} at ${displayTime(time24h)}${location ? ` at ${location}` : ''}`
 
     events.push({
       title,
@@ -541,7 +586,7 @@ function parseTranscriptEvents(outputText: string, timeZone: string) {
       time24h,
       isAllDay,
       durationMinutes: null,
-      location: null,
+      location,
       organizerOrSource: null,
       itemType: 'school',
       isConfirmedOrFixed: true,
@@ -576,7 +621,8 @@ function parseTranscriptEventsFromBlocks(outputText: string, timeZone: string) {
   const events: CalendarImageEvent[] = []
   const seen = new Set<string>()
 
-  for (const line of lines) {
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex]
     if (looksTranscriptHeading(line)) {
       currentHeading = isGenericTranscriptHeading(line) ? null : line
       continue
@@ -602,12 +648,21 @@ function parseTranscriptEventsFromBlocks(outputText: string, timeZone: string) {
         prefix && looksTranscriptHeading(prefix) && !isGenericTranscriptHeading(prefix) ? prefix : null
       const heading = inlineHeading || currentHeading || null
 
+      const supportingLines: string[] = []
+      for (let offset = lineIndex + 1; offset < lines.length && supportingLines.length < 3; offset += 1) {
+        const candidate = lines[offset]
+        if (!candidate) break
+        if (looksTranscriptHeading(candidate)) break
+        if (candidate.match(transcriptDatePrefixPattern)) break
+        supportingLines.push(candidate)
+      }
+
       let title = ''
       let notes: string | null = null
 
-      if (remainder.startsWith('(') && heading) {
+      if ((remainder.startsWith('(') || !remainder || looksTimeOnlyLine(remainder) || looksLocationLine(remainder)) && heading) {
         title = heading
-        notes = remainder.replace(/^\((.*)\)$/, '$1') || remainder
+        notes = cleanText(remainder.replace(/^\((.*)\)$/, '$1') || [remainder, ...supportingLines].join(' ')) || null
       } else if (heading && remainder) {
         title = heading
         notes = remainder
@@ -622,13 +677,13 @@ function parseTranscriptEventsFromBlocks(outputText: string, timeZone: string) {
 
       if (!title) title = heading || 'event'
 
-      const visibleTimes = Array.from(
-        new Set(
-          (remainder.match(/\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/gi) || [])
-            .map((value) => parseTimeTo24h(value))
-            .filter((value): value is string => Boolean(value)),
-        ),
-      )
+      const visibleTimes = extractVisibleTimes([remainder, ...supportingLines].join(' '))
+      const locationLine = supportingLines.find(looksLocationLine) || null
+      const location = locationLine
+        ? supportingLines
+            .filter((candidate) => candidate === locationLine || /^\d/.test(candidate))
+            .join(' ')
+        : null
 
       const isAllDay = visibleTimes.length === 0
       const time24h = isAllDay ? null : visibleTimes[0]
@@ -644,15 +699,15 @@ function parseTranscriptEventsFromBlocks(outputText: string, timeZone: string) {
         time24h,
         isAllDay,
         durationMinutes: null,
-        location: null,
+        location,
         organizerOrSource: null,
         itemType: 'school',
         isConfirmedOrFixed: true,
         confidence: 'medium',
         notes,
         smsText: isAllDay
-          ? `add ${title} on ${displayDate(dateYmd)} all day`
-          : `add ${title} on ${displayDate(dateYmd)} at ${displayTime(time24h)}`,
+          ? `add ${title} on ${displayDate(dateYmd)} all day${location ? ` at ${location}` : ''}`
+          : `add ${title} on ${displayDate(dateYmd)} at ${displayTime(time24h)}${location ? ` at ${location}` : ''}`,
       })
     }
   }
