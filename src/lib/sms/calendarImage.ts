@@ -560,6 +560,35 @@ function looksLocationLine(line: string) {
   )
 }
 
+function looksAddressLikeLine(line: string) {
+  return /^\d{2,}\s+.+\b(?:street|st|road|rd|drive|dr|avenue|ave|boulevard|blvd|lane|ln|court|ct|highway|hwy)\b/i.test(
+    line,
+  )
+}
+
+function extractLocationFromSupportingLines(lines: string[]) {
+  const startIndex = lines.findIndex((line) => looksLocationLine(line) || looksAddressLikeLine(line))
+  if (startIndex === -1) return null
+
+  const collected: string[] = []
+  for (let index = startIndex; index < lines.length && collected.length < 2; index += 1) {
+    const line = lines[index]
+    if (!line || looksTimeOnlyLine(line)) continue
+    if (
+      collected.length > 0 &&
+      !looksLocationLine(line) &&
+      !looksAddressLikeLine(line) &&
+      !/^[A-Z][A-Z\s,&-]{4,}$/i.test(line)
+    ) {
+      break
+    }
+    collected.push(line)
+  }
+
+  const combined = cleanText(collected.join(', '))
+  return combined || null
+}
+
 function extractVisibleTimes(text: string) {
   return Array.from(
     new Set(
@@ -634,12 +663,7 @@ function parseTranscriptEvents(outputText: string, timeZone: string) {
     const detailText = [line, ...supportingLines].join(' ')
     const visibleTimeRange = extractTimeRangeDetails(detailText)
     const visibleTimes = visibleTimeRange ? [visibleTimeRange.startTime24h] : extractVisibleTimes(detailText)
-    const locationLine = supportingLines.find(looksLocationLine) || null
-    const location = locationLine
-      ? supportingLines
-          .filter((candidate) => candidate === locationLine || /^\d/.test(candidate))
-          .join(' ')
-      : null
+    const location = extractLocationFromSupportingLines(supportingLines)
 
     const isAllDay = visibleTimes.length === 0
     const time24h = isAllDay ? null : visibleTimes[0]
@@ -749,12 +773,7 @@ function parseTranscriptEventsFromBlocks(outputText: string, timeZone: string) {
       const detailText = [remainder, ...supportingLines].join(' ')
       const visibleTimeRange = extractTimeRangeDetails(detailText)
       const visibleTimes = visibleTimeRange ? [visibleTimeRange.startTime24h] : extractVisibleTimes(detailText)
-      const locationLine = supportingLines.find(looksLocationLine) || null
-      const location = locationLine
-        ? supportingLines
-            .filter((candidate) => candidate === locationLine || /^\d/.test(candidate))
-            .join(' ')
-        : null
+      const location = extractLocationFromSupportingLines(supportingLines)
 
       const isAllDay = visibleTimes.length === 0
       const time24h = isAllDay ? null : visibleTimes[0]
