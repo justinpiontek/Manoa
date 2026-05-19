@@ -48,6 +48,62 @@ export type CalendarImageResult = {
   notes?: string | null
 }
 
+function buildCalendarImageSmsText(event: Omit<CalendarImageEvent, 'smsText'>) {
+  const date = displayDate(event.dateYmd)
+  const endDate = displayDate(event.endDateYmd)
+  if (!date) return null
+
+  const prefix = event.isConfirmedOrFixed ? 'add' : 'schedule'
+  if (event.isAllDay) {
+    return `${prefix} ${event.title}${endDate && endDate !== date ? ` from ${date} to ${endDate}` : ` on ${date}`} all day${event.location ? ` at ${event.location}` : ''}`
+  }
+
+  const time = displayTime(event.time24h)
+  if (!time) return null
+
+  const duration =
+    event.durationMinutes && event.durationMinutes > 0
+      ? ` for ${event.durationMinutes} minutes`
+      : ''
+
+  return `${prefix} ${event.title} on ${date} at ${time}${event.location ? ` at ${event.location}` : ''}${duration}`
+}
+
+function enrichSingleEventLocationFromTranscript(
+  events: CalendarImageEvent[],
+  transcriptText: string,
+) {
+  if (events.length !== 1) return events
+
+  const [event] = events
+  if (event.location) return events
+
+  const transcriptLocation = extractLocationFromFreeformText(transcriptText)
+  if (!transcriptLocation) return events
+
+  const enrichedEvent: CalendarImageEvent = {
+    ...event,
+    location: transcriptLocation,
+    smsText:
+      buildCalendarImageSmsText({
+        title: event.title,
+        dateYmd: event.dateYmd,
+        endDateYmd: event.endDateYmd,
+        time24h: event.time24h,
+        isAllDay: event.isAllDay,
+        durationMinutes: event.durationMinutes,
+        location: transcriptLocation,
+        organizerOrSource: event.organizerOrSource,
+        itemType: event.itemType,
+        isConfirmedOrFixed: event.isConfirmedOrFixed,
+        confidence: event.confidence,
+        notes: event.notes,
+      }) || event.smsText,
+  }
+
+  return [enrichedEvent]
+}
+
 function hasCalendarImageUnderstanding() {
   return Boolean(process.env.OPENAI_API_KEY)
 }
@@ -525,6 +581,10 @@ const transcriptDateAnywherePattern = new RegExp(
   `(?:${transcriptWeekdaySource}\\s+)?((?:${transcriptMonthNameSource})\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s+\\d{4})?|\\d{1,2}(?:st|nd|rd|th)?\\s+(?:of\\s+)?(?:${transcriptMonthNameSource})\\.?\\b(?:,?\\s+\\d{4})?)\\*?`,
   'ig',
 )
+const transcriptDateRangePattern = new RegExp(
+  `\\b(${transcriptMonthNameSource})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s*(?:-|–|—|to)\\s*(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?\\b`,
+  'i',
+)
 const transcriptWeekdayOnlyPattern = new RegExp(`^\\s*(?:${transcriptWeekdaySource})\\s*$`, 'i')
 const headingPositivePattern =
   /\b(night|party|celebration|graduation|ceremony|meeting|game|camp|recital|concert|show|showcase|festival|fair|picnic|lunch|dinner|breakfast|open house|clinic|workshop|class|tournament|practice|birthday|reunion|conference|family|no school)\b/i
@@ -685,6 +745,92 @@ function chooseBestHeadingCandidate(candidates: string[]) {
 
   if (best && bestScore > 0) return best
   return candidates[candidates.length - 1] || null
+}
+
+function extractPosterHeadline(lines: string[]) {
+  const headingLines = lines
+    .slice(0, 10)
+    .filter((line) => looksTranscriptHeading(line) && !isGenericTranscriptHeading(line))
+
+  if (!headingLines.length) return null
+
+  const candidates: string[] = []
+  for (let index = 0; index < headingLines.length; index += 1) {
+    const single = headingLines[index]
+    if (single) candidates.push(single)
+    const next = headingLines[index + 1]
+    if (single && next) candidates.push(`${single} ${next}`)
+  }
+
+  return chooseBestHeadingCandidate(candidates)
+}
+
+function extractPosterDateSpan(lines: string[], timeZone: string) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]
+    const match = line.match(transcriptDateRangePattern)
+    if (!match) continue
+
+    const month = match[1]
+    const startDay = match[2]
+    const endDay = match[3]
+    const inlineYear = match[4]
+    const nextLine = lines[index + 1] || ''
+    const carriedYear = /^\d{4}$/.test(nextLine) ? nextLine : null
+    const year = inlineYear || carriedYear || undefined
+
+    const start = parseExplicitDate(`${month} ${startDay}${year ? ` ${year}` : ''}`, timeZone)
+    const end = parseExplicitDate(`${month} ${endDay}${year ? ` ${year}` : ''}`, timeZone)
+    if (!start || !end) continue
+
+    return {
+      startYmd: ymdFromDate(start, timeZone),
+      endYmd: ymdFromDate(end, timeZone),
+    }
+  }
+
+  return null
+}
+
+function parseTranscriptPosterEvent(outputText: string, timeZone: string) {
+  const lines = outputText
+    .split(/\r?\n+/)
+    .map((line) => normalizeTranscriptLine(line))
+    .filter(Boolean)
+    .filter((line) => !/^no_event$/i.test(line))
+
+  if (!lines.length) return null
+
+  const headline = extractPosterHeadline(lines)
+  const dateSpan = extractPosterDateSpan(lines, timeZone)
+  if (!headline || !dateSpan) return null
+
+  const location =
+    extractLocationFromSupportingLines(lines) ||
+    extractLocationFromFreeformText(lines.join('\n'))
+
+  const event: Omit<CalendarImageEvent, 'smsText'> = {
+    title: headline,
+    dateYmd: dateSpan.startYmd,
+    endDateYmd: dateSpan.endYmd,
+    time24h: null,
+    isAllDay: true,
+    durationMinutes: null,
+    location,
+    organizerOrSource: null,
+    itemType: 'other',
+    isConfirmedOrFixed: true,
+    confidence: 'medium',
+    notes: null,
+  }
+
+  const smsText = buildCalendarImageSmsText(event)
+  if (!smsText) return null
+
+  return {
+    ...event,
+    smsText,
+  }
 }
 
 function parseTranscriptEvents(outputText: string, timeZone: string) {
@@ -1139,7 +1285,10 @@ export async function calendarImageToSmsText({
             const lineEvents = parseTranscriptEvents(transcriptText, timeZone)
             if (lineEvents.length >= 2) return lineEvents
             const blockEvents = parseTranscriptEventsFromBlocks(transcriptText, timeZone)
-            return blockEvents.length > lineEvents.length ? blockEvents : lineEvents
+            if (blockEvents.length > lineEvents.length) return blockEvents
+            if (lineEvents.length) return lineEvents
+            const posterEvent = parseTranscriptPosterEvent(transcriptText, timeZone)
+            return posterEvent ? [posterEvent] : []
           })()
         : []
 
@@ -1150,6 +1299,19 @@ export async function calendarImageToSmsText({
           events: transcriptEvents,
           confidence: 'medium',
           notes: payload.notes,
+        }
+      }
+
+      if (transcriptText && events.length === 1 && !events[0]?.location) {
+        const enrichedEvents = enrichSingleEventLocationFromTranscript(events, transcriptText)
+        if (enrichedEvents !== events) {
+          return {
+            smsText: enrichedEvents[0]?.smsText || null,
+            smsTexts: enrichedEvents.map((event) => event.smsText),
+            events: enrichedEvents,
+            confidence: payload.confidence,
+            notes: payload.notes,
+          }
         }
       }
     } catch (error) {
@@ -1323,7 +1485,10 @@ export async function calendarImageToSmsText({
           const lineEvents = parseTranscriptEvents(transcriptText, timeZone)
           if (lineEvents.length >= 2) return lineEvents
           const blockEvents = parseTranscriptEventsFromBlocks(transcriptText, timeZone)
-          return blockEvents.length > lineEvents.length ? blockEvents : lineEvents
+          if (blockEvents.length > lineEvents.length) return blockEvents
+          if (lineEvents.length) return lineEvents
+          const posterEvent = parseTranscriptPosterEvent(transcriptText, timeZone)
+          return posterEvent ? [posterEvent] : []
         })()
       : []
     if (transcriptEvents.length > smsTexts.length && transcriptEvents.length >= 2) {
