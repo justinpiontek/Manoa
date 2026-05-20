@@ -1,53 +1,17 @@
 'use client'
 
 import ManoaWordmark from '@/src/components/ManoaWordmark'
-import { createSupabaseMagicLinkBrowser } from '@/src/lib/supabase/browser'
 import { useEffect, useMemo, useState } from 'react'
 
 type LoginPageClientProps = {
   loginStatus?: string
   isSupabaseConfigured: boolean
-  appUrl?: string | null
   initialEmail?: string
-}
-
-function friendlyLoginError(message: string) {
-  const lower = message.toLowerCase()
-
-  if (lower.includes('email rate limit exceeded') || lower.includes('rate limit')) {
-    return 'Too many login emails were sent in a short stretch. Wait a minute, then try again. If you already got one, use the newest email in your inbox.'
-  }
-
-  if (lower.includes('signup') && lower.includes('not allowed')) {
-    return 'That email is not ready for dashboard login yet. Try again in a minute. If it keeps happening, Manoa still needs to finish linking your account.'
-  }
-
-  return message || 'We could not send your login link yet. Try again in a minute.'
-}
-
-function isAccountLookupStyleAuthMiss(message: string) {
-  const lower = message.toLowerCase()
-  return (
-    (lower.includes('signup') && lower.includes('not allowed')) ||
-    lower.includes('user not found') ||
-    lower.includes('email not found') ||
-    lower.includes('invalid login')
-  )
-}
-
-function isAlreadyRegisteredAuthError(message: string) {
-  const lower = message.toLowerCase()
-  return (
-    lower.includes('already been registered') ||
-    lower.includes('already registered') ||
-    lower.includes('already exists')
-  )
 }
 
 export default function LoginPageClient({
   loginStatus,
   isSupabaseConfigured,
-  appUrl,
   initialEmail = '',
 }: LoginPageClientProps) {
   const [email, setEmail] = useState(initialEmail)
@@ -166,47 +130,6 @@ export default function LoginPageClient({
         return
       }
 
-      const supabase = createSupabaseMagicLinkBrowser()
-      const redirectBase = window.location.origin.replace(/\/$/, '') || (appUrl || '').replace(/\/$/, '')
-      async function sendOtp(shouldCreateUser: boolean) {
-        return supabase.auth.signInWithOtp({
-          email: normalizedEmail,
-          options: {
-            shouldCreateUser,
-            emailRedirectTo: `${redirectBase}/auth/callback?next=/dashboard`,
-          },
-        })
-      }
-
-      let { error } = await sendOtp(false)
-
-      if (error && isAccountLookupStyleAuthMiss(error.message || '')) {
-        const fallback = await sendOtp(true)
-        error = fallback.error
-      }
-
-      if (error && isAlreadyRegisteredAuthError(error.message || '')) {
-        const retryExisting = await sendOtp(false)
-        error = retryExisting.error
-      }
-
-      if (error) {
-        if (isAccountLookupStyleAuthMiss(error.message || '')) {
-          setLocalMessage({
-            tone: 'success',
-            text: `If ${normalizedEmail} is ready for Manoa, we sent a login link there.`,
-          })
-          setEmail('')
-          return
-        }
-
-        setLocalMessage({
-          tone: 'warning',
-          text: friendlyLoginError(error.message || ''),
-        })
-        return
-      }
-
       setLocalMessage({
         tone: 'success',
         text: `If ${normalizedEmail} is ready for Manoa, we sent a login link there.`,
@@ -215,7 +138,7 @@ export default function LoginPageClient({
     } catch (error) {
       const message =
         error instanceof Error && error.message
-          ? friendlyLoginError(error.message)
+          ? error.message
           : 'We could not send your login link yet. Try again in a minute.'
       setLocalMessage({
         tone: 'warning',

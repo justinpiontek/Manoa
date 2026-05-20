@@ -24,7 +24,6 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       initialEmail={params.email || ''}
       loginStatus={params.login}
       isSupabaseConfigured={isSupabaseConfigured}
-      appUrl={process.env.NEXT_PUBLIC_APP_URL || null}
     />
   )
 }
