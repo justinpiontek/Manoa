@@ -162,7 +162,7 @@ export default function LoginPageClient({
       const { error } = await supabase.auth.signInWithOtp({
         email: normalizedEmail,
         options: {
-          shouldCreateUser: false,
+          shouldCreateUser: true,
           emailRedirectTo: `${redirectBase}/auth/callback?next=/dashboard`,
         },
       })
