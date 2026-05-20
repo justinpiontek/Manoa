@@ -18,6 +18,7 @@ export async function GET() {
     `ORG:${escapeVCard('Manoa')}`,
     `TEL;TYPE=CELL:${escapeVCard(phone)}`,
     `URL:${escapeVCard(appUrl())}`,
+    `PHOTO;VALUE=URI:${escapeVCard(`${appUrl()}/brand-icon`)}`,
     `NOTE:${escapeVCard('Text Manoa to schedule, reschedule, and get your day by text.')}`,
     'END:VCARD',
     '',

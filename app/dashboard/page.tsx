@@ -489,6 +489,28 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             </div>
           </div>
 
+          {manoaNumber && totalConnectedAccounts && smsReady ? (
+            <div className="dashboard-contact-callout">
+              <div className="dashboard-contact-callout-copy">
+                <p className="dashboard-contact-callout-label">Save this number first</p>
+                <h3>Add Manoa to your contacts.</h3>
+                <p>
+                  Save Manoa now so you always know exactly who to text when you want to schedule,
+                  move, or check something on your calendar.
+                </p>
+              </div>
+              <div className="dashboard-contact-callout-actions">
+                <a className="button dashboard-button" href="/api/contact-card">
+                  Add Manoa to contacts
+                </a>
+                <div className="dashboard-number-card">
+                  <span className="dashboard-number-label">Manoa number</span>
+                  <strong>{displayNumber}</strong>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           {totalConnectedAccounts ? (
             <DashboardTextConsole
               initialMessages={initialThreadMessages}
@@ -509,7 +531,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             ) : null}
             {manoaNumber && totalConnectedAccounts && smsReady ? (
               <a className="button dashboard-button secondary-button" href="/api/contact-card">
-                Save Manoa contact
+                Download contact card
               </a>
             ) : null}
             <a className="button dashboard-button secondary-button" href="/api/billing-portal">
