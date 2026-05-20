@@ -35,6 +35,15 @@ function isAccountLookupStyleAuthMiss(message: string) {
   )
 }
 
+function isAlreadyRegisteredAuthError(message: string) {
+  const lower = message.toLowerCase()
+  return (
+    lower.includes('already been registered') ||
+    lower.includes('already registered') ||
+    lower.includes('already exists')
+  )
+}
+
 export default function LoginPageClient({
   loginStatus,
   isSupabaseConfigured,
@@ -159,13 +168,27 @@ export default function LoginPageClient({
 
       const supabase = createSupabaseMagicLinkBrowser()
       const redirectBase = window.location.origin.replace(/\/$/, '') || (appUrl || '').replace(/\/$/, '')
-      const { error } = await supabase.auth.signInWithOtp({
-        email: normalizedEmail,
-        options: {
-          shouldCreateUser: true,
-          emailRedirectTo: `${redirectBase}/auth/callback?next=/dashboard`,
-        },
-      })
+      async function sendOtp(shouldCreateUser: boolean) {
+        return supabase.auth.signInWithOtp({
+          email: normalizedEmail,
+          options: {
+            shouldCreateUser,
+            emailRedirectTo: `${redirectBase}/auth/callback?next=/dashboard`,
+          },
+        })
+      }
+
+      let { error } = await sendOtp(false)
+
+      if (error && isAccountLookupStyleAuthMiss(error.message || '')) {
+        const fallback = await sendOtp(true)
+        error = fallback.error
+      }
+
+      if (error && isAlreadyRegisteredAuthError(error.message || '')) {
+        const retryExisting = await sendOtp(false)
+        error = retryExisting.error
+      }
 
       if (error) {
         if (isAccountLookupStyleAuthMiss(error.message || '')) {
