@@ -157,6 +157,7 @@ async function resolveDashboardCalendarFlags(profileId: string) {
 function duplicateAuthUserError(message: string) {
   const lower = message.toLowerCase()
   return (
+    lower.includes('already been registered') ||
     lower.includes('already registered') ||
     lower.includes('already exists') ||
     lower.includes('duplicate key') ||
