@@ -25,6 +25,7 @@ import {
   setTime,
   startOfDay,
 } from '../calendar/dates'
+import { appUrl } from '../env'
 import { parseGoogleRecurrence, recurrenceSummary, type RecurrenceSpec } from '../calendar/recurrence'
 import { scheduleCandidateTimesForTitle } from '../calendar/schedulingPreferences'
 import {
@@ -2888,6 +2889,51 @@ async function safeMarkPhoneConfirmed(profileId: string) {
   }
 }
 
+function calendarSetupProviderHint(lowerBody: string): 'google' | 'outlook' | 'apple' | null {
+  if (/\bgoogle\b/.test(lowerBody)) return 'google'
+  if (/\boutlook\b|\bmicrosoft\b/.test(lowerBody)) return 'outlook'
+  if (/\bapple\b|\bicloud\b/.test(lowerBody)) return 'apple'
+  return null
+}
+
+function wantsCalendarSetupHelp(lowerBody: string) {
+  return (
+    /\badd\s+(?:a\s+)?calendar\b/.test(lowerBody) ||
+    /\bconnect\s+(?:a\s+)?calendar\b/.test(lowerBody) ||
+    /\bconnect\s+(?:google|outlook|apple|icloud)\b/.test(lowerBody) ||
+    /\badd\s+(?:google|outlook|apple|icloud)\b/.test(lowerBody)
+  )
+}
+
+function loginLinkForProfile(profile: SmsProfile) {
+  return `${appUrl()}/login?email=${encodeURIComponent(profile.email)}`
+}
+
+async function calendarSetupReply(profile: SmsProfile, lowerBody: string) {
+  const loginLink = loginLinkForProfile(profile)
+  const providerHint = calendarSetupProviderHint(lowerBody)
+
+  if (!(await hasConnectedCalendar(profile.id))) {
+    const providerStep =
+      providerHint === 'google'
+        ? 'tap Connect Google'
+        : providerHint === 'outlook'
+          ? 'tap Connect Outlook'
+          : providerHint === 'apple'
+            ? 'tap Connect Apple'
+            : 'tap Connect Google, Outlook, or Apple'
+
+    return `To finish setup, open ${loginLink}. After you log in, ${providerStep} on your setup page. Then text me again.`
+  }
+
+  const placement = await resolveCalendarPlacement(profile.id, 'Calendar')
+  if (!placement.bookingCalendars.length) {
+    return `Almost ready. I can see your calendars, but I still need one calendar set to Books here. Open ${loginLink}, then turn on "Books here" for one calendar in Calendar settings.`
+  }
+
+  return `Your calendar setup looks ready. Text me what you want to schedule, or open ${loginLink} if you want to review your settings.`
+}
+
 async function profileForSender(sender: string) {
   const dashboardProfileId = profileIdFromDashboardSender(sender)
   const queryColumn = dashboardProfileId ? 'id' : 'phone_e164'
@@ -4827,8 +4873,14 @@ export async function handleIncomingSms({
     return reply
   }
 
+  if (wantsCalendarSetupHelp(lowerBody)) {
+    const reply = await calendarSetupReply(profile, lowerBody)
+    await safeLogSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+    return reply
+  }
+
   if (!(await hasConnectedCalendar(profile.id))) {
-    const reply = 'Your subscription is active. Connect Google, Outlook, or Apple from your setup page, then text me again.'
+    const reply = await calendarSetupReply(profile, lowerBody)
     await safeLogSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
     return reply
   }
@@ -5548,7 +5600,7 @@ export async function handleIncomingSms({
 
     const placement = await resolveCalendarPlacement(profile.id, scheduleIntent.calendarHint)
     if (!placement.bookingCalendars.length) {
-      const reply = 'I can see your calendars, but none are set to accept new events yet. Update your calendar settings in the dashboard first.'
+      const reply = `Almost ready. I can see your calendars, but none are set to accept new events yet. Open ${loginLinkForProfile(profile)}, then turn on "Books here" for one calendar in Calendar settings.`
       await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
       return reply
     }
