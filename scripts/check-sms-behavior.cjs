@@ -29,6 +29,7 @@ const {
   parseInviteesFromText,
   resolveInviteeFollowUp,
 } = require('../src/lib/sms/invitees.ts')
+const { resolvePendingChoice } = require('../src/lib/sms/pendingChoice.ts')
 const { parseSmsIntent } = require('../src/lib/sms/parser.ts')
 
 const timeZone = 'America/Chicago'
@@ -542,5 +543,83 @@ punctuationCancelState.events.push({
 punctuationCancelState = applyDemoText(punctuationCancelState, 'Cancel mortgage due ($1,400)')
 assert.match(punctuationCancelState.messages.at(-1).lines.join('\n'), /Canceled Mortgage due/i)
 assert.ok(!punctuationCancelState.events.some((event) => event.id === 'mortgage'))
+
+const singleRescheduleChoice = resolvePendingChoice(
+  'yes',
+  {
+    kind: 'select_reschedule_target',
+    payload: {
+      events: [
+        {
+          title: 'T Ball game',
+          start: startOfDay(4, timeZone).toISOString(),
+          timeLabel: '5:00 PM',
+        },
+      ],
+    },
+  },
+  timeZone,
+)
+assert.equal(singleRescheduleChoice, 1)
+
+const singleCancelChoice = resolvePendingChoice(
+  'yes',
+  {
+    kind: 'select_cancel_target',
+    payload: {
+      events: [
+        {
+          title: 'Dance recital',
+          start: startOfDay(6, timeZone).toISOString(),
+          timeLabel: '7:00 PM',
+        },
+      ],
+    },
+  },
+  timeZone,
+)
+assert.equal(singleCancelChoice, 1)
+
+assert.equal(
+  calendarImagePayloadToSmsText({
+    has_calendar_items: true,
+    items: [{
+      is_confirmed_or_fixed: true,
+      title: 'Family Night',
+      date_ymd: '2026-05-28',
+      time_24h: '19:00',
+      duration_minutes: null,
+      location: null,
+      organizer_or_source: 'Forest County Potawatomi Language & Culture',
+      item_type: 'other',
+      confidence: 'medium',
+      notes: 'Thursday May 28, 2026 5:00 - 7:00 PM',
+    }],
+    confidence: 'medium',
+    notes: null,
+  }),
+  'add Family Night on 5/28/2026 at 5:00pm for 120 minutes',
+)
+
+assert.equal(
+  calendarImagePayloadToSmsText({
+    has_calendar_items: true,
+    items: [{
+      is_confirmed_or_fixed: true,
+      title: 'Family Night',
+      date_ymd: '2026-05-28',
+      time_24h: '17:00',
+      duration_minutes: 120,
+      location: null,
+      organizer_or_source: null,
+      item_type: 'other',
+      confidence: 'medium',
+      notes: 'FCP Cultural Center, Library, & Museum - Lower Level\n8130 Mish Ko Swen Drive, Crandon, Wisconsin',
+    }],
+    confidence: 'medium',
+    notes: null,
+  }),
+  'add Family Night on 5/28/2026 at 5:00pm at FCP Cultural Center, Library, & Museum - Lower Level, 8130 Mish Ko Swen Drive, Crandon, Wisconsin for 120 minutes',
+)
 
 console.log('SMS behavior checks passed.')

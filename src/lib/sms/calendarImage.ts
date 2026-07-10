@@ -24,6 +24,12 @@ type CalendarImagePayload = {
   notes: string | null
 }
 
+export type CalendarImageMode =
+  | 'single_screenshot'
+  | 'list_flyer'
+  | 'poster'
+  | 'social_post'
+
 export type CalendarImageEvent = {
   title: string
   dateYmd: string
@@ -46,6 +52,9 @@ export type CalendarImageResult = {
   events: CalendarImageEvent[]
   confidence: CalendarImagePayload['confidence']
   notes?: string | null
+  mode: CalendarImageMode
+  needsClarification?: boolean
+  needsTimeClarification?: boolean
 }
 
 function buildCalendarImageSmsText(event: Omit<CalendarImageEvent, 'smsText'>) {
@@ -118,35 +127,33 @@ function currentLocalDateString(timeZone: string) {
   })
 }
 
-function structuredImageInstructions(timeZone: string) {
+function singleScreenshotImageInstructions(timeZone: string) {
   return (
     `You read photos and screenshots for Manoa, a calendar assistant.\n` +
     `Current timezone: ${timeZone}.\n` +
     `Current local date: ${currentLocalDateString(timeZone)}.\n` +
-    'Extract clear calendar events from screenshots, invitation cards, reminder cards, email screenshots, text screenshots, flyers, and calendar-event screenshots.\n' +
+    'Extract one clear calendar event from a screenshot, invitation card, reminder card, calendar-event screenshot, email screenshot, or text screenshot.\n' +
     'Focus on the event details, not the surrounding app chrome.\n' +
-    'For screenshots of a single calendar item or invitation, prefer the obvious main event.\n' +
-    'For flyers, newsletters, school notices, church bulletins, and "important dates" lists, extract every separate dated event line you can clearly read.\n' +
-    'For poster-style flyers, use the main event name or headline as the title, not a weekday or a date fragment.\n' +
-    'Items like "No School", birthdays, last day of school, graduations, games, and ceremonies should each become their own event if they have a date.\n' +
-    'For reservations, hotel stays, campground stays, and travel confirmations, use the arrival date as the start date and the departure date as the final included calendar date when no time is shown.\n' +
+    'Use the obvious event title, not the organizer, sender, account name, or app name.\n' +
+    'Do not use generic titles like "Event", "Meeting", or "Appointment" unless that is literally the visible event name.\n' +
+    'For reservations, hotel stays, campground stays, and travel confirmations, use the reservation name as the title when visible.\n' +
     'If a timed event shows a range like "5:00 - 7:00 PM", use the first time as the event start and the full span as the duration.\n' +
-    'If no event time is shown but the item clearly spans full dates, mark it as all-day.\n' +
+    'If no event time is shown but the item clearly spans full dates, mark it as all-day. Otherwise do not invent a time.\n' +
     'If a month/day/time is clear but the year is missing, infer the next upcoming matching year from the current local date.\n' +
-    'If the image shows multiple clear events, return them all.\n' +
+    'If the image really contains multiple unrelated events, return only the most obvious main event.\n' +
     'Do not invent a date, time, or location that is not visible or strongly implied.\n' +
     'Use has_calendar_items=false only when no real event can be extracted.'
   )
 }
 
-function multiEventImageInstructions(timeZone: string) {
+function listFlyerImageInstructions(timeZone: string) {
   return (
     `You read photos and screenshots for Manoa, a calendar assistant.\n` +
     `Current timezone: ${timeZone}.\n` +
     `Current local date: ${currentLocalDateString(timeZone)}.\n` +
-    'This image may contain a flyer, newsletter, school notice, church bulletin, travel confirmation, or an "important dates" list.\n' +
+    'This image is a list, flyer, newsletter, school notice, church bulletin, or important-dates sheet.\n' +
     'Extract every separate dated calendar item you can clearly read, not just the most prominent one.\n' +
-    'For poster-style flyers, use the main event name or headline as the title, not a weekday or a date fragment.\n' +
+    'For each event, use the clearest event title from the dated line or its section heading, not the organization name.\n' +
     'Each dated line or block should become its own event.\n' +
     'If a timed event shows a range like "5:00 - 7:00 PM", use the first time as the event start and the full span as the duration.\n' +
     'Examples include no school days, birthdays, graduations, ceremonies, games, deadlines, arrival dates, and departure dates.\n' +
@@ -157,6 +164,49 @@ function multiEventImageInstructions(timeZone: string) {
     'Do not invent a date, time, or location that is not visible or strongly implied.\n' +
     'Use has_calendar_items=false only when no real event can be extracted.'
   )
+}
+
+function posterImageInstructions(timeZone: string) {
+  return (
+    `You read photos and screenshots for Manoa, a calendar assistant.\n` +
+    `Current timezone: ${timeZone}.\n` +
+    `Current local date: ${currentLocalDateString(timeZone)}.\n` +
+    'This image is a poster or event flyer for one main event.\n' +
+    'Use the main event headline as the title.\n' +
+    'Do not use the organization, venue, sponsor, or department name as the title unless it is also the visible event headline.\n' +
+    'Prefer event titles like "Family Night", "Coffee Talk", "Veterans Powwow", or "Fry Bread Contest" over organization names.\n' +
+    'Read the date carefully. If the poster shows one event date, use that exact date.\n' +
+    'If a timed event shows a range like "5:00 - 7:00 PM", use the first time as the event start and the full span as the duration.\n' +
+    'If the poster shows multiple-day coverage without times, mark it all-day across the full span.\n' +
+    'Do not invent a date, time, or location that is not visible or strongly implied.\n' +
+    'Use has_calendar_items=false only when no real event can be extracted.'
+  )
+}
+
+function socialPostImageInstructions(timeZone: string) {
+  return (
+    `You read photos and screenshots for Manoa, a calendar assistant.\n` +
+    `Current timezone: ${timeZone}.\n` +
+    `Current local date: ${currentLocalDateString(timeZone)}.\n` +
+    'This image is a social post screenshot that contains one main event.\n' +
+    'Ignore app chrome, tabs, page names, buttons, like counts, comments, and navigation.\n' +
+    'Use the event name from the post or flyer, not the Facebook page name, organization name, or app UI.\n' +
+    'Read the event date, time, and location from the post body or embedded flyer.\n' +
+    'If a timed event shows a range like "12 - 2 PM", use the first time as the event start and the full span as the duration.\n' +
+    'Do not invent a date, time, or location that is not visible or strongly implied.\n' +
+    'Use has_calendar_items=false only when no real event can be extracted.'
+  )
+}
+
+function structuredImageInstructionsForMode(mode: CalendarImageMode, timeZone: string) {
+  if (mode === 'list_flyer') return listFlyerImageInstructions(timeZone)
+  if (mode === 'poster') return posterImageInstructions(timeZone)
+  if (mode === 'social_post') return socialPostImageInstructions(timeZone)
+  return singleScreenshotImageInstructions(timeZone)
+}
+
+function multiEventImageInstructions(timeZone: string) {
+  return structuredImageInstructionsForMode('list_flyer', timeZone)
 }
 
 function fallbackImageInstructions(timeZone: string) {
@@ -184,8 +234,8 @@ function lineItemImageInstructions(timeZone: string) {
     `You read photos and screenshots for Manoa, a calendar assistant.\n` +
     `Current timezone: ${timeZone}.\n` +
     `Current local date: ${currentLocalDateString(timeZone)}.\n` +
-    'This image may be a school flyer, preschool notice, church bulletin, newsletter, invitation, or important-dates sheet.\n' +
-    'For poster-style flyers, use the main event name or headline as the title, not a weekday or a date fragment.\n' +
+    'This image is a school flyer, preschool notice, church bulletin, newsletter, invitation, or important-dates sheet.\n' +
+    'For each line, use the clearest event title from the dated line or section heading, not the organization name.\n' +
     'Return one line per clear dated event using this exact format:\n' +
     'DATE || TITLE || TIME_OR_ALL_DAY || LOCATION_OR_NOTES\n' +
     'If the flyer shows a time range, put the full range in TIME_OR_ALL_DAY, not just the ending time.\n' +
@@ -569,6 +619,14 @@ function lineItemFallbackEvents(lines: string[], timeZone: string) {
     .filter((event): event is CalendarImageEvent => Boolean(event))
 }
 
+function transcriptLines(outputText: string) {
+  return outputText
+    .split(/\r?\n+/)
+    .map((line) => normalizeTranscriptLine(line))
+    .filter(Boolean)
+    .filter((line) => !/^no_event$/i.test(line))
+}
+
 const transcriptMonthNameSource =
   'jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?'
 const transcriptWeekdaySource =
@@ -587,9 +645,13 @@ const transcriptDateRangePattern = new RegExp(
 )
 const transcriptWeekdayOnlyPattern = new RegExp(`^\\s*(?:${transcriptWeekdaySource})\\s*$`, 'i')
 const headingPositivePattern =
-  /\b(night|party|celebration|graduation|ceremony|meeting|game|camp|recital|concert|show|showcase|festival|fair|picnic|lunch|dinner|breakfast|open house|clinic|workshop|class|tournament|practice|birthday|reunion|conference|family|no school)\b/i
+  /\b(night|party|celebration|graduation|ceremony|meeting|game|camp|recital|concert|show|showcase|festival|fair|picnic|lunch|dinner|breakfast|open house|clinic|workshop|class|tournament|practice|birthday|reunion|conference|family|no school|powwow|contest|talk|reservation|vacation|trip)\b/i
 const headingNegativePattern =
-  /\b(language|culture|native americans|advisory|association|foundation|office|department|district|committee|library|museum|center|centre|campus|tribal|nation|council|wisconsin)\b/i
+  /\b(language|culture|native americans|advisory|association|foundation|office|department|district|committee|library|museum|center|centre|campus|tribal|nation|council|wisconsin|services|potawatomi|facebook|instagram)\b/i
+const socialUiPattern =
+  /\b(posts?|about|reels?|likes?|comments?|shares?|followers?|following|message|messages|home|menu|photos?|videos?|stories|notifications?|sponsored|see more|write a comment|post)\b/i
+const titleNegativePhrasePattern =
+  /\b(open to|for information|questions\??|sponsored by|activities to include|committee specials|men'?s specials|women'?s specials|host drum|co-host drum|grand entry|vendors|for more info|arena director)\b/i
 
 function normalizeTranscriptLine(line: string) {
   return cleanText(
@@ -603,6 +665,216 @@ function normalizeTranscriptLine(line: string) {
 
 function isGenericTranscriptHeading(line: string) {
   return /\b(important dates?|preschool|school calendar|newsletter|upcoming events?)\b/i.test(line)
+}
+
+function looksSocialUiLine(line: string) {
+  const normalized = cleanText(line)
+  if (!normalized) return false
+  if (socialUiPattern.test(normalized)) return true
+  if (/^[A-Za-z]+\s*[›>]\s*[A-Za-z]/.test(normalized)) return true
+  if (/^[A-Za-z]+\s+\d+[mhds]?$/i.test(normalized)) return true
+  return false
+}
+
+function looksContactLine(line: string) {
+  return /\b(?:www\.|https?:\/\/|@[a-z0-9._-]+\.[a-z]{2,}|\d{3}[-.)\s]*\d{3}[-.\s]*\d{4})\b/i.test(line)
+}
+
+function containsTranscriptDate(line: string, timeZone?: string) {
+  if (parseExplicitDate(line, timeZone)) return true
+  if (transcriptDatePrefixPattern.test(line)) return true
+  return Array.from(line.matchAll(transcriptDateAnywherePattern)).length > 0
+}
+
+function genericEventTitle(value: string) {
+  return /^(event|meeting|appointment|party|school|sports|travel|deadline|other)$/i.test(cleanText(value))
+}
+
+function scoreEventTitleCandidate(line: string, mode: CalendarImageMode) {
+  const normalized = cleanText(line)
+  if (!normalized) return Number.NEGATIVE_INFINITY
+  if (genericEventTitle(normalized)) return -12
+  if (looksSocialUiLine(normalized)) return -12
+  if (looksContactLine(normalized)) return -10
+  if (containsTranscriptDate(normalized)) return -8
+  if (looksTimeOnlyLine(normalized)) return -8
+  if (looksLocationLine(normalized) || looksAddressLikeLine(normalized)) return -10
+  if (isGenericTranscriptHeading(normalized)) return -10
+
+  const words = normalized.split(/\s+/)
+  let score = 0
+
+  if (words.length >= 1 && words.length <= 6) score += 3
+  if (normalized.length >= 4 && normalized.length <= 36) score += 3
+  if (headingPositivePattern.test(normalized)) score += 8
+  if (headingNegativePattern.test(normalized) && !headingPositivePattern.test(normalized)) score -= 8
+  if (/[A-Za-z]/.test(normalized) && normalized === normalized.toUpperCase()) score += 1
+  if (/^[A-Z][a-z0-9'&/-]+(?:\s+[A-Z][a-z0-9'&/-]+){0,5}$/.test(normalized)) score += 2
+
+  if (mode === 'poster' && looksTranscriptHeading(normalized)) score += 2
+  if (mode === 'social_post' && !looksTranscriptHeading(normalized)) score += 1
+  if (mode === 'single_screenshot' && words.length <= 5) score += 1
+
+  return score
+}
+
+function chooseBestEventTitleCandidate(candidates: string[], mode: CalendarImageMode) {
+  let best: string | null = null
+  let bestScore = Number.NEGATIVE_INFINITY
+
+  for (const candidate of candidates) {
+    const score = scoreEventTitleCandidate(candidate, mode)
+    if (score > bestScore) {
+      best = cleanText(candidate)
+      bestScore = score
+    }
+  }
+
+  return best && bestScore > 1 ? best : null
+}
+
+function isWeakCalendarImageTitle(value: string | null | undefined, mode?: CalendarImageMode) {
+  const normalized = cleanText(value)
+  if (!normalized) return true
+  if (genericEventTitle(normalized)) return true
+  if (scoreEventTitleCandidate(normalized, mode || 'single_screenshot') <= 1) return true
+  return false
+}
+
+function classifyCalendarImageMode(transcriptText: string, timeZone: string): CalendarImageMode {
+  const lines = transcriptLines(transcriptText)
+  if (!lines.length) return 'single_screenshot'
+
+  const fullText = lines.join('\n')
+  const datedLines = lines.filter((line) => containsTranscriptDate(line, timeZone))
+  const topHeadingLines = lines.slice(0, 8).filter((line) => looksTranscriptHeading(line))
+  const socialUiLines = lines.filter((line) => looksSocialUiLine(line))
+  const hasSocialUi =
+    socialUiLines.length >= 2 ||
+    socialUiLines.some((line) =>
+      /\b(posts?|reels?|likes?|comments?|followers?|following|message|messages|stories|see more|write a comment)\b/i.test(
+        line,
+      ),
+    )
+  const hasImportantDates = /\bimportant dates?|no school|last day of school|upcoming events?\b/i.test(fullText)
+
+  if (hasSocialUi) return 'social_post'
+  if (hasImportantDates || datedLines.length >= 2) return 'list_flyer'
+  if (extractPosterDateSpan(lines, timeZone) || (datedLines.length === 1 && topHeadingLines.length >= 1)) {
+    return 'poster'
+  }
+
+  return 'single_screenshot'
+}
+
+function strongerConfidence(
+  left: CalendarImagePayload['confidence'],
+  right: CalendarImagePayload['confidence'],
+): CalendarImagePayload['confidence'] {
+  const rank = { low: 0, medium: 1, high: 2 }
+  return rank[left] >= rank[right] ? left : right
+}
+
+function looksLikelyTitleLine(line: string, mode: CalendarImageMode) {
+  const normalized = cleanText(line)
+  if (!normalized) return false
+  if (looksSocialUiLine(normalized)) return false
+  if (looksContactLine(normalized)) return false
+  if (containsTranscriptDate(normalized)) return false
+  if (looksTimeOnlyLine(normalized)) return false
+  if (looksLocationLine(normalized) || looksAddressLikeLine(normalized)) return false
+  if (isGenericTranscriptHeading(normalized)) return false
+  if (titleNegativePhrasePattern.test(normalized)) return false
+  if (mode === 'poster' && normalized.length > 52 && !headingPositivePattern.test(normalized)) return false
+  return /[a-z]/i.test(normalized)
+}
+
+function transcriptTitleCandidates(lines: string[], mode: CalendarImageMode) {
+  const filtered = lines.filter((line) => looksLikelyTitleLine(line, mode))
+  const limited = filtered.slice(0, mode === 'social_post' ? 18 : 12)
+  const candidates: string[] = []
+
+  for (let index = 0; index < limited.length; index += 1) {
+    const line = limited[index]
+    candidates.push(line)
+
+    const next = limited[index + 1]
+    if (!next) continue
+
+    const combined = cleanText(`${line} ${next}`)
+    if (!combined) continue
+    if (combined.split(/\s+/).length > 6) continue
+    if (titleNegativePhrasePattern.test(combined)) continue
+
+    const lineScore = scoreEventTitleCandidate(line, mode)
+    const nextScore = scoreEventTitleCandidate(next, mode)
+    const combinedScore = scoreEventTitleCandidate(combined, mode)
+    if (combinedScore >= Math.max(lineScore, nextScore)) {
+      candidates.push(combined)
+    }
+  }
+
+  return Array.from(new Set(candidates.map((candidate) => cleanText(candidate)).filter(Boolean)))
+}
+
+function cleanTranscriptEventTitle(
+  rawTitle: string | null | undefined,
+  mode: CalendarImageMode,
+  fallbackCandidates: string[] = [],
+) {
+  const candidates = [rawTitle, ...fallbackCandidates]
+    .map((candidate) => cleanText(candidate))
+    .filter(Boolean)
+  if (!candidates.length) return null
+
+  const best = chooseBestEventTitleCandidate(candidates, mode)
+  if (best) return best
+
+  const primary = cleanText(rawTitle)
+  if (primary && !isWeakCalendarImageTitle(primary, mode)) return primary
+  return null
+}
+
+function findFirstTranscriptDateYmd(lines: string[], timeZone: string) {
+  for (const line of lines) {
+    const directDate = parseExplicitDate(line, timeZone)
+    if (directDate) return ymdFromDate(directDate, timeZone)
+
+    const prefixMatch = line.match(transcriptDatePrefixPattern)
+    if (prefixMatch) {
+      const prefixDate = parseExplicitDate(cleanText(prefixMatch[1]), timeZone)
+      if (prefixDate) return ymdFromDate(prefixDate, timeZone)
+    }
+
+    for (const match of Array.from(line.matchAll(transcriptDateAnywherePattern))) {
+      const inlineDate = parseExplicitDate(cleanText(match[1]), timeZone)
+      if (inlineDate) return ymdFromDate(inlineDate, timeZone)
+    }
+  }
+
+  return null
+}
+
+function extractRelevantVisibleTimes(lines: string[]) {
+  const relevantLines = lines.filter((line) => {
+    const normalized = cleanText(line)
+    if (!normalized) return false
+    if (looksSocialUiLine(normalized)) return false
+    if (/^(?:today|yesterday)\s+\d{1,2}:\d{2}(?:\s*[ap]m)?$/i.test(normalized)) return false
+    if (/^\d{1,2}:\d{2}(?:\s*[ap]m)?$/i.test(normalized)) return false
+    return true
+  })
+
+  const relevantText = relevantLines.join(' ')
+  const visibleTimeRange = extractTimeRangeDetails(relevantText)
+  const visibleTimes = visibleTimeRange
+    ? [visibleTimeRange.startTime24h]
+    : extractVisibleTimes(relevantText)
+
+  return {
+    visibleTimeRange,
+    visibleTimes,
+  }
 }
 
 function isStandaloneWeekdayLine(line: string) {
@@ -792,38 +1064,9 @@ function extractPosterDateSpan(lines: string[], timeZone: string) {
   return null
 }
 
-function parseTranscriptPosterEvent(outputText: string, timeZone: string) {
-  const lines = outputText
-    .split(/\r?\n+/)
-    .map((line) => normalizeTranscriptLine(line))
-    .filter(Boolean)
-    .filter((line) => !/^no_event$/i.test(line))
-
-  if (!lines.length) return null
-
-  const headline = extractPosterHeadline(lines)
-  const dateSpan = extractPosterDateSpan(lines, timeZone)
-  if (!headline || !dateSpan) return null
-
-  const location =
-    extractLocationFromSupportingLines(lines) ||
-    extractLocationFromFreeformText(lines.join('\n'))
-
-  const event: Omit<CalendarImageEvent, 'smsText'> = {
-    title: headline,
-    dateYmd: dateSpan.startYmd,
-    endDateYmd: dateSpan.endYmd,
-    time24h: null,
-    isAllDay: true,
-    durationMinutes: null,
-    location,
-    organizerOrSource: null,
-    itemType: 'other',
-    isConfirmedOrFixed: true,
-    confidence: 'medium',
-    notes: null,
-  }
-
+function createCalendarImageEvent(
+  event: Omit<CalendarImageEvent, 'smsText'>,
+): CalendarImageEvent | null {
   const smsText = buildCalendarImageSmsText(event)
   if (!smsText) return null
 
@@ -831,6 +1074,68 @@ function parseTranscriptPosterEvent(outputText: string, timeZone: string) {
     ...event,
     smsText,
   }
+}
+
+function parseTranscriptSingleEvent(
+  outputText: string,
+  timeZone: string,
+  mode: CalendarImageMode,
+) {
+  const lines = transcriptLines(outputText)
+  if (!lines.length) return null
+
+  const fallbackCandidates = transcriptTitleCandidates(lines, mode)
+  const title = cleanTranscriptEventTitle(
+    mode === 'poster' ? extractPosterHeadline(lines) : chooseBestEventTitleCandidate(fallbackCandidates, mode),
+    mode,
+    fallbackCandidates,
+  )
+  if (!title) return null
+
+  const dateSpan = extractPosterDateSpan(lines, timeZone)
+  const fullText = lines.join('\n')
+  const location =
+    extractLocationFromSupportingLines(lines) ||
+    extractLocationFromFreeformText(fullText)
+
+  if (dateSpan) {
+    return createCalendarImageEvent({
+      title,
+      dateYmd: dateSpan.startYmd,
+      endDateYmd: dateSpan.endYmd,
+      time24h: null,
+      isAllDay: true,
+      durationMinutes: null,
+      location,
+      organizerOrSource: null,
+      itemType: 'other',
+      isConfirmedOrFixed: true,
+      confidence: 'medium',
+      notes: null,
+    })
+  }
+
+  const dateYmd = findFirstTranscriptDateYmd(lines, timeZone)
+  if (!dateYmd) return null
+
+  const { visibleTimeRange, visibleTimes } = extractRelevantVisibleTimes(lines)
+  const isAllDay = visibleTimes.length === 0
+  const time24h = isAllDay ? null : visibleTimes[0]
+
+  return createCalendarImageEvent({
+    title,
+    dateYmd,
+    endDateYmd: null,
+    time24h,
+    isAllDay,
+    durationMinutes: visibleTimeRange?.durationMinutes || null,
+    location,
+    organizerOrSource: null,
+    itemType: 'other',
+    isConfirmedOrFixed: true,
+    confidence: 'medium',
+    notes: null,
+  })
 }
 
 function parseTranscriptEvents(outputText: string, timeZone: string) {
@@ -889,7 +1194,12 @@ function parseTranscriptEvents(outputText: string, timeZone: string) {
       title = remainder
     }
 
-    if (!title) title = currentHeading || 'event'
+    const resolvedTitle = cleanTranscriptEventTitle(title || currentHeading, 'list_flyer', [
+      currentHeading || '',
+      remainder,
+      ...supportingLines,
+    ])
+    if (!resolvedTitle) continue
 
     const detailText = [line, ...supportingLines].join(' ')
     const visibleTimeRange = extractTimeRangeDetails(detailText)
@@ -900,11 +1210,11 @@ function parseTranscriptEvents(outputText: string, timeZone: string) {
     const time24h = isAllDay ? null : visibleTimes[0]
     const dateYmd = ymdFromDate(date, timeZone)
     const smsText = isAllDay
-      ? `add ${title} on ${displayDate(dateYmd)} all day${location ? ` at ${location}` : ''}`
-      : `add ${title} on ${displayDate(dateYmd)} at ${displayTime(time24h)}${location ? ` at ${location}` : ''}${visibleTimeRange?.durationMinutes ? ` for ${visibleTimeRange.durationMinutes} minutes` : ''}`
+      ? `add ${resolvedTitle} on ${displayDate(dateYmd)} all day${location ? ` at ${location}` : ''}`
+      : `add ${resolvedTitle} on ${displayDate(dateYmd)} at ${displayTime(time24h)}${location ? ` at ${location}` : ''}${visibleTimeRange?.durationMinutes ? ` for ${visibleTimeRange.durationMinutes} minutes` : ''}`
 
     events.push({
-      title,
+      title: resolvedTitle,
       dateYmd,
       endDateYmd: null,
       time24h,
@@ -1005,7 +1315,12 @@ function parseTranscriptEventsFromBlocks(outputText: string, timeZone: string) {
         title = remainder
       }
 
-      if (!title) title = heading || 'event'
+      const resolvedTitle = cleanTranscriptEventTitle(title || heading, 'list_flyer', [
+        heading || '',
+        remainder,
+        ...supportingLines,
+      ])
+      if (!resolvedTitle) continue
 
       const detailText = [remainder, ...supportingLines].join(' ')
       const visibleTimeRange = extractTimeRangeDetails(detailText)
@@ -1015,12 +1330,12 @@ function parseTranscriptEventsFromBlocks(outputText: string, timeZone: string) {
       const isAllDay = visibleTimes.length === 0
       const time24h = isAllDay ? null : visibleTimes[0]
       const dateYmd = ymdFromDate(date, timeZone)
-      const key = `${dateYmd}::${title.toLowerCase()}`
+      const key = `${dateYmd}::${resolvedTitle.toLowerCase()}`
       if (seen.has(key)) continue
       seen.add(key)
 
       events.push({
-        title,
+        title: resolvedTitle,
         dateYmd,
         endDateYmd: null,
         time24h,
@@ -1033,8 +1348,8 @@ function parseTranscriptEventsFromBlocks(outputText: string, timeZone: string) {
         confidence: 'medium',
         notes,
         smsText: isAllDay
-          ? `add ${title} on ${displayDate(dateYmd)} all day${location ? ` at ${location}` : ''}`
-          : `add ${title} on ${displayDate(dateYmd)} at ${displayTime(time24h)}${location ? ` at ${location}` : ''}${visibleTimeRange?.durationMinutes ? ` for ${visibleTimeRange.durationMinutes} minutes` : ''}`,
+          ? `add ${resolvedTitle} on ${displayDate(dateYmd)} all day${location ? ` at ${location}` : ''}`
+          : `add ${resolvedTitle} on ${displayDate(dateYmd)} at ${displayTime(time24h)}${location ? ` at ${location}` : ''}${visibleTimeRange?.durationMinutes ? ` for ${visibleTimeRange.durationMinutes} minutes` : ''}`,
       })
     }
 
@@ -1138,17 +1453,23 @@ function calendarImageItemToEvent(item: CalendarImageItemPayload): CalendarImage
   const endDate = displayDate(item.end_date_ymd)
   if (!date) return null
 
-  const title =
-    cleanText(item.title) ||
-    (cleanText(item.organizer_or_source)
-      ? `${cleanText(item.organizer_or_source)} ${item.item_type || 'event'}`
-      : item.item_type || 'event')
+  const cleanedTitle = cleanText(item.title)
+  const cleanedSource = cleanText(item.organizer_or_source)
+  const titleFromSource =
+    cleanedSource && !looksContactLine(cleanedSource) && !isWeakCalendarImageTitle(cleanedSource, 'single_screenshot')
+      ? cleanedSource
+      : ''
+  const locationFromSource =
+    cleanedSource && (looksLocationLine(cleanedSource) || looksAddressLikeLine(cleanedSource))
+      ? cleanedSource
+      : ''
+  const title = cleanedTitle || titleFromSource || item.item_type || 'event'
   const location =
     cleanText(item.location) ||
     extractLocationFromFreeformText(
       [item.location, item.notes, item.organizer_or_source].filter(Boolean).join('\n'),
     ) ||
-    cleanText(item.organizer_or_source)
+    locationFromSource
   const sourceText = [title, location, cleanText(item.organizer_or_source), cleanText(item.notes)]
     .filter(Boolean)
     .join(' ')
@@ -1165,7 +1486,11 @@ function calendarImageItemToEvent(item: CalendarImageItemPayload): CalendarImage
       (looksTravelReservation &&
         /\b(reservation|confirmed|confirmation|itinerary|booking|arrival|departure)\b/i.test(sourceText)),
   )
-  const resolvedTime = isAllDay ? null : item.time_24h || visibleTimeRange?.startTime24h || null
+  const resolvedTime = isAllDay
+    ? null
+    : visibleTimeRange && (!item.time_24h || item.time_24h === visibleTimeRange.endTime24h)
+      ? visibleTimeRange.startTime24h
+      : item.time_24h || visibleTimeRange?.startTime24h || null
   const resolvedDuration =
     item.duration_minutes && item.duration_minutes > 0
       ? item.duration_minutes
@@ -1199,6 +1524,125 @@ function calendarImageItemToEvent(item: CalendarImageItemPayload): CalendarImage
   }
 }
 
+function transcriptEventsForMode(
+  transcriptText: string | null,
+  timeZone: string,
+  mode: CalendarImageMode,
+) {
+  if (!transcriptText) return []
+
+  if (mode === 'list_flyer') {
+    const lineEvents = parseTranscriptEvents(transcriptText, timeZone)
+    const blockEvents = parseTranscriptEventsFromBlocks(transcriptText, timeZone)
+    return blockEvents.length > lineEvents.length ? blockEvents : lineEvents
+  }
+
+  const singleEvent = parseTranscriptSingleEvent(transcriptText, timeZone, mode)
+  if (singleEvent) return [singleEvent]
+
+  const lineEvents = parseTranscriptEvents(transcriptText, timeZone)
+  if (lineEvents.length) return lineEvents
+
+  const blockEvents = parseTranscriptEventsFromBlocks(transcriptText, timeZone)
+  return blockEvents
+}
+
+function mergeCalendarImageEvent(
+  primary: CalendarImageEvent,
+  secondary: CalendarImageEvent | null | undefined,
+) {
+  if (!secondary) return primary
+
+  const merged = createCalendarImageEvent({
+    title: primary.title || secondary.title,
+    dateYmd: primary.dateYmd || secondary.dateYmd,
+    endDateYmd: primary.endDateYmd || secondary.endDateYmd || null,
+    time24h: primary.isAllDay ? null : primary.time24h || secondary.time24h || null,
+    isAllDay: primary.isAllDay,
+    durationMinutes: primary.durationMinutes || secondary.durationMinutes || null,
+    location: primary.location || secondary.location || null,
+    organizerOrSource: primary.organizerOrSource || secondary.organizerOrSource || null,
+    itemType: primary.itemType || secondary.itemType,
+    isConfirmedOrFixed: primary.isConfirmedOrFixed || secondary.isConfirmedOrFixed,
+    confidence: strongerConfidence(primary.confidence, secondary.confidence),
+    notes: primary.notes || secondary.notes || null,
+  })
+
+  return merged || primary
+}
+
+function shouldPreferTranscriptSingleEvent(
+  structuredEvents: CalendarImageEvent[],
+  transcriptEvent: CalendarImageEvent,
+  mode: CalendarImageMode,
+) {
+  if (!structuredEvents.length || structuredEvents.length !== 1) return true
+
+  const structuredEvent = structuredEvents[0]
+  if (mode === 'poster' || mode === 'social_post') return true
+  if (isWeakCalendarImageTitle(structuredEvent.title, mode)) return true
+  if (structuredEvent.isAllDay && !transcriptEvent.isAllDay) return true
+  if (!structuredEvent.location && Boolean(transcriptEvent.location)) return true
+  if (!structuredEvent.endDateYmd && Boolean(transcriptEvent.endDateYmd)) return true
+
+  return (
+    scoreEventTitleCandidate(transcriptEvent.title, mode) >=
+    scoreEventTitleCandidate(structuredEvent.title, mode) + 3
+  )
+}
+
+function singleImageNeedsClarification({
+  event,
+  mode,
+  transcriptText,
+  confidence,
+}: {
+  event: CalendarImageEvent | null | undefined
+  mode: CalendarImageMode
+  transcriptText: string | null
+  confidence: CalendarImagePayload['confidence']
+}) {
+  if (!event) return false
+  if (confidence === 'low' || event.confidence === 'low') return true
+  if (isWeakCalendarImageTitle(event.title, mode)) return true
+
+  if (!transcriptText) return false
+
+  const { visibleTimes } = extractRelevantVisibleTimes(transcriptLines(transcriptText))
+  if (visibleTimes.length > 0 && event.isAllDay) return true
+
+  return false
+}
+
+function transcriptIndicatesExplicitAllDay(transcriptText: string) {
+  const normalized = cleanText(transcriptText).toLowerCase()
+  if (!normalized) return false
+
+  return /\ball day\b|\bno school\b|\bdeadline\b|\bdue\b|\bclosed\b|\boff day\b|\bholiday\b/.test(
+    normalized,
+  )
+}
+
+function singleImageNeedsTimeClarification({
+  event,
+  mode,
+  transcriptText,
+}: {
+  event: CalendarImageEvent | null | undefined
+  mode: CalendarImageMode
+  transcriptText: string | null
+}) {
+  if (!event || !transcriptText) return false
+  if (mode === 'list_flyer') return false
+  if (!event.isAllDay) return false
+  if (event.endDateYmd && event.endDateYmd !== event.dateYmd) return false
+
+  const { visibleTimes } = extractRelevantVisibleTimes(transcriptLines(transcriptText))
+  if (visibleTimes.length > 0) return false
+
+  return !transcriptIndicatesExplicitAllDay(transcriptText)
+}
+
 export async function calendarImageToSmsText({
   dataUrl,
   timeZone = defaultTimezone(),
@@ -1216,6 +1660,10 @@ export async function calendarImageToSmsText({
   const secondaryTimeoutMs = isSmsMode ? 4_500 : 10_000
   const finalFallbackTimeoutMs = isSmsMode ? 2_500 : 10_000
 
+  let transcriptText: string | null = null
+  let transcriptFailure: Error | null = null
+  let classifiedMode: CalendarImageMode = 'single_screenshot'
+  let transcriptModeEvents: CalendarImageEvent[] = []
   let payload: CalendarImagePayload = {
     has_calendar_items: false,
     items: [],
@@ -1227,11 +1675,35 @@ export async function calendarImageToSmsText({
   let structuredFailure: Error | null = null
 
   try {
+    transcriptText = await openAiImageResponse({
+      dataUrl,
+      timeZone,
+      instructions: transcriptImageInstructions(timeZone),
+      userText: 'Transcribe the visible text from this image.',
+      timeoutMs: secondaryTimeoutMs,
+      body: {},
+    })
+
+    if (transcriptText && !/^no_event$/i.test(cleanText(transcriptText))) {
+      classifiedMode = classifyCalendarImageMode(transcriptText, timeZone)
+      transcriptModeEvents = transcriptEventsForMode(transcriptText, timeZone, classifiedMode)
+    }
+  } catch (error) {
+    transcriptFailure = error instanceof Error ? error : new Error('Transcript image parsing failed.')
+    console.error('Transcript calendar image parsing failed.', {
+      error: transcriptFailure.message,
+    })
+  }
+
+  try {
     const outputText = await openAiImageResponse({
       dataUrl,
       timeZone,
-      instructions: structuredImageInstructions(timeZone),
-      userText: 'Read this image and extract the calendar event details.',
+      instructions: structuredImageInstructionsForMode(classifiedMode, timeZone),
+      userText:
+        classifiedMode === 'list_flyer'
+          ? 'Read this image and extract every separate dated calendar item you can clearly read.'
+          : 'Read this image and extract the calendar event details.',
       timeoutMs: structuredTimeoutMs,
       body: {
         text: {
@@ -1249,6 +1721,19 @@ export async function calendarImageToSmsText({
 
     payload = JSON.parse(outputText) as CalendarImagePayload
     events = calendarImagePayloadToEvents(payload)
+    if (transcriptModeEvents.length > 1 && transcriptModeEvents.length > events.length) {
+      events = transcriptModeEvents
+      payload.confidence = strongerConfidence(payload.confidence, 'medium')
+    } else if (
+      transcriptModeEvents.length === 1 &&
+      shouldPreferTranscriptSingleEvent(events, transcriptModeEvents[0], classifiedMode)
+    ) {
+      events = [mergeCalendarImageEvent(transcriptModeEvents[0], events[0])]
+      payload.confidence = strongerConfidence(payload.confidence, 'medium')
+    }
+    if (transcriptText) {
+      events = enrichSingleEventLocationFromTranscript(events, transcriptText)
+    }
     smsTexts = events.map((event) => event.smsText)
   } catch (error) {
     structuredFailure = error instanceof Error ? error : new Error('Structured image parsing failed.')
@@ -1257,78 +1742,67 @@ export async function calendarImageToSmsText({
     })
   }
 
+  const buildResult = ({
+    resultEvents = events,
+    resultSmsTexts = resultEvents.map((event) => event.smsText),
+    resultConfidence = payload.confidence,
+    resultNotes = payload.notes,
+  }: {
+    resultEvents?: CalendarImageEvent[]
+    resultSmsTexts?: string[]
+    resultConfidence?: CalendarImagePayload['confidence']
+    resultNotes?: string | null
+  } = {}): CalendarImageResult => ({
+    smsText: resultSmsTexts[0] || null,
+    smsTexts: resultSmsTexts,
+    events: resultEvents,
+    confidence: resultConfidence,
+    notes: resultNotes,
+    mode: classifiedMode,
+    needsClarification:
+      resultEvents.length === 1
+        ? singleImageNeedsClarification({
+            event: resultEvents[0],
+            mode: classifiedMode,
+            transcriptText,
+            confidence: resultConfidence,
+          })
+        : false,
+    needsTimeClarification:
+      resultEvents.length === 1 &&
+      !(
+        resultEvents.length === 1
+          ? singleImageNeedsClarification({
+              event: resultEvents[0],
+              mode: classifiedMode,
+              transcriptText,
+              confidence: resultConfidence,
+            })
+          : false
+      )
+        ? singleImageNeedsTimeClarification({
+            event: resultEvents[0],
+            mode: classifiedMode,
+            transcriptText,
+          })
+        : false,
+  })
+
   if (isSmsMode && smsTexts.length > 1) {
-    return {
-      smsText: smsTexts[0] || null,
-      smsTexts,
-      events,
-      confidence: payload.confidence,
-      notes: payload.notes,
-    }
+    return buildResult()
   }
 
   if (isSmsMode) {
-    let transcriptFailure: Error | null = null
-
-    try {
-      const transcriptText = await openAiImageResponse({
-        dataUrl,
-        timeZone,
-        instructions: transcriptImageInstructions(timeZone),
-        userText: 'Transcribe the visible text from this image.',
-        timeoutMs: secondaryTimeoutMs,
-        body: {},
-      })
-
-      const transcriptEvents = transcriptText
-        ? (() => {
-            const lineEvents = parseTranscriptEvents(transcriptText, timeZone)
-            if (lineEvents.length >= 2) return lineEvents
-            const blockEvents = parseTranscriptEventsFromBlocks(transcriptText, timeZone)
-            if (blockEvents.length > lineEvents.length) return blockEvents
-            if (lineEvents.length) return lineEvents
-            const posterEvent = parseTranscriptPosterEvent(transcriptText, timeZone)
-            return posterEvent ? [posterEvent] : []
-          })()
-        : []
-
-      if (transcriptEvents.length) {
-        return {
-          smsText: transcriptEvents[0]?.smsText || null,
-          smsTexts: transcriptEvents.map((event) => event.smsText),
-          events: transcriptEvents,
-          confidence: 'medium',
-          notes: payload.notes,
-        }
-      }
-
-      if (transcriptText && events.length === 1 && !events[0]?.location) {
-        const enrichedEvents = enrichSingleEventLocationFromTranscript(events, transcriptText)
-        if (enrichedEvents !== events) {
-          return {
-            smsText: enrichedEvents[0]?.smsText || null,
-            smsTexts: enrichedEvents.map((event) => event.smsText),
-            events: enrichedEvents,
-            confidence: payload.confidence,
-            notes: payload.notes,
-          }
-        }
-      }
-    } catch (error) {
-      transcriptFailure = error instanceof Error ? error : new Error('Transcript image parsing failed.')
-      console.error('Transcript calendar image parsing failed.', {
-        error: transcriptFailure.message,
-      })
+    if (smsTexts.length) {
+      return buildResult()
     }
 
-    if (smsTexts.length) {
-      return {
-        smsText: smsTexts[0] || null,
-        smsTexts,
-        events,
-        confidence: payload.confidence,
-        notes: payload.notes,
-      }
+    if (transcriptModeEvents.length) {
+      return buildResult({
+        resultEvents: transcriptModeEvents,
+        resultSmsTexts: transcriptModeEvents.map((event) => event.smsText),
+        resultConfidence: 'medium',
+      })
     }
 
     const meaningfulFailure = transcriptFailure || structuredFailure
@@ -1336,13 +1810,10 @@ export async function calendarImageToSmsText({
       throw meaningfulFailure
     }
 
-    return {
-      smsText: null,
-      smsTexts: [],
-      events,
-      confidence: payload.confidence,
-      notes: payload.notes,
-    }
+    return buildResult({
+      resultEvents: [],
+      resultSmsTexts: [],
+    })
   }
 
   let lineItemFailure: Error | null = null
@@ -1369,23 +1840,11 @@ export async function calendarImageToSmsText({
   }
 
   if (lineItemEvents.length > smsTexts.length && lineItemEvents.length >= 2) {
-    return {
-      smsText: lineItemEvents[0]?.smsText || null,
-      smsTexts: lineItemEvents.map((event) => event.smsText),
-      events: lineItemEvents,
-      confidence: 'medium',
-      notes: payload.notes,
-    }
-  }
-
-  if (isSmsMode && smsTexts.length) {
-    return {
-      smsText: smsTexts[0] || null,
-      smsTexts,
-      events,
-      confidence: payload.confidence,
-      notes: payload.notes,
-    }
+    return buildResult({
+      resultEvents: lineItemEvents,
+      resultSmsTexts: lineItemEvents.map((event) => event.smsText),
+      resultConfidence: 'medium',
+    })
   }
 
   if (smsTexts.length <= 1) {
@@ -1427,6 +1886,14 @@ export async function calendarImageToSmsText({
     }
   }
 
+  if (transcriptModeEvents.length > smsTexts.length && transcriptModeEvents.length >= 2) {
+    return buildResult({
+      resultEvents: transcriptModeEvents,
+      resultSmsTexts: transcriptModeEvents.map((event) => event.smsText),
+      resultConfidence: 'medium',
+    })
+  }
+
   let fallbackFailure: Error | null = null
   let fallbackSmsLines: string[] = []
   let fallbackEvents: CalendarImageEvent[] = []
@@ -1451,92 +1918,48 @@ export async function calendarImageToSmsText({
   }
 
   if (lineItemEvents.length > smsTexts.length && lineItemEvents.length >= 2) {
-    return {
-      smsText: lineItemEvents[0]?.smsText || null,
-      smsTexts: lineItemEvents.map((event) => event.smsText),
-      events: lineItemEvents,
-      confidence: 'medium',
-      notes: payload.notes,
-    }
+    return buildResult({
+      resultEvents: lineItemEvents,
+      resultSmsTexts: lineItemEvents.map((event) => event.smsText),
+      resultConfidence: 'medium',
+    })
   }
 
   if (fallbackSmsLines.length > smsTexts.length && fallbackEvents.length >= Math.min(2, fallbackSmsLines.length)) {
-    return {
-      smsText: fallbackSmsLines[0] || null,
-      smsTexts: fallbackSmsLines,
-      events: fallbackEvents,
-      confidence: 'medium',
-      notes: payload.notes,
-    }
-  }
-
-  try {
-    const transcriptText = await openAiImageResponse({
-      dataUrl,
-      timeZone,
-      instructions: transcriptImageInstructions(timeZone),
-      userText: 'Transcribe the visible text from this image.',
-      timeoutMs: finalFallbackTimeoutMs,
-      body: {},
-    })
-
-    const transcriptEvents = transcriptText
-      ? (() => {
-          const lineEvents = parseTranscriptEvents(transcriptText, timeZone)
-          if (lineEvents.length >= 2) return lineEvents
-          const blockEvents = parseTranscriptEventsFromBlocks(transcriptText, timeZone)
-          if (blockEvents.length > lineEvents.length) return blockEvents
-          if (lineEvents.length) return lineEvents
-          const posterEvent = parseTranscriptPosterEvent(transcriptText, timeZone)
-          return posterEvent ? [posterEvent] : []
-        })()
-      : []
-    if (transcriptEvents.length > smsTexts.length && transcriptEvents.length >= 2) {
-      return {
-        smsText: transcriptEvents[0]?.smsText || null,
-        smsTexts: transcriptEvents.map((event) => event.smsText),
-        events: transcriptEvents,
-        confidence: 'medium',
-        notes: payload.notes,
-      }
-    }
-  } catch (error) {
-    const transcriptFailure = error instanceof Error ? error : new Error('Transcript image parsing failed.')
-    console.error('Transcript calendar image parsing failed.', {
-      error: transcriptFailure.message,
+    return buildResult({
+      resultEvents: fallbackEvents,
+      resultSmsTexts: fallbackSmsLines,
+      resultConfidence: 'medium',
     })
   }
 
   if (smsTexts.length) {
-    return {
-      smsText: smsTexts[0] || null,
-      smsTexts,
-      events,
-      confidence: payload.confidence,
-      notes: payload.notes,
-    }
+    return buildResult()
   }
 
   if (fallbackSmsLines.length) {
-    return {
-      smsText: fallbackSmsLines[0] || null,
-      smsTexts: fallbackSmsLines,
-      events: fallbackEvents,
-      confidence: 'medium',
-      notes: payload.notes,
-    }
+    return buildResult({
+      resultEvents: fallbackEvents,
+      resultSmsTexts: fallbackSmsLines,
+      resultConfidence: 'medium',
+    })
   }
 
-  const meaningfulFailure = fallbackFailure || structuredFailure
+  if (transcriptModeEvents.length) {
+    return buildResult({
+      resultEvents: transcriptModeEvents,
+      resultSmsTexts: transcriptModeEvents.map((event) => event.smsText),
+      resultConfidence: 'medium',
+    })
+  }
+
+  const meaningfulFailure = fallbackFailure || structuredFailure || transcriptFailure
   if ((lineItemFailure || meaningfulFailure) && /openai|api key|returned \d+|timed out/i.test((lineItemFailure || meaningfulFailure)!.message)) {
     throw (lineItemFailure || meaningfulFailure)!
   }
 
-  return {
-    smsText: null,
-    smsTexts: [],
-    events,
-    confidence: payload.confidence,
-    notes: payload.notes,
-  }
+  return buildResult({
+    resultEvents: [],
+    resultSmsTexts: [],
+  })
 }

@@ -2,7 +2,12 @@ import { NextRequest } from 'next/server'
 import { normalizePhone } from '@/src/lib/phone'
 import { findProfileByPhone } from '@/src/lib/profiles'
 import { checkRateLimit } from '@/src/lib/rateLimit'
-import { handleIncomingSms, storePhotoBatchCalendarChoicePending } from '@/src/lib/sms/agent'
+import {
+  handleIncomingSms,
+  storePhotoBatchCalendarChoicePending,
+  storePhotoEventClarificationPending,
+  storePhotoEventTimeClarificationPending,
+} from '@/src/lib/sms/agent'
 import { calendarImageToSmsText, type CalendarImageResult } from '@/src/lib/sms/calendarImage'
 import {
   calendarHintFromImageCaption,
@@ -26,6 +31,44 @@ function publicRequestUrl(request: NextRequest) {
 
 function normalizeMediaType(contentType: string | null | undefined) {
   return (contentType || '').split(';')[0].trim().toLowerCase()
+}
+
+function normalizeImageTitle(value: string | null | undefined) {
+  return (value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function shouldClarifySingleImageEvent(result: CalendarImageResult) {
+  if (result.needsClarification) return true
+
+  const event = result.events[0]
+  if (!event || result.events.length !== 1) return false
+
+  if (result.confidence === 'low' || event.confidence === 'low') return true
+
+  const normalizedTitle = normalizeImageTitle(event.title)
+  if (!normalizedTitle) return true
+
+  if (/^(event|meeting|appointment|party|other|school|sports|travel|deadline)$/.test(normalizedTitle)) {
+    return true
+  }
+
+  const organizerMatchesTitle =
+    normalizeImageTitle(event.organizerOrSource) &&
+    normalizeImageTitle(event.organizerOrSource) === normalizedTitle
+
+  const allCapsOrgLike =
+    event.title === event.title.toUpperCase() &&
+    normalizedTitle.split(' ').length >= 4 &&
+    !/\b(night|party|game|graduation|birthday|contest|powwow|talk|camp|day|meeting|appointment|lesson|practice|concert|reservation|recital|celebration)\b/.test(
+      normalizedTitle,
+    )
+
+  return Boolean(organizerMatchesTitle || allCapsOrgLike)
 }
 
 function twilioBasicAuthHeader(accountSidOverride?: string | null) {
@@ -237,6 +280,44 @@ export async function POST(request: NextRequest) {
             twilioMessageSid,
           })
           return twilioXmlResponse(messageXml(batch.reply), { status: 200 })
+        }
+
+        if (imageResult.needsTimeClarification && imageResult.events[0]) {
+          const reply = await storePhotoEventTimeClarificationPending({
+            profileId: profile.id,
+            smsFrom: from,
+            timeZone: profile.timezone,
+            defaultDurationMinutes: profile.default_event_duration_minutes,
+            calendarHint: calendarHintFromImageCaption(finalBody),
+            event: imageResult.events[0],
+          })
+          await logDirectTwilioReply({
+            profileId: profile.id,
+            from,
+            inboundBody: finalBody || 'Photo with calendar schedule',
+            outboundBody: reply,
+            twilioMessageSid,
+          })
+          return twilioXmlResponse(messageXml(reply), { status: 200 })
+        }
+
+        if (shouldClarifySingleImageEvent(imageResult) && imageResult.events[0]) {
+          const reply = await storePhotoEventClarificationPending({
+            profileId: profile.id,
+            smsFrom: from,
+            timeZone: profile.timezone,
+            defaultDurationMinutes: profile.default_event_duration_minutes,
+            calendarHint: calendarHintFromImageCaption(finalBody),
+            event: imageResult.events[0],
+          })
+          await logDirectTwilioReply({
+            profileId: profile.id,
+            from,
+            inboundBody: finalBody || 'Photo with calendar schedule',
+            outboundBody: reply,
+            twilioMessageSid,
+          })
+          return twilioXmlResponse(messageXml(reply), { status: 200 })
         }
 
         finalBody = finalBody ? `${finalBody}\n${imageResult.smsText}` : imageResult.smsText

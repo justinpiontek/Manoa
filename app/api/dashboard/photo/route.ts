@@ -6,7 +6,12 @@ import {
 } from '@/src/lib/sms/calendarImageBatch'
 import { getDashboardProfileByEmail } from '@/src/lib/profiles'
 import { checkRateLimit, clientIp } from '@/src/lib/rateLimit'
-import { handleIncomingSms, storePhotoBatchCalendarChoicePending } from '@/src/lib/sms/agent'
+import {
+  handleIncomingSms,
+  storePhotoBatchCalendarChoicePending,
+  storePhotoEventClarificationPending,
+  storePhotoEventTimeClarificationPending,
+} from '@/src/lib/sms/agent'
 import { dashboardSender } from '@/src/lib/sms/sender'
 import { listSmsThreadEntries, toSmsThreadMessages } from '@/src/lib/sms/thread'
 import { createSupabaseRouteHandlerClient } from '@/src/lib/supabase/server'
@@ -189,6 +194,68 @@ export async function POST(request: NextRequest) {
         extractedText: result.smsTexts.join('\n'),
         confidence: result.confidence,
         batch,
+      })
+
+      cookiesToSet.forEach(({ name, value, options }) => {
+        response.cookies.set(name, value, options)
+      })
+
+      return response
+    }
+
+    if (result.needsTimeClarification && result.events[0]) {
+      const reply = await storePhotoEventTimeClarificationPending({
+        profileId: profile.id,
+        smsFrom: from,
+        timeZone: profile.timezone,
+        defaultDurationMinutes: profile.default_event_duration_minutes,
+        calendarHint: calendarHintFromImageCaption(caption),
+        event: result.events[0],
+      })
+
+      await logDashboardPhotoReply({
+        profileId: profile.id,
+        from,
+        caption,
+        reply,
+      })
+
+      const thread = toSmsThreadMessages(await listSmsThreadEntries(profile.id))
+      const response = NextResponse.json({
+        messages: thread,
+        extractedText: result.smsText,
+        confidence: result.confidence,
+      })
+
+      cookiesToSet.forEach(({ name, value, options }) => {
+        response.cookies.set(name, value, options)
+      })
+
+      return response
+    }
+
+    if (result.needsClarification && result.events[0]) {
+      const reply = await storePhotoEventClarificationPending({
+        profileId: profile.id,
+        smsFrom: from,
+        timeZone: profile.timezone,
+        defaultDurationMinutes: profile.default_event_duration_minutes,
+        calendarHint: calendarHintFromImageCaption(caption),
+        event: result.events[0],
+      })
+
+      await logDashboardPhotoReply({
+        profileId: profile.id,
+        from,
+        caption,
+        reply,
+      })
+
+      const thread = toSmsThreadMessages(await listSmsThreadEntries(profile.id))
+      const response = NextResponse.json({
+        messages: thread,
+        extractedText: result.smsText,
+        confidence: result.confidence,
       })
 
       cookiesToSet.forEach(({ name, value, options }) => {

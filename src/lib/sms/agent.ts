@@ -9,6 +9,7 @@ import {
   resolveCalendarPlacement,
   listUpcomingEvents,
   updateCalendarEvent,
+  type CalendarPlacementResolution,
   type CalendarPlacementOption,
   type EventSummary,
   type ScheduleOption,
@@ -157,12 +158,24 @@ type PendingPayload = {
     serviceConfirmed?: boolean
   }
   photoBatchEvents?: CalendarImageEvent[]
+  clarification?: {
+    type: 'image_event' | 'image_event_time'
+  }
 }
 
 type PendingAction = {
   id: string
   kind: PendingKind
   payload: PendingPayload
+}
+
+type EventQueryMatch = {
+  event: EventSummary
+  score: number
+  queryWordCount: number
+  titleWordMatches: number
+  exactTitle: boolean
+  titleContainsQuery: boolean
 }
 
 const activeSubscriptionStatuses = new Set(['active', 'trialing'])
@@ -288,7 +301,11 @@ function calendarChoiceReply({
     footerLines.push(`There are ${extraCount} more calendars hidden. You can type the exact calendar name instead.`)
   }
 
-  footerLines.push('Reply with a number or calendar name.')
+  footerLines.push(
+    visibleCalendars.length === 1 && calendars.length === 1
+      ? 'Reply YES, 1, or the calendar name.'
+      : 'Reply with a number or calendar name.',
+  )
   return {
     reply: sectionedListReply({
       intro: [`🗓️ ${heading}`, details].filter(Boolean).join('\n'),
@@ -309,6 +326,14 @@ function scheduleRequestCalendarChoiceDetails(
   scheduleRequest: PendingPayload['scheduleRequest'] | undefined,
   timeZone: string,
 ) {
+  const summary = scheduleRequestSummaryText(scheduleRequest, timeZone)
+  return summary ? `Current request: ${summary}.` : null
+}
+
+function scheduleRequestSummaryText(
+  scheduleRequest: PendingPayload['scheduleRequest'] | undefined,
+  timeZone: string,
+) {
   if (!scheduleRequest) return null
 
   const baseDate = new Date(scheduleRequest.baseDate)
@@ -316,19 +341,198 @@ function scheduleRequestCalendarChoiceDetails(
 
   if (scheduleRequest.allDay) {
     const endDate = scheduleRequest.endDate ? new Date(scheduleRequest.endDate) : null
-    const timing =
+    return (
       endDate && !sameCalendarDay(baseDate, endDate, timeZone)
         ? `${formatSmsDate(baseDate, timeZone)} through ${formatSmsDate(endDate, timeZone)} (all day)`
         : `${formatSmsDate(baseDate, timeZone)} (all day)`
-    return `Current request: ${timing}.`
+    )
   }
 
   if (scheduleRequest.exactTime) {
     const start = setTime(baseDate, scheduleRequest.exactTime, timeZone)
-    return `Current request: ${formatSmsDate(start, timeZone)} at ${formatSmsTime(start, timeZone)}.`
+    return `${formatSmsDate(start, timeZone)} at ${formatSmsTime(start, timeZone)}`
   }
 
-  return `Current request: ${formatSmsDate(baseDate, timeZone)}.`
+  return formatSmsDate(baseDate, timeZone)
+}
+
+function scheduleRequestReferenceText(
+  scheduleRequest: NonNullable<PendingPayload['scheduleRequest']>,
+  timeZone: string,
+) {
+  const summary = scheduleRequestSummaryText(scheduleRequest, timeZone)
+  if (!summary) return `"${scheduleRequest.title}"`
+  return `"${scheduleRequest.title}" on ${summary}`
+}
+
+function normalizeCalendarChoiceText(value: string | null | undefined) {
+  return tokenizeText(value || '').join(' ')
+}
+
+function isExactCalendarHintMatch(
+  calendarHint: string | null | undefined,
+  calendar: CalendarPlacementOption,
+  calendars: CalendarPlacementOption[],
+) {
+  const normalizedHint = normalizeCalendarChoiceText(calendarHint)
+  if (!normalizedHint) return false
+
+  return [
+    calendarChoiceDisplayLabel(calendar, calendars),
+    calendar.calendarLabel,
+    calendar.calendarName,
+    calendar.calendarId,
+  ].some((value) => normalizeCalendarChoiceText(value) === normalizedHint)
+}
+
+function planCalendarSelection({
+  placement,
+  calendarHint,
+  defaultHeading,
+}: {
+  placement: CalendarPlacementResolution
+  calendarHint?: string | null
+  defaultHeading: string
+}) {
+  const exactUniqueMatch =
+    !placement.genericHint &&
+    placement.matches.length === 1 &&
+    isExactCalendarHintMatch(calendarHint, placement.matches[0], placement.bookingCalendars)
+
+  const singleFuzzyMatch =
+    !placement.genericHint &&
+    placement.matches.length === 1 &&
+    !exactUniqueMatch &&
+    placement.bookingCalendars.length > 1
+
+  const missingSpecificHint =
+    !placement.genericHint &&
+    placement.matches.length === 0 &&
+    placement.bookingCalendars.length > 1
+
+  const needsChoice =
+    placement.matches.length > 1 ||
+    (placement.genericHint && placement.bookingCalendars.length > 1) ||
+    missingSpecificHint ||
+    singleFuzzyMatch
+
+  if (!needsChoice) {
+    return {
+      needsChoice: false,
+      chosenCalendar: placement.matches[0] || placement.bookingCalendars[0] || null,
+      calendarChoices: placement.matches.length ? placement.matches : placement.bookingCalendars,
+      heading: null,
+    }
+  }
+
+  const calendarChoices = prioritizedCalendarChoices(
+    placement.matches.length > 1
+      ? placement.matches
+      : placement.bookingCalendars,
+  )
+
+  let heading = defaultHeading
+  if (missingSpecificHint && calendarHint) {
+    heading = `I couldn't tell which calendar "${calendarHint}" means. Which calendar should I use?`
+  } else if (singleFuzzyMatch && calendarHint && placement.matches[0]) {
+    heading = `I think "${calendarHint}" means ${calendarChoiceDisplayLabel(
+      placement.matches[0],
+      placement.bookingCalendars,
+    )}. Which calendar should I use?`
+  }
+
+  return {
+    needsChoice: true,
+    chosenCalendar: null,
+    calendarChoices,
+    heading,
+  }
+}
+
+function imageEventClarificationReply({
+  scheduleRequest,
+  calendars,
+  timeZone,
+  calendarLead,
+}: {
+  scheduleRequest: NonNullable<PendingPayload['scheduleRequest']>
+  calendars: CalendarPlacementOption[]
+  timeZone: string
+  calendarLead?: string | null
+}) {
+  const summary = scheduleRequestReferenceText(scheduleRequest, timeZone)
+  const locationLine = scheduleRequest.location?.trim() ? `📍 ${scheduleRequest.location.trim()}.` : null
+
+  if (calendars.length <= 1) {
+    const calendarLabel = calendars[0]
+      ? calendarChoiceDisplayLabel(calendars[0], calendars)
+      : 'that calendar'
+
+    return {
+      reply: [ 
+        `🖼️ Do you mean ${summary}?`,
+        locationLine,
+        `If that's right, reply YES and I'll use ${calendarLabel}.`,
+        'If not, text the corrected event name.',
+      ].filter(Boolean).join('\n\n'),
+      visibleCount: calendars.length || 1,
+    }
+  }
+
+  const visibleCalendars = visibleCalendarChoices(calendars)
+  const extraCount = calendars.length - visibleCalendars.length
+
+  return {
+    reply: sectionedListReply({
+      intro: [
+        `🖼️ Do you mean ${summary}?`,
+        locationLine,
+        calendarLead || `If that's right, which calendar should I put it on?`,
+      ].filter(Boolean).join('\n\n'),
+      list: calendarChoiceList(visibleCalendars, calendars),
+      footer: [
+        extraCount > 0
+          ? `There are ${extraCount} more calendars hidden. You can type the exact calendar name instead.`
+          : null,
+        'Reply with a number or calendar name.',
+        'If the title is wrong, text the corrected event name.',
+      ].filter(Boolean).join('\n'),
+    }),
+    visibleCount: visibleCalendars.length,
+  }
+}
+
+function imageEventTimeClarificationReply({
+  scheduleRequest,
+  timeZone,
+}: {
+  scheduleRequest: NonNullable<PendingPayload['scheduleRequest']>
+  timeZone: string
+}) {
+  const summary = scheduleRequestReferenceText(scheduleRequest, timeZone)
+  const locationLine = scheduleRequest.location?.trim() ? `📍 ${scheduleRequest.location.trim()}.` : null
+
+  return [
+    `🕒 I found ${summary}, but I couldn't tell the start time.`,
+    locationLine,
+    'Reply with a time like 5pm, or say ALL DAY.',
+  ].filter(Boolean).join('\n\n')
+}
+
+function scheduleRequestCalendarChoiceReply({
+  scheduleRequest,
+  calendars,
+  timeZone,
+}: {
+  scheduleRequest: NonNullable<PendingPayload['scheduleRequest']>
+  calendars: CalendarPlacementOption[]
+  timeZone: string
+}) {
+  return calendarChoiceReply({
+    heading: eventTitleCalendarChoiceHeading(scheduleRequest.title),
+    details: scheduleRequestCalendarChoiceDetails(scheduleRequest, timeZone),
+    calendars,
+  })
 }
 
 function actionChoiceList(lines: string[]) {
@@ -1504,7 +1708,7 @@ async function applySettingsIntent(profile: SmsProfile, intent: Extract<ParsedSm
 
 function eventLookupText(
   query: string,
-  matches: EventSummary[],
+  matches: EventQueryMatch[],
   timeZone?: string,
   mode: 'when' | 'where' | 'time' = 'when',
 ) {
@@ -1513,9 +1717,19 @@ function eventLookupText(
     return `🔎 I couldn't find ${cleanedQuery || 'that'} on your upcoming calendar. Try the event name plus a day or time.`
   }
 
-  const topMatches = sortAgendaEvents(matches).slice(0, 3)
+  const topMatch = matches[0] || null
+  const topMatches = sortAgendaEvents(matches.slice(0, 3).map((item) => item.event))
   if (topMatches.length === 1) {
     const event = topMatches[0]
+    if (topMatch && !isConfidentEventQueryMatch(topMatch, matches[1])) {
+      if (mode === 'where') {
+        return event.location
+          ? `🤔 I found one possible match. ${event.title} is at ${event.location} on ${eventDateLabel(event, timeZone)}. If you meant a different event, text a little more of the title.`
+          : `🤔 I found one possible match. ${event.title} is ${eventDateLabel(event, timeZone)} on ${event.calendarName}, but I do not have a location saved for it. If you meant a different event, text a little more of the title.`
+      }
+      return `🤔 I found one possible match. ${event.title} is ${eventDateLabel(event, timeZone)} on ${event.calendarName}. If you meant a different event, text a little more of the title.`
+    }
+
     if (mode === 'where') {
       return event.location
         ? `📍 ${event.title} is at ${event.location} on ${eventDateLabel(event, timeZone)}.`
@@ -1550,6 +1764,7 @@ function resolveCalendarChoiceFromText(
   visibleCount?: number,
 ) {
   if (!calendars?.length) return null
+  if (calendars.length === 1 && isSingleScheduleConfirmation(text)) return calendars[0]
 
   const lower = text.trim().toLowerCase()
   const directNumber = lower.match(/^(?:option\s*)?(\d+)$/)
@@ -1793,6 +2008,12 @@ function reminderForPending(pending: PendingAction) {
       return 'Reply with the option you want, like 1, 2, or 3.'
     case 'choose_calendar':
     case 'photo_batch_choose_calendar':
+      if (pending.payload.clarification?.type === 'image_event_time') {
+        return 'Reply with a time like 5pm, or say ALL DAY.'
+      }
+      if (pending.payload.clarification?.type === 'image_event' && (pending.payload.calendarChoices || []).length <= 1) {
+        return 'Reply YES to use it, or text the corrected event name.'
+      }
       return 'Reply with the calendar name or number you want.'
     case 'reschedule':
       if (pending.payload.stage === 'scope') {
@@ -1805,8 +2026,14 @@ function reminderForPending(pending: PendingAction) {
       }
       return 'Reply with the option you want, like 1, 2, or 3.'
     case 'select_reschedule_target':
+      if ((pending.payload.events || []).length === 1) {
+        return 'Reply YES if that is the event you mean, or text a little more of the title.'
+      }
       return 'Reply with which one you mean, like 1, 2, or 3.'
     case 'select_cancel_target':
+      if ((pending.payload.events || []).length === 1) {
+        return 'Reply YES to cancel it, or text a little more of the title.'
+      }
       if (pending.payload.recentlyCreated) {
         return 'You are set. Say "cancel that" if you want me to remove the event I just booked.'
       }
@@ -2504,32 +2731,76 @@ function containsVariant(text: string, word: string) {
   return queryWordVariants(word).some((variant) => text.includes(variant))
 }
 
-function eventMatchScore(event: EventSummary, words: string[], normalizedQuery?: string) {
-  if (!words.length) return 0
+function countWordMatches(text: string, words: string[]) {
+  return words.reduce((count, word) => count + (containsVariant(text, word) ? 1 : 0), 0)
+}
 
+function eventQueryMatch(event: EventSummary, words: string[], normalizedQuery?: string): EventQueryMatch {
   const normalizedTitle = normalizeSearchText(event.title)
   const normalizedLocation = normalizeSearchText(event.location)
   const normalizedDescription = normalizeSearchText(event.description)
+  const exactTitle = Boolean(normalizedQuery && normalizedTitle === normalizedQuery)
+  const titleContainsQuery = Boolean(normalizedQuery && normalizedTitle.includes(normalizedQuery))
+  const titleWordMatches = countWordMatches(normalizedTitle, words)
 
   let score = 0
+  if (words.length) {
+    if (exactTitle) score += 1000
+    else if (titleContainsQuery) score += 250
 
-  if (normalizedQuery) {
-    if (normalizedTitle === normalizedQuery) score += 1000
-    else if (normalizedTitle.includes(normalizedQuery)) score += 250
+    if (normalizedQuery) {
+      if (normalizedLocation === normalizedQuery) score += 120
+      else if (normalizedLocation.includes(normalizedQuery)) score += 40
 
-    if (normalizedLocation === normalizedQuery) score += 120
-    else if (normalizedLocation.includes(normalizedQuery)) score += 40
+      if (normalizedDescription.includes(normalizedQuery)) score += 20
+    }
 
-    if (normalizedDescription.includes(normalizedQuery)) score += 20
+    for (const word of words) {
+      if (containsVariant(normalizedTitle, word)) score += 8
+      else if (containsVariant(normalizedLocation, word)) score += 3
+      else if (containsVariant(normalizedDescription, word)) score += 2
+    }
   }
 
-  for (const word of words) {
-    if (containsVariant(normalizedTitle, word)) score += 8
-    else if (containsVariant(normalizedLocation, word)) score += 3
-    else if (containsVariant(normalizedDescription, word)) score += 2
+  return {
+    event,
+    score,
+    queryWordCount: words.length,
+    titleWordMatches,
+    exactTitle,
+    titleContainsQuery,
+  }
+}
+
+function isConfidentEventQueryMatch(match: EventQueryMatch | null | undefined, runnerUp?: EventQueryMatch | null) {
+  if (!match || match.score <= 0) return false
+
+  if (match.exactTitle) return true
+  if (match.titleContainsQuery && (!runnerUp || match.score >= runnerUp.score + 6)) return true
+  if (
+    match.queryWordCount > 0 &&
+    match.titleWordMatches === match.queryWordCount &&
+    match.score >= 16 &&
+    (!runnerUp || match.score >= runnerUp.score + 6)
+  ) {
+    return true
   }
 
-  return score
+  return false
+}
+
+function matchingEventQueryMatches(events: EventSummary[], query: string) {
+  const words = queryWords(query)
+  if (!words.length) return []
+  const normalizedQuery = normalizeSearchText(query)
+
+  return events
+    .map((event) => eventQueryMatch(event, words, normalizedQuery))
+    .filter((item) => item.score > 0)
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score
+      return new Date(left.event.start).getTime() - new Date(right.event.start).getTime()
+    })
 }
 
 function sortEventsByStart<T extends { start: string }>(events: T[]) {
@@ -2549,34 +2820,13 @@ function uniqueEvents(events: EventSummary[]) {
 }
 
 function matchingEventsByQuery(events: EventSummary[], query: string) {
-  const words = queryWords(query)
-  if (!words.length) return []
-  const normalizedQuery = normalizeSearchText(query)
-
-  const scored = events
-    .map((event) => ({
-      event,
-      score: eventMatchScore(event, words, normalizedQuery),
-    }))
-    .filter((item) => item.score > 0)
-    .sort((left, right) => {
-      if (right.score !== left.score) return right.score - left.score
-      return new Date(left.event.start).getTime() - new Date(right.event.start).getTime()
-    })
-
-  return scored.map((item) => item.event)
+  return matchingEventQueryMatches(events, query).map((item) => item.event)
 }
 
 function bestEventByQuery(events: EventSummary[], query: string) {
-  const matches = matchingEventsByQuery(events, query)
+  const matches = matchingEventQueryMatches(events, query)
   if (!matches.length) return null
-  if (matches.length === 1) return matches[0]
-
-  const words = queryWords(query)
-  const normalizedQuery = normalizeSearchText(query)
-  const topScore = eventMatchScore(matches[0], words, normalizedQuery)
-  const topMatches = matches.filter((event) => eventMatchScore(event, words, normalizedQuery) === topScore)
-  return topMatches.length === 1 ? topMatches[0] : null
+  return isConfidentEventQueryMatch(matches[0], matches[1]) ? matches[0].event : null
 }
 
 function inviteeSummary(invitees: Invitee[]) {
@@ -3264,6 +3514,223 @@ export async function storePhotoBatchCalendarChoicePending({
       visibleCalendarChoiceCount,
       photoBatchEvents: events,
     },
+  })
+}
+
+function dateFromYmdInTimeZone(value: string, timeZone: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return null
+
+  return dateFromTimeZoneParts(
+    {
+      year: Number(match[1]),
+      month: Number(match[2]),
+      day: Number(match[3]),
+      hour: 12,
+      minute: 0,
+      second: 0,
+    },
+    timeZone,
+  )
+}
+
+function exactTimeFrom24h(value: string | null | undefined) {
+  const match = (value || '').match(/^([01]?\d|2[0-3]):([0-5]\d)$/)
+  if (!match) return null
+
+  return {
+    hour: Number(match[1]),
+    minute: Number(match[2]),
+  }
+}
+
+function scheduleRequestFromCalendarImageEvent({
+  event,
+  timeZone,
+  defaultDurationMinutes,
+}: {
+  event: CalendarImageEvent
+  timeZone: string
+  defaultDurationMinutes: number
+}): NonNullable<PendingPayload['scheduleRequest']> | null {
+  const baseDate = dateFromYmdInTimeZone(event.dateYmd, timeZone)
+  if (!baseDate) return null
+  const endDate = event.endDateYmd ? dateFromYmdInTimeZone(event.endDateYmd, timeZone) : null
+
+  return {
+    title: event.title,
+    baseDate: baseDate.toISOString(),
+    endDate: endDate?.toISOString() || null,
+    dateWindow: null,
+    exactTime: exactTimeFrom24h(event.time24h),
+    durationMinutes: event.durationMinutes ?? defaultDurationMinutes,
+    allDay: event.isAllDay,
+    recurrence: null,
+    location: event.location || null,
+    serviceConfirmed: event.isConfirmedOrFixed,
+  }
+}
+
+function normalizeImageClarifiedTitle(text: string) {
+  let stripped = text.trim().replace(/^["']+|["']+$/g, '')
+
+  let previous = ''
+  while (stripped && stripped !== previous) {
+    previous = stripped
+    stripped = stripped
+      .replace(/^(?:it(?:'s| is)?|its|call it|name it|the title is|title is|actually|just)\s+/i, '')
+      .trim()
+  }
+
+  if (!stripped) return null
+  if (!/[a-z]/i.test(stripped)) return null
+  if (
+    /^(?:what|when|where|who|why|how|can|could|would|will|should|show|tell|remind|schedule|scheudle|book|add|move|reschedule|change|cancel|delete|remove|find|make)\b/i.test(
+      stripped,
+    )
+  ) {
+    return null
+  }
+  if (isSingleScheduleConfirmation(stripped) || isSingleScheduleDecline(stripped)) return null
+  return stripped
+}
+
+export async function storePhotoEventClarificationPending({
+  profileId,
+  smsFrom,
+  timeZone,
+  defaultDurationMinutes,
+  calendarHint,
+  event,
+}: {
+  profileId: string
+  smsFrom: string
+  timeZone: string
+  defaultDurationMinutes: number
+  calendarHint?: string | null
+  event: CalendarImageEvent
+}) {
+  const scheduleRequest = scheduleRequestFromCalendarImageEvent({
+    event,
+    timeZone,
+    defaultDurationMinutes,
+  })
+  if (!scheduleRequest) {
+    return 'I could not read one clear calendar event from that photo. Try a closer crop or type the details.'
+  }
+
+  const placement = await resolveCalendarPlacement(profileId, calendarHint || undefined)
+  if (!placement.bookingCalendars.length) {
+    return `Almost ready. I can see your calendars, but none are set to accept new events yet. Open ${appUrl()}/dashboard, then turn on "Books here" for one calendar in Calendar settings.`
+  }
+
+  const plan = planCalendarSelection({
+    placement,
+    calendarHint,
+    defaultHeading: eventTitleCalendarChoiceHeading(scheduleRequest.title),
+  })
+
+  const calendarChoices = plan.needsChoice
+    ? plan.calendarChoices
+    : plan.chosenCalendar
+      ? [plan.chosenCalendar]
+      : placement.bookingCalendars.slice(0, 1)
+
+  const prompt = imageEventClarificationReply({
+    scheduleRequest,
+    calendars: calendarChoices,
+    timeZone,
+    calendarLead:
+      plan.heading && plan.heading !== eventTitleCalendarChoiceHeading(scheduleRequest.title)
+        ? plan.heading
+        : null,
+  })
+
+  await storePendingAction({
+    profileId,
+    smsFrom,
+    kind: 'choose_calendar',
+    payload: {
+      calendarChoices,
+      visibleCalendarChoiceCount: prompt.visibleCount,
+      scheduleRequest,
+      clarification: {
+        type: 'image_event',
+      },
+    },
+  })
+
+  return prompt.reply
+}
+
+export async function storePhotoEventTimeClarificationPending({
+  profileId,
+  smsFrom,
+  timeZone,
+  defaultDurationMinutes,
+  calendarHint,
+  event,
+}: {
+  profileId: string
+  smsFrom: string
+  timeZone: string
+  defaultDurationMinutes: number
+  calendarHint?: string | null
+  event: CalendarImageEvent
+}) {
+  const scheduleRequest = scheduleRequestFromCalendarImageEvent({
+    event,
+    timeZone,
+    defaultDurationMinutes,
+  })
+  if (!scheduleRequest) {
+    return 'I could not read one clear calendar event from that photo. Try a closer crop or type the details.'
+  }
+
+  const placement = await resolveCalendarPlacement(profileId, calendarHint || undefined)
+  if (!placement.bookingCalendars.length) {
+    return `Almost ready. I can see your calendars, but none are set to accept new events yet. Open ${appUrl()}/dashboard, then turn on "Books here" for one calendar in Calendar settings.`
+  }
+
+  const plan = planCalendarSelection({
+    placement,
+    calendarHint,
+    defaultHeading: eventTitleCalendarChoiceHeading(scheduleRequest.title),
+  })
+
+  const calendarChoices = plan.needsChoice
+    ? plan.calendarChoices
+    : plan.chosenCalendar
+      ? [plan.chosenCalendar]
+      : placement.bookingCalendars.slice(0, 1)
+
+  const updatedScheduleRequest = {
+    ...scheduleRequest,
+    exactTime: null,
+    allDay: false,
+    endDate: null,
+  }
+
+  await storePendingAction({
+    profileId,
+    smsFrom,
+    kind: 'choose_calendar',
+    payload: {
+      calendarChoices,
+      visibleCalendarChoiceCount: Math.max(
+        1,
+        Math.min(calendarChoices.length || 1, maxCalendarChoicesToDisplay),
+      ),
+      scheduleRequest: updatedScheduleRequest,
+      clarification: {
+        type: 'image_event_time',
+      },
+    },
+  })
+
+  return imageEventTimeClarificationReply({
+    scheduleRequest: updatedScheduleRequest,
+    timeZone,
   })
 }
 
@@ -5379,6 +5846,95 @@ export async function handleIncomingSms({
       activePending.payload.calendarChoices,
       activePending.payload.visibleCalendarChoiceCount,
     )
+
+    if (
+      activePending.payload.clarification?.type === 'image_event_time' &&
+      activePending.payload.scheduleRequest
+    ) {
+      const wantsAllDay = /^(?:all\s*day|allday)$/i.test(body.trim())
+      const exactTime = wantsAllDay ? null : parseSmsTime(body)
+
+      if (!wantsAllDay && !exactTime) {
+        const reply = "Reply with a time like 5pm, or say ALL DAY."
+        await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+        return reply
+      }
+
+      const updatedScheduleRequest = {
+        ...activePending.payload.scheduleRequest,
+        exactTime,
+        allDay: wantsAllDay,
+        endDate: wantsAllDay ? activePending.payload.scheduleRequest.endDate : null,
+      }
+      const calendarChoices = activePending.payload.calendarChoices || []
+      const choicePrompt = scheduleRequestCalendarChoiceReply({
+        scheduleRequest: updatedScheduleRequest,
+        calendars: calendarChoices,
+        timeZone: profile.timezone,
+      })
+
+      await clearPendingAction(activePending.id)
+      await storePendingAction({
+        profileId: profile.id,
+        smsFrom: from,
+        kind: 'choose_calendar',
+        payload: {
+          ...activePending.payload,
+          scheduleRequest: updatedScheduleRequest,
+          clarification: undefined,
+          visibleCalendarChoiceCount: choicePrompt.visibleCount,
+        },
+      })
+
+      const reply = choicePrompt.reply
+      await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+      return reply
+    }
+
+    if (
+      !pickedCalendar &&
+      activePending.payload.clarification?.type === 'image_event' &&
+      activePending.payload.scheduleRequest
+    ) {
+      if (isSingleScheduleDecline(body)) {
+        await clearPendingAction(activePending.id)
+        const reply = 'Okay. Text the correct event name, or send a closer crop and I will try again.'
+        await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+        return reply
+      }
+
+      const correctedTitle = normalizeImageClarifiedTitle(body)
+      if (correctedTitle && correctedTitle !== activePending.payload.scheduleRequest.title) {
+        const updatedScheduleRequest = {
+          ...activePending.payload.scheduleRequest,
+          title: correctedTitle,
+        }
+        const calendarChoices = activePending.payload.calendarChoices || []
+        const choicePrompt = scheduleRequestCalendarChoiceReply({
+          scheduleRequest: updatedScheduleRequest,
+          calendars: calendarChoices,
+          timeZone: profile.timezone,
+        })
+
+        await clearPendingAction(activePending.id)
+        await storePendingAction({
+          profileId: profile.id,
+          smsFrom: from,
+          kind: 'choose_calendar',
+          payload: {
+            ...activePending.payload,
+            scheduleRequest: updatedScheduleRequest,
+            clarification: undefined,
+            visibleCalendarChoiceCount: choicePrompt.visibleCount,
+          },
+        })
+
+        const reply = choicePrompt.reply
+        await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+        return reply
+      }
+    }
+
     if (pickedCalendar && activePending.payload.scheduleRequest) {
       const scheduleRequest = activePending.payload.scheduleRequest
       const attendees = activePending.payload.attendees || []
@@ -5718,7 +6274,7 @@ export async function handleIncomingSms({
     })
     const reply = eventLookupText(
       intent.query,
-      matchingEventsByQuery(events, intent.query),
+      matchingEventQueryMatches(events, intent.query),
       profile.timezone,
       intent.mode,
     )
@@ -5779,17 +6335,14 @@ export async function handleIncomingSms({
       return reply
     }
 
-    const needsCalendarChoice =
-      placement.matches.length > 1 ||
-      (placement.genericHint && placement.bookingCalendars.length > 1) ||
-      (!placement.genericHint && placement.matches.length === 0 && placement.bookingCalendars.length > 1)
+    const calendarPlan = planCalendarSelection({
+      placement,
+      calendarHint: scheduleIntent.calendarHint,
+      defaultHeading: eventTitleCalendarChoiceHeading(scheduleIntent.title),
+    })
 
-    if (needsCalendarChoice) {
-      const calendarChoices = prioritizedCalendarChoices(
-        placement.matches.length > 1
-          ? placement.matches
-          : placement.bookingCalendars,
-      )
+    if (calendarPlan.needsChoice) {
+      const calendarChoices = calendarPlan.calendarChoices
       const pendingScheduleRequest = {
         title: scheduleIntent.title,
         baseDate: scheduleIntent.baseDate.toISOString(),
@@ -5803,10 +6356,7 @@ export async function handleIncomingSms({
         serviceConfirmed: userAlreadyConfirmedServiceBooking(intentBody),
       } satisfies NonNullable<PendingPayload['scheduleRequest']>
       const choicePrompt = calendarChoiceReply({
-        heading:
-          placement.matches.length === 0 && !placement.genericHint
-            ? `I couldn't tell which calendar "${scheduleIntent.calendarHint}" means. Which calendar should I use?`
-            : eventTitleCalendarChoiceHeading(scheduleIntent.title),
+        heading: calendarPlan.heading || eventTitleCalendarChoiceHeading(scheduleIntent.title),
         details: scheduleRequestCalendarChoiceDetails(pendingScheduleRequest, profile.timezone),
         calendars: calendarChoices,
       })
@@ -5829,9 +6379,7 @@ export async function handleIncomingSms({
       return reply
     }
 
-    const chosenCalendar =
-      placement.matches[0] ||
-      placement.bookingCalendars[0]
+    const chosenCalendar = calendarPlan.chosenCalendar
 
     if (scheduleIntent.allDay && chosenCalendar) {
       const reply = await maybeConfirmAllDaySchedule({
@@ -5971,8 +6519,12 @@ export async function handleIncomingSms({
       )
 
       if (!target) {
-        const matchedUpcomingEvents = matchingEventsByQuery(candidateEvents, intent.query)
-        const topEvents = (matchedUpcomingEvents.length ? matchedUpcomingEvents : candidateEvents).slice(0, 3)
+        const matchedUpcomingEvents = matchingEventQueryMatches(candidateEvents, intent.query)
+        const topEvents = (
+          matchedUpcomingEvents.length
+            ? matchedUpcomingEvents.map((item) => item.event)
+            : candidateEvents
+        ).slice(0, 3)
         if (!topEvents.length) {
           const reply = "I don't see anything to move there."
           await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
@@ -5992,13 +6544,16 @@ export async function handleIncomingSms({
           },
         })
 
-        const reply = sectionedListReply({
-          intro: 'Which one should I move?',
-          list: topEvents
-            .map((event, index) => `${index + 1}. ${event.timeLabel} ${event.title}`)
-            .join('\n'),
-          footer: 'Reply 1, 2, or 3.',
-        })
+        const reply =
+          topEvents.length === 1
+            ? `🤔 Do you mean "${topEvents[0].title}" on ${eventDateLabel(topEvents[0], profile.timezone)}?\nReply YES if so, or text a little more of the title.`
+            : sectionedListReply({
+                intro: 'Which one should I move?',
+                list: topEvents
+                  .map((event, index) => `${index + 1}. ${eventDateLabel(event, profile.timezone)} ${event.title}`)
+                  .join('\n'),
+                footer: 'Reply 1, 2, or 3.',
+              })
         await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
         return reply
       }
@@ -6118,36 +6673,41 @@ export async function handleIncomingSms({
 
   if (intent.type === 'cancel') {
     const events = await searchUpcomingEvents(profile.id, profile.timezone)
-    const matches = matchingEventsByQuery(events, intent.query)
+    const matches = matchingEventQueryMatches(events, intent.query)
     if (!matches.length) {
       const reply = "I couldn't find that event. Try the event name plus a day or time, like: cancel haircut Wednesday."
       await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
       return reply
     }
 
-    if (matches.length > 1) {
-      const topEvents = matches.slice(0, 3)
+    const confidentMatch = isConfidentEventQueryMatch(matches[0], matches[1]) ? matches[0].event : null
+
+    if (!confidentMatch) {
+      const topEvents = matches.slice(0, 3).map((item) => item.event)
       await storePendingAction({
         profileId: profile.id,
         smsFrom: from,
         kind: 'select_cancel_target',
         payload: { events: topEvents },
       })
-      const reply = sectionedListReply({
-        intro: 'Which one should I cancel?',
-        list: topEvents
-          .map(
-            (event, index) =>
-              `${index + 1}. ${eventDateLabel(event, profile.timezone)} ${event.title}`,
-          )
-          .join('\n'),
-        footer: 'Reply 1, 2, or 3.',
-      })
+      const reply =
+        topEvents.length === 1
+          ? `🤔 Do you mean "${topEvents[0].title}" on ${eventDateLabel(topEvents[0], profile.timezone)}?\nReply YES to cancel it, or text a little more of the title.`
+          : sectionedListReply({
+              intro: 'Which one should I cancel?',
+              list: topEvents
+                .map(
+                  (event, index) =>
+                    `${index + 1}. ${eventDateLabel(event, profile.timezone)} ${event.title}`,
+                )
+                .join('\n'),
+              footer: 'Reply 1, 2, or 3.',
+            })
       await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
       return reply
     }
 
-    const reply = await cancelCalendarTarget({ profile, target: matches[0], smsFrom: from })
+    const reply = await cancelCalendarTarget({ profile, target: confidentMatch, smsFrom: from })
     await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
     return reply
   }

@@ -207,6 +207,11 @@ function resolveOptionChoice(text: string, options: PendingOption[], timeZone?: 
 }
 
 function resolveEventChoice(text: string, events: PendingEvent[], timeZone?: string) {
+  if (events.length === 1) {
+    const confirmation = parseSingleOptionConfirmation(text)
+    if (confirmation) return confirmation
+  }
+
   const ordinal = parseOrdinalChoice(text, events.length)
   if (ordinal) return ordinal
 
