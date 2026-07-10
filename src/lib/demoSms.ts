@@ -206,7 +206,7 @@ function pendingActionTitle(action: DemoPendingAction) {
 }
 
 function isGenericDemoEventReference(query: string) {
-  return /^(?:it|that|this|event|that event|this event|the event|my event|time)$/.test(
+  return /^(?:(?:it|that|this)(?:\s+(?:for|on|at|to))?|event|that event|this event|the event|my event|time)$/.test(
     normalizeText(query),
   )
 }
@@ -242,9 +242,19 @@ function correctedDemoScheduleText(text: string, action: DemoPendingAction) {
   const title = pendingActionTitle(action)
   if (!fragment || !title) return null
 
+  const fragmentIntent = parseSmsIntent(fragment)
+  if (
+    fragmentIntent.type === 'schedule' &&
+    !isGenericDemoEventReference(fragmentIntent.title) &&
+    normalizeText(fragmentIntent.title) !== normalizeText(title)
+  ) {
+    return fragment
+  }
+
   let cleanedFragment = fragment
     .replace(/^(?:schedule|book|add|set up)\s+/i, '')
     .replace(/^(?:it|that)\s+/i, '')
+    .replace(/^(?:for|on)\s+/i, '')
     .trim()
 
   if (!cleanedFragment) return null

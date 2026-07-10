@@ -1647,6 +1647,10 @@ function timeForCorrectionText(exactTime: { hour: number; minute: number }) {
   return `${hour}${minute}${period}`
 }
 
+function normalizedPendingTitle(value: string) {
+  return tokenizeText(value).join(' ')
+}
+
 function correctedScheduleIntentFromPending(
   text: string,
   pending: PendingAction,
@@ -1669,9 +1673,20 @@ function correctedScheduleIntentFromPending(
   const context = pendingScheduleContext(pending, defaultDurationMinutes)
   if (!context) return null
 
+  const fragmentIntent = parseSmsIntent(fragment, timeZone)
+  if (
+    fragmentIntent.type === 'schedule' &&
+    !isGenericEventReference(fragmentIntent.title) &&
+    normalizedPendingTitle(fragmentIntent.title) &&
+    normalizedPendingTitle(fragmentIntent.title) !== normalizedPendingTitle(context.title)
+  ) {
+    return { text: fragment, intent: fragmentIntent }
+  }
+
   let cleanedFragment = fragment
     .replace(/^(?:schedule|book|add|set up)\s+/i, '')
     .replace(/^(?:it|that)\s+/i, '')
+    .replace(/^(?:for|on)\s+/i, '')
     .trim()
 
   if (!cleanedFragment) return null
@@ -2661,7 +2676,7 @@ function isGenericEventReference(query: string) {
     .trim()
   return (
     !queryWords(query).length ||
-    /^(?:it|that|this|event|calendar event|that event|this event|the event|my event|time)$/.test(
+    /^(?:(?:it|that|this)(?:\s+(?:for|on|at|to))?|event|calendar event|that event|this event|the event|my event|time)$/.test(
       normalized,
     )
   )
