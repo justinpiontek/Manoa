@@ -33,6 +33,35 @@ function tokenize(value: string) {
     .filter(Boolean)
 }
 
+function wordCount(text: string) {
+  return tokenize(text).length
+}
+
+export function looksLikeFreshRequestText(text: string) {
+  const trimmed = text.trim()
+  if (!trimmed) return false
+
+  const lower = trimmed.toLowerCase()
+
+  if (/^(?:what|when|where|who|why|how)\b/.test(lower)) return true
+  if (/^(?:can|could|would|will|should)\b/.test(lower)) return true
+  if (/^(?:do|does|did)\s+(?:i|we|you)\b/.test(lower)) return true
+  if (/^(?:am\s+i|is|are)\b/.test(lower)) return true
+  if (
+    /^(?:show|tell|remind|schedule|scheudle|book|add|set up|put|save|plan|pencil in|block off|hold|move|reschedule|change|cancel|delete|remove|find|make)\b/.test(
+      lower,
+    )
+  ) {
+    return true
+  }
+  if (/^actually\b/.test(lower)) return true
+  if (trimmed.includes('?')) return true
+  if (wordCount(trimmed) >= 5) return true
+  if (wordCount(trimmed) >= 3 && /[.!?]$/.test(trimmed)) return true
+
+  return false
+}
+
 function choiceValue(value: string) {
   const normalized = value.toLowerCase()
   if (['1', 'one', 'first', '1st'].includes(normalized)) return 1
@@ -146,6 +175,8 @@ function resolveOptionChoice(text: string, options: PendingOption[], timeZone?: 
     return 1
   }
 
+  if (looksLikeFreshRequestText(text)) return null
+
   const timeMatches = options
     .map((option, index) => (matchesTime(text, option.start, timeZone) ? index + 1 : null))
     .filter((value): value is number => value !== null)
@@ -178,6 +209,8 @@ function resolveOptionChoice(text: string, options: PendingOption[], timeZone?: 
 function resolveEventChoice(text: string, events: PendingEvent[], timeZone?: string) {
   const ordinal = parseOrdinalChoice(text, events.length)
   if (ordinal) return ordinal
+
+  if (looksLikeFreshRequestText(text)) return null
 
   const lower = text.toLowerCase()
   const timeMatches = events

@@ -22,7 +22,7 @@ const {
   resolveInviteeFollowUp,
 } = require('../src/lib/sms/invitees.ts')
 const { parseSmsIntent } = require('../src/lib/sms/parser.ts')
-const { resolvePendingChoice } = require('../src/lib/sms/pendingChoice.ts')
+const { looksLikeFreshRequestText, resolvePendingChoice } = require('../src/lib/sms/pendingChoice.ts')
 
 const timeZone = 'America/Chicago'
 
@@ -277,6 +277,46 @@ assert.equal(
       ],
     },
   }),
+  1,
+)
+
+assert.equal(looksLikeFreshRequestText("what's on Monday?"), true)
+assert.equal(looksLikeFreshRequestText('actually schedule lunch tomorrow'), true)
+assert.equal(looksLikeFreshRequestText('7pm'), false)
+assert.equal(
+  resolvePendingChoice("what's on Monday?", {
+    kind: 'schedule',
+    payload: {
+      options: [
+        { title: 'Lunch', start: '2026-04-20T17:00:00.000Z' },
+        { title: 'Dinner', start: '2026-04-20T23:00:00.000Z' },
+      ],
+    },
+  }, timeZone),
+  null,
+)
+assert.equal(
+  resolvePendingChoice('7pm', {
+    kind: 'schedule',
+    payload: {
+      options: [
+        { title: 'Lunch', start: '2026-04-20T23:00:00.000Z' },
+        { title: 'Dinner', start: '2026-04-21T00:00:00.000Z' },
+      ],
+    },
+  }, timeZone),
+  2,
+)
+assert.equal(
+  resolvePendingChoice('Taco Tuesday', {
+    kind: 'select_reschedule_target',
+    payload: {
+      events: [
+        { title: 'Taco Tuesday', start: '2026-04-21T00:00:00.000Z' },
+        { title: 'PerCap', start: '2026-04-22T00:00:00.000Z' },
+      ],
+    },
+  }, timeZone),
   1,
 )
 

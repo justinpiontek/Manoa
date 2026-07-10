@@ -61,7 +61,7 @@ import {
 } from './invitees'
 import { parseSmsIntentWithAI, type AiConversationTurn } from './aiIntent'
 import { listSmsAiIntentContext } from './thread'
-import { resolvePendingChoice } from './pendingChoice'
+import { looksLikeFreshRequestText, resolvePendingChoice } from './pendingChoice'
 import { parseSmsIntent, parseSmsTime, type DateWindow, type ParsedSmsIntent } from './parser'
 
 type SmsProfile = {
@@ -1583,6 +1583,11 @@ function isPendingEscapeRequest(text: string) {
   )
 }
 
+function isBusinessPhoneReply(text: string) {
+  const lower = text.trim().toLowerCase()
+  return lower === 'skip' || Boolean(extractPhoneFromText(text))
+}
+
 function pendingScheduleContext(pending: PendingAction, defaultDurationMinutes: number) {
   const request = pending.payload.scheduleRequest
   if (request) {
@@ -1825,7 +1830,7 @@ function shouldClearResolveInviteesPendingForNewRequest(
   const unresolvedNames = pending.payload.unresolvedInvitees || []
   if (resolveInviteeFollowUp(text, unresolvedNames).resolved.length) return false
 
-  return ['agenda', 'schedule', 'reschedule', 'cancel', 'lookup', 'settings'].includes(intent.type)
+  return ['agenda', 'schedule', 'reschedule', 'cancel', 'lookup', 'settings'].includes(intent.type) || looksLikeFreshRequestText(text)
 }
 
 function shouldClearRecentCreatedPendingForIntent(
@@ -1841,6 +1846,100 @@ function shouldClearRecentCreatedPendingForIntent(
   }
 
   return true
+}
+
+function isExplicitPendingContinuation({
+  text,
+  pending,
+  intent,
+  pendingChoice,
+  timeZone,
+}: {
+  text: string
+  pending: PendingAction
+  intent: ParsedSmsIntent
+  pendingChoice: number | null
+  timeZone?: string
+}) {
+  if (intent.type === 'choice' || pendingChoice) return true
+  if (isShortAcknowledgement(text)) return true
+
+  if (pending.kind === 'choose_calendar' || pending.kind === 'photo_batch_choose_calendar') {
+    return Boolean(
+      resolveCalendarChoiceFromText(
+        text,
+        pending.payload.calendarChoices,
+        pending.payload.visibleCalendarChoiceCount,
+      ),
+    )
+  }
+
+  if (pending.kind === 'save_business_contact_phone') {
+    return isBusinessPhoneReply(text)
+  }
+
+  if (pending.kind === 'resolve_invitees') {
+    return !shouldClearResolveInviteesPendingForNewRequest(text, pending, timeZone)
+  }
+
+  if (pending.kind === 'schedule' && (pending.payload.options || []).length === 1) {
+    return (
+      isSingleScheduleConfirmation(text) ||
+      isSingleScheduleDecline(text) ||
+      isInviteeEmailFollowUp(text, pending.payload.unresolvedInvitees || [])
+    )
+  }
+
+  return false
+}
+
+function shouldClearPendingForFreshRequest({
+  text,
+  pending,
+  intent,
+  pendingChoice,
+  timeZone,
+}: {
+  text: string
+  pending: PendingAction
+  intent: ParsedSmsIntent
+  pendingChoice: number | null
+  timeZone?: string
+}) {
+  if (
+    isExplicitPendingContinuation({
+      text,
+      pending,
+      intent,
+      pendingChoice,
+      timeZone,
+    })
+  ) {
+    return false
+  }
+
+  if (intent.type !== 'unknown') return true
+  return looksLikeFreshRequestText(text)
+}
+
+async function clearPendingForFreshRequest({
+  pending,
+  profileId,
+  smsFrom,
+}: {
+  pending: PendingAction
+  profileId: string
+  smsFrom: string
+}) {
+  const restoreRecentEvent = recentCreatedContextEventFromPending(pending)
+  await clearPendingAction(pending.id)
+  if (restoreRecentEvent) {
+    await restoreRecentCreatedPending({
+      profileId,
+      smsFrom,
+      event: restoreRecentEvent,
+    })
+  }
 }
 
 function eventDateLabel(event: EventSummary, timeZone?: string) {
@@ -5154,6 +5253,27 @@ export async function handleIncomingSms({
     const reply = 'Got it, starting fresh. What would you like to do?'
     await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
     return reply
+  }
+
+  const directIntent = intentOverride || parseSmsIntent(intentBody, profile.timezone)
+  const directPendingChoice = activePending ? resolvePendingChoice(body, activePending, profile.timezone) : null
+
+  if (
+    activePending &&
+    shouldClearPendingForFreshRequest({
+      text: body,
+      pending: activePending,
+      intent: directIntent,
+      pendingChoice: directPendingChoice,
+      timeZone: profile.timezone,
+    })
+  ) {
+    await clearPendingForFreshRequest({
+      pending: activePending,
+      profileId: profile.id,
+      smsFrom: from,
+    })
+    activePending = null
   }
 
   if (activePending?.kind === 'save_business_contact_phone') {
