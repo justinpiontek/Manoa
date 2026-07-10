@@ -476,6 +476,18 @@ assert.ok(sameRequestCorrectionState.pendingAction.options.every((option) => opt
 assert.match(sameRequestCorrectionState.messages.at(-1).lines.join('\n'), /\bWed\b/)
 assert.doesNotMatch(sameRequestCorrectionState.messages.at(-1).lines.join('\n'), /\bIt For\b|\bMeeting For\b/)
 
+let scheduledItCorrectionState = createDemoState()
+scheduledItCorrectionState = applyDemoText(scheduledItCorrectionState, 'schedule t ball on monday')
+assert.equal(scheduledItCorrectionState.pendingAction?.kind, 'schedule')
+scheduledItCorrectionState = applyDemoText(scheduledItCorrectionState, 'actually scheduled it for tuesday')
+assert.equal(scheduledItCorrectionState.pendingAction?.kind, 'schedule')
+assert.ok(scheduledItCorrectionState.pendingAction.options.every((option) => option.title === 'T Ball'))
+assert.match(scheduledItCorrectionState.messages.at(-1).lines.join('\n'), /\bTue\b|\bTomorrow\b/)
+assert.doesNotMatch(
+  scheduledItCorrectionState.messages.at(-1).lines.join('\n'),
+  /\bScheduled It For\b|\bActually Scheduled It For\b/,
+)
+
 let cancelCorrectionState = createDemoState()
 cancelCorrectionState = applyDemoText(cancelCorrectionState, 'schedule meeting tomorrow')
 cancelCorrectionState = applyDemoText(cancelCorrectionState, 'actually cancel that')

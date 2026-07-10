@@ -1651,6 +1651,12 @@ function normalizedPendingTitle(value: string) {
   return tokenizeText(value).join(' ')
 }
 
+function isExplicitNewScheduleFragment(fragment: string) {
+  return /^(?:schedule|scheudle|chedule|book|add|set up|put|throw|save|plan|pencil in|block off)\b/i.test(
+    fragment.trim(),
+  )
+}
+
 function correctedScheduleIntentFromPending(
   text: string,
   pending: PendingAction,
@@ -1675,6 +1681,7 @@ function correctedScheduleIntentFromPending(
 
   const fragmentIntent = parseSmsIntent(fragment, timeZone)
   if (
+    isExplicitNewScheduleFragment(fragment) &&
     fragmentIntent.type === 'schedule' &&
     !isGenericEventReference(fragmentIntent.title) &&
     normalizedPendingTitle(fragmentIntent.title) &&
@@ -1684,6 +1691,10 @@ function correctedScheduleIntentFromPending(
   }
 
   let cleanedFragment = fragment
+    .replace(
+      /^(?:schedule|scheduled|book|booked|add|added|set up|put|save|saved|plan|planned|pencil(?:ed)? in|block(?:ed)? off)\s+/i,
+      '',
+    )
     .replace(/^(?:schedule|book|add|set up)\s+/i, '')
     .replace(/^(?:it|that)\s+/i, '')
     .replace(/^(?:for|on)\s+/i, '')

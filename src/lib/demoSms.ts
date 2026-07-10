@@ -244,6 +244,9 @@ function correctedDemoScheduleText(text: string, action: DemoPendingAction) {
 
   const fragmentIntent = parseSmsIntent(fragment)
   if (
+    /^(?:schedule|scheudle|chedule|book|add|set up|put|throw|save|plan|pencil in|block off)\b/i.test(
+      fragment.trim(),
+    ) &&
     fragmentIntent.type === 'schedule' &&
     !isGenericDemoEventReference(fragmentIntent.title) &&
     normalizeText(fragmentIntent.title) !== normalizeText(title)
@@ -252,6 +255,10 @@ function correctedDemoScheduleText(text: string, action: DemoPendingAction) {
   }
 
   let cleanedFragment = fragment
+    .replace(
+      /^(?:schedule|scheduled|book|booked|add|added|set up|put|save|saved|plan|planned|pencil(?:ed)? in|block(?:ed)? off)\s+/i,
+      '',
+    )
     .replace(/^(?:schedule|book|add|set up)\s+/i, '')
     .replace(/^(?:it|that)\s+/i, '')
     .replace(/^(?:for|on)\s+/i, '')
