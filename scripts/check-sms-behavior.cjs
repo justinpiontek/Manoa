@@ -20,6 +20,7 @@ const { scheduleCandidateTimesForTitle } = require('../src/lib/calendar/scheduli
 const { applyDemoText, createDemoState } = require('../src/lib/demoSms.ts')
 const { classifyEventAuthority } = require('../src/lib/eventAuthority.ts')
 const {
+  calendarImageTranscriptToEvents,
   calendarImagePayloadToSmsText,
   calendarImagePayloadToSmsTexts,
 } = require('../src/lib/sms/calendarImage.ts')
@@ -620,6 +621,35 @@ assert.equal(
     notes: null,
   }),
   'add Family Night on 5/28/2026 at 5:00pm at FCP Cultural Center, Library, & Museum - Lower Level, 8130 Mish Ko Swen Drive, Crandon, Wisconsin for 120 minutes',
+)
+
+const sovereigntySummitEvents = calendarImageTranscriptToEvents({
+  transcriptText: [
+    '1ST ANNUAL',
+    'BODEWADMIK FOOD',
+    'SOVEREIGNTY SUMMIT',
+    'ROOTED IN CULTURE,',
+    'GROWING FOR TOMORROW',
+    'THURSDAY & FRIDAY',
+    'JULY 2026',
+    '30 & 31',
+    'BODWÉWADMI KTËGAN',
+    '3389 County Hwy. H / Laona, WI 54541',
+  ].join('\n'),
+  timeZone,
+  mode: 'poster',
+})
+assert.equal(sovereigntySummitEvents.length, 1)
+assert.equal(
+  sovereigntySummitEvents[0].title,
+  'BODEWADMIK FOOD SOVEREIGNTY SUMMIT',
+)
+assert.equal(sovereigntySummitEvents[0].dateYmd, '2026-07-30')
+assert.equal(sovereigntySummitEvents[0].endDateYmd, '2026-07-31')
+assert.equal(sovereigntySummitEvents[0].isAllDay, true)
+assert.equal(
+  sovereigntySummitEvents[0].location,
+  '3389 County Hwy. H / Laona, WI 54541',
 )
 
 console.log('SMS behavior checks passed.')

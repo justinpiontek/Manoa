@@ -641,18 +641,25 @@ const transcriptDateAnywherePattern = new RegExp(
   'ig',
 )
 const transcriptDateRangePattern = new RegExp(
-  `\\b(${transcriptMonthNameSource})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s*(?:-|–|—|to)\\s*(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?\\b`,
+  `\\b(${transcriptMonthNameSource})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s*(?:-|–|—|to|and|&)\\s*(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?\\b`,
+  'i',
+)
+const transcriptSplitMonthYearDateRangePattern = new RegExp(
+  `\\b(${transcriptMonthNameSource})\\.?\\s+(\\d{4})\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s*(?:-|–|—|to|and|&)\\s*(\\d{1,2})(?:st|nd|rd|th)?\\b`,
   'i',
 )
 const transcriptWeekdayOnlyPattern = new RegExp(`^\\s*(?:${transcriptWeekdaySource})\\s*$`, 'i')
 const headingPositivePattern =
-  /\b(night|party|celebration|graduation|ceremony|meeting|game|camp|recital|concert|show|showcase|festival|fair|picnic|lunch|dinner|breakfast|open house|clinic|workshop|class|tournament|practice|birthday|reunion|conference|family|no school|powwow|contest|talk|reservation|vacation|trip)\b/i
+  /\b(night|party|celebration|graduation|ceremony|meeting|game|camp|recital|concert|show|showcase|festival|fair|picnic|lunch|dinner|breakfast|open house|clinic|workshop|class|tournament|practice|birthday|reunion|conference|family|no school|powwow|contest|talk|reservation|vacation|trip|summit|relay|gathering|forum|expo|market|walk|run|ride)\b/i
 const headingNegativePattern =
   /\b(language|culture|native americans|advisory|association|foundation|office|department|district|committee|library|museum|center|centre|campus|tribal|nation|council|wisconsin|services|potawatomi|facebook|instagram)\b/i
 const socialUiPattern =
   /\b(posts?|about|reels?|likes?|comments?|shares?|followers?|following|message|messages|home|menu|photos?|videos?|stories|notifications?|sponsored|see more|write a comment|post)\b/i
 const titleNegativePhrasePattern =
   /\b(open to|for information|questions\??|sponsored by|activities to include|committee specials|men'?s specials|women'?s specials|host drum|co-host drum|grand entry|vendors|for more info|arena director)\b/i
+const sloganLikeTitlePattern =
+  /^(?:rooted|growing|building|working|standing|moving|coming together|join us|open to|scan to)\b|\bfor tomorrow\b/i
+const posterAnnualPrefixPattern = /^\d+(?:st|nd|rd|th)?\s+annual$/i
 
 function normalizeTranscriptLine(line: string) {
   return cleanText(
@@ -695,6 +702,7 @@ function scoreEventTitleCandidate(line: string, mode: CalendarImageMode) {
   const normalized = cleanText(line)
   if (!normalized) return Number.NEGATIVE_INFINITY
   if (genericEventTitle(normalized)) return -12
+  if (sloganLikeTitlePattern.test(normalized)) return -9
   if (looksSocialUiLine(normalized)) return -12
   if (looksContactLine(normalized)) return -10
   if (containsTranscriptDate(normalized)) return -8
@@ -990,14 +998,17 @@ function scoreHeadingCandidate(line: string) {
   const normalized = cleanText(line)
   if (!normalized) return Number.NEGATIVE_INFINITY
   if (/\d/.test(normalized)) return -4
+  if (sloganLikeTitlePattern.test(normalized)) return -6
 
   const words = normalized.split(/\s+/)
+  const hasPositiveHeading = headingPositivePattern.test(normalized)
   let score = 0
 
   if (words.length >= 1 && words.length <= 4) score += 2
   if (normalized.length >= 6 && normalized.length <= 28) score += 2
-  if (headingPositivePattern.test(normalized)) score += 6
-  if (headingNegativePattern.test(normalized)) score -= 5
+  if (hasPositiveHeading) score += 6
+  if (hasPositiveHeading && words.length >= 3 && words.length <= 6) score += 3
+  if (headingNegativePattern.test(normalized) && !hasPositiveHeading) score -= 5
   if (looksLocationLine(normalized) || looksAddressLikeLine(normalized)) score -= 6
   if (isGenericTranscriptHeading(normalized)) score -= 6
 
@@ -1023,7 +1034,14 @@ function chooseBestHeadingCandidate(candidates: string[]) {
 function extractPosterHeadline(lines: string[]) {
   const headingLines = lines
     .slice(0, 10)
-    .filter((line) => looksTranscriptHeading(line) && !isGenericTranscriptHeading(line))
+    .filter(
+      (line) =>
+        looksTranscriptHeading(line) &&
+        !isGenericTranscriptHeading(line) &&
+        !titleNegativePhrasePattern.test(line) &&
+        !looksLocationLine(line) &&
+        !looksAddressLikeLine(line),
+    )
 
   if (!headingLines.length) return null
 
@@ -1033,24 +1051,59 @@ function extractPosterHeadline(lines: string[]) {
     if (single) candidates.push(single)
     const next = headingLines[index + 1]
     if (single && next) candidates.push(`${single} ${next}`)
+    const third = headingLines[index + 2]
+    if (single && next && third) candidates.push(`${single} ${next} ${third}`)
+
+    if (single && posterAnnualPrefixPattern.test(single) && next) {
+      candidates.push(next)
+      if (third) candidates.push(`${next} ${third}`)
+      const fourth = headingLines[index + 3]
+      if (third && fourth) candidates.push(`${next} ${third} ${fourth}`)
+    }
   }
 
   return chooseBestHeadingCandidate(candidates)
 }
 
+function posterLineWindows(lines: string[], maxLines = 4) {
+  const windows: string[] = []
+
+  for (let start = 0; start < lines.length; start += 1) {
+    for (let size = 1; size <= maxLines && start + size <= lines.length; size += 1) {
+      const combined = cleanText(lines.slice(start, start + size).join(' '))
+      if (combined) windows.push(combined)
+    }
+  }
+
+  return Array.from(new Set(windows))
+}
+
 function extractPosterDateSpan(lines: string[], timeZone: string) {
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index]
-    const match = line.match(transcriptDateRangePattern)
+  for (const window of posterLineWindows(lines, 4)) {
+    const splitMatch = window.match(transcriptSplitMonthYearDateRangePattern)
+    if (splitMatch) {
+      const month = splitMatch[1]
+      const year = splitMatch[2]
+      const startDay = splitMatch[3]
+      const endDay = splitMatch[4]
+      const start = parseExplicitDate(`${month} ${startDay} ${year}`, timeZone)
+      const end = parseExplicitDate(`${month} ${endDay} ${year}`, timeZone)
+      if (!start || !end) continue
+
+      return {
+        startYmd: ymdFromDate(start, timeZone),
+        endYmd: ymdFromDate(end, timeZone),
+      }
+    }
+
+    const match = window.match(transcriptDateRangePattern)
     if (!match) continue
 
     const month = match[1]
     const startDay = match[2]
     const endDay = match[3]
     const inlineYear = match[4]
-    const nextLine = lines[index + 1] || ''
-    const carriedYear = /^\d{4}$/.test(nextLine) ? nextLine : null
-    const year = inlineYear || carriedYear || undefined
+    const year = inlineYear || undefined
 
     const start = parseExplicitDate(`${month} ${startDay}${year ? ` ${year}` : ''}`, timeZone)
     const end = parseExplicitDate(`${month} ${endDay}${year ? ` ${year}` : ''}`, timeZone)
@@ -1548,6 +1601,18 @@ function transcriptEventsForMode(
   return blockEvents
 }
 
+export function calendarImageTranscriptToEvents({
+  transcriptText,
+  timeZone,
+  mode,
+}: {
+  transcriptText: string
+  timeZone: string
+  mode: CalendarImageMode
+}) {
+  return transcriptEventsForMode(transcriptText, timeZone, mode)
+}
+
 function mergeCalendarImageEvent(
   primary: CalendarImageEvent,
   secondary: CalendarImageEvent | null | undefined,
@@ -1623,6 +1688,7 @@ function singleImageNeedsTitleClarification({
 }) {
   if (!event) return false
   if (mode === 'list_flyer') return false
+  if (sloganLikeTitlePattern.test(cleanText(event.title))) return true
   return isWeakCalendarImageTitle(event.title, mode)
 }
 
