@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { after, NextRequest } from 'next/server'
 import { normalizePhone } from '@/src/lib/phone'
 import { findProfileByPhone } from '@/src/lib/profiles'
 import { checkRateLimit } from '@/src/lib/rateLimit'
@@ -15,6 +15,7 @@ import {
   createCalendarImageBatch,
 } from '@/src/lib/sms/calendarImageBatch'
 import { supabaseAdmin } from '@/src/lib/supabaseAdmin'
+import { sendSms } from '@/src/lib/twilioClient'
 import { messageXml, twilioXmlResponse, validateTwilioWebhook } from '@/src/lib/twilioMessaging'
 
 export const runtime = 'nodejs'
@@ -136,34 +137,125 @@ async function mediaCalendarResult(params: Record<string, string>, timeZone?: st
   return null
 }
 
-async function logDirectTwilioReply({
+async function logSmsMessage({
   profileId,
   from,
-  inboundBody,
-  outboundBody,
+  body,
+  direction,
   twilioMessageSid,
 }: {
   profileId: string
   from: string
-  inboundBody: string
-  outboundBody: string
+  body: string
+  direction: 'inbound' | 'outbound'
+  twilioMessageSid?: string | null
+}) {
+  try {
+    await supabaseAdmin.from('sms_messages').insert({
+      profile_id: profileId,
+      from_e164: from,
+      body,
+      direction,
+      twilio_message_sid: twilioMessageSid || null,
+    })
+  } catch (error) {
+    console.error('Could not log Twilio SMS message.', {
+      profileId,
+      from,
+      direction,
+      twilioMessageSid: twilioMessageSid || null,
+      error,
+    })
+  }
+}
+
+async function resolveMediaReply({
+  params,
+  profile,
+  from,
+  body,
+  twilioMessageSid,
+}: {
+  params: Record<string, string>
+  profile: Awaited<ReturnType<typeof findProfileByPhone>>
+  from: string
+  body: string
   twilioMessageSid?: string
 }) {
-  await supabaseAdmin.from('sms_messages').insert([
-    {
-      profile_id: profileId,
-      from_e164: from,
-      body: inboundBody,
-      direction: 'inbound',
-      twilio_message_sid: twilioMessageSid || null,
-    },
-    {
-      profile_id: profileId,
-      from_e164: from,
-      body: outboundBody,
-      direction: 'outbound',
-    },
-  ])
+  if (!profile) {
+    return handleIncomingSms({
+      from,
+      body: body.trim() || 'photo with event details',
+      twilioMessageSid,
+      source: 'photo',
+    })
+  }
+
+  let finalBody = body.trim()
+  const imageResult = await mediaCalendarResult(params, profile.timezone)
+  if (!imageResult?.smsText) {
+    return 'I can read JPEG, PNG, or WebP images with one clear event. Try a closer crop or type the details.'
+  }
+
+  if (imageResult.events.length > 1) {
+    const batch = await createCalendarImageBatch({
+      profile,
+      result: imageResult,
+      calendarHint: calendarHintFromImageCaption(finalBody),
+    })
+    if (batch.needsCalendarChoice && batch.calendarChoices?.length && batch.events?.length) {
+      await storePhotoBatchCalendarChoicePending({
+        profileId: profile.id,
+        smsFrom: from,
+        calendarChoices: batch.calendarChoices,
+        visibleCalendarChoiceCount: batch.visibleCalendarChoiceCount || batch.calendarChoices.length,
+        events: batch.events,
+      })
+    }
+    return batch.reply
+  }
+
+  if (imageResult.needsTimeClarification && imageResult.events[0]) {
+    return storePhotoEventTimeClarificationPending({
+      profileId: profile.id,
+      smsFrom: from,
+      timeZone: profile.timezone,
+      defaultDurationMinutes: profile.default_event_duration_minutes,
+      calendarHint: calendarHintFromImageCaption(finalBody),
+      needsTitleAfterTime: Boolean(imageResult.needsTitleClarification),
+      event: imageResult.events[0],
+    })
+  }
+
+  if (imageResult.needsTitleClarification && imageResult.events[0]) {
+    return storePhotoEventTitleClarificationPending({
+      profileId: profile.id,
+      smsFrom: from,
+      timeZone: profile.timezone,
+      defaultDurationMinutes: profile.default_event_duration_minutes,
+      calendarHint: calendarHintFromImageCaption(finalBody),
+      event: imageResult.events[0],
+    })
+  }
+
+  if (shouldClarifySingleImageEvent(imageResult) && imageResult.events[0]) {
+    return storePhotoEventClarificationPending({
+      profileId: profile.id,
+      smsFrom: from,
+      timeZone: profile.timezone,
+      defaultDurationMinutes: profile.default_event_duration_minutes,
+      calendarHint: calendarHintFromImageCaption(finalBody),
+      event: imageResult.events[0],
+    })
+  }
+
+  finalBody = finalBody ? `${finalBody}\n${imageResult.smsText}` : imageResult.smsText
+  return handleIncomingSms({
+    from,
+    body: finalBody,
+    twilioMessageSid,
+    source: 'photo',
+  })
 }
 
 export async function POST(request: NextRequest) {
@@ -240,131 +332,97 @@ export async function POST(request: NextRequest) {
 
       const profile = await findProfileByPhone(from)
       if (!profile) {
-        const reply = await handleIncomingSms({
+        const reply = await resolveMediaReply({
+          params,
+          profile,
           from,
-          body: finalBody || 'photo with event details',
+          body: finalBody,
           twilioMessageSid,
-          source: 'photo',
         })
         return twilioXmlResponse(messageXml(reply))
       }
 
-      try {
-        const imageResult = await mediaCalendarResult(params, profile.timezone)
-        if (!imageResult?.smsText) {
-          return twilioXmlResponse(
-            messageXml('I can read JPEG, PNG, or WebP images with one clear event. Try a closer crop or type the details.'),
-            { status: 200 },
-          )
-        }
+      const ack = 'Got your photo, reading it now...'
 
-        if (imageResult.events.length > 1) {
-          const batch = await createCalendarImageBatch({
-            profile,
-            result: imageResult,
-            calendarHint: calendarHintFromImageCaption(finalBody),
+      after(async () => {
+        try {
+          await logSmsMessage({
+            profileId: profile.id,
+            from,
+            body: finalBody || 'Photo with calendar details',
+            direction: 'inbound',
+            twilioMessageSid,
           })
-          if (batch.needsCalendarChoice && batch.calendarChoices?.length && batch.events?.length) {
-            await storePhotoBatchCalendarChoicePending({
+          await logSmsMessage({
+            profileId: profile.id,
+            from,
+            body: ack,
+            direction: 'outbound',
+          })
+
+          const reply = await resolveMediaReply({
+            params,
+            profile,
+            from,
+            body: finalBody,
+            twilioMessageSid,
+          })
+          const sent = await sendSms({
+            to: from,
+            body: reply,
+          })
+          await logSmsMessage({
+            profileId: profile.id,
+            from,
+            body: reply,
+            direction: 'outbound',
+            twilioMessageSid: sent.sid,
+          })
+        } catch (error) {
+          const message = error instanceof Error ? error.message : ''
+          console.error('Twilio MMS calendar image handling failed.', {
+            error: message || error,
+            from,
+            accountSid: params.AccountSid || null,
+            mediaCount: params.NumMedia || '0',
+            mediaTypes: Array.from({ length: Number(params.NumMedia || '0') }, (_, index) =>
+              normalizeMediaType(params[`MediaContentType${index}`] || null),
+            ),
+          })
+
+          const reply =
+            message === 'Unsupported photo type: HEIC'
+              ? 'I cannot read HEIC photos yet. On iPhone, send it as Most Compatible or send a screenshot instead.'
+              : /Unsupported photo type:/i.test(message)
+                ? 'I can read JPEG, PNG, or WebP photos right now. Try a screenshot or a different image type.'
+                : /Twilio media fetch returned (401|403)/i.test(message)
+                  ? 'I received the photo, but could not download it from Twilio yet. Try again in a minute.'
+                : /openai|api key|image reading/i.test(message)
+                  ? message
+                  : 'I could not read one clear calendar event from that photo. Try a closer crop or type the details.'
+
+          try {
+            const sent = await sendSms({
+              to: from,
+              body: reply,
+            })
+            await logSmsMessage({
               profileId: profile.id,
-              smsFrom: from,
-              calendarChoices: batch.calendarChoices,
-              visibleCalendarChoiceCount: batch.visibleCalendarChoiceCount || batch.calendarChoices.length,
-              events: batch.events,
+              from,
+              body: reply,
+              direction: 'outbound',
+              twilioMessageSid: sent.sid,
+            })
+          } catch (sendError) {
+            console.error('Twilio MMS follow-up send failed.', {
+              from,
+              error: sendError,
             })
           }
-          await logDirectTwilioReply({
-            profileId: profile.id,
-            from,
-            inboundBody: finalBody || 'Photo with calendar schedule',
-            outboundBody: batch.reply,
-            twilioMessageSid,
-          })
-          return twilioXmlResponse(messageXml(batch.reply), { status: 200 })
         }
+      })
 
-        if (imageResult.needsTimeClarification && imageResult.events[0]) {
-          const reply = await storePhotoEventTimeClarificationPending({
-            profileId: profile.id,
-            smsFrom: from,
-            timeZone: profile.timezone,
-            defaultDurationMinutes: profile.default_event_duration_minutes,
-            calendarHint: calendarHintFromImageCaption(finalBody),
-            needsTitleAfterTime: Boolean(imageResult.needsTitleClarification),
-            event: imageResult.events[0],
-          })
-          await logDirectTwilioReply({
-            profileId: profile.id,
-            from,
-            inboundBody: finalBody || 'Photo with calendar schedule',
-            outboundBody: reply,
-            twilioMessageSid,
-          })
-          return twilioXmlResponse(messageXml(reply), { status: 200 })
-        }
-
-        if (imageResult.needsTitleClarification && imageResult.events[0]) {
-          const reply = await storePhotoEventTitleClarificationPending({
-            profileId: profile.id,
-            smsFrom: from,
-            timeZone: profile.timezone,
-            defaultDurationMinutes: profile.default_event_duration_minutes,
-            calendarHint: calendarHintFromImageCaption(finalBody),
-            event: imageResult.events[0],
-          })
-          await logDirectTwilioReply({
-            profileId: profile.id,
-            from,
-            inboundBody: finalBody || 'Photo with calendar schedule',
-            outboundBody: reply,
-            twilioMessageSid,
-          })
-          return twilioXmlResponse(messageXml(reply), { status: 200 })
-        }
-
-        if (shouldClarifySingleImageEvent(imageResult) && imageResult.events[0]) {
-          const reply = await storePhotoEventClarificationPending({
-            profileId: profile.id,
-            smsFrom: from,
-            timeZone: profile.timezone,
-            defaultDurationMinutes: profile.default_event_duration_minutes,
-            calendarHint: calendarHintFromImageCaption(finalBody),
-            event: imageResult.events[0],
-          })
-          await logDirectTwilioReply({
-            profileId: profile.id,
-            from,
-            inboundBody: finalBody || 'Photo with calendar schedule',
-            outboundBody: reply,
-            twilioMessageSid,
-          })
-          return twilioXmlResponse(messageXml(reply), { status: 200 })
-        }
-
-        finalBody = finalBody ? `${finalBody}\n${imageResult.smsText}` : imageResult.smsText
-      } catch (error) {
-        const message = error instanceof Error ? error.message : ''
-        console.error('Twilio MMS calendar image handling failed.', {
-          error: message || error,
-          from,
-          accountSid: params.AccountSid || null,
-          mediaCount: params.NumMedia || '0',
-          mediaTypes: Array.from({ length: Number(params.NumMedia || '0') }, (_, index) =>
-            normalizeMediaType(params[`MediaContentType${index}`] || null),
-          ),
-        })
-        const reply =
-          message === 'Unsupported photo type: HEIC'
-            ? 'I cannot read HEIC photos yet. On iPhone, send it as Most Compatible or send a screenshot instead.'
-            : /Unsupported photo type:/i.test(message)
-              ? 'I can read JPEG, PNG, or WebP photos right now. Try a screenshot or a different image type.'
-              : /Twilio media fetch returned (401|403)/i.test(message)
-                ? 'I received the photo, but could not download it from Twilio yet. Try again in a minute.'
-              : /openai|api key|image reading/i.test(message)
-                ? message
-                : 'I could not read one clear calendar event from that photo. Try a closer crop or type the details.'
-        return twilioXmlResponse(messageXml(reply), { status: 200 })
-      }
+      return twilioXmlResponse(messageXml(ack), { status: 200 })
     }
 
     if (!finalBody) {
