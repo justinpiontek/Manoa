@@ -5813,6 +5813,35 @@ export async function handleIncomingSms({
     activePending = null
   }
 
+  if (isPendingEscapeRequest(body)) {
+    const restoreRecentEvent = activePending ? recentCreatedContextEventFromPending(activePending) : null
+
+    if (activePending) {
+      await clearPendingAction(activePending.id)
+      activePending = null
+    }
+
+    if (externalCancelPending) {
+      await clearPendingAction(externalCancelPending.id)
+    }
+
+    if (externalReschedulePending) {
+      await clearPendingAction(externalReschedulePending.id)
+    }
+
+    if (restoreRecentEvent) {
+      await restoreRecentCreatedPending({
+        profileId: profile.id,
+        smsFrom: from,
+        event: restoreRecentEvent,
+      })
+    }
+
+    const reply = 'Got it, starting fresh. What would you like to do?'
+    await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+    return reply
+  }
+
   if (activePending && isCancelPendingRequest(body)) {
     const recentEvent =
       activePending.payload.recentlyCreated && activePending.kind === 'select_cancel_target'
@@ -5860,21 +5889,6 @@ export async function handleIncomingSms({
     } else if (correctedReschedule) {
       intentOverride = correctedReschedule.intent
     }
-  }
-
-  if (activePending && isPendingEscapeRequest(body)) {
-    const restoreRecentEvent = recentCreatedContextEventFromPending(activePending)
-    await clearPendingAction(activePending.id)
-    if (restoreRecentEvent) {
-      await restoreRecentCreatedPending({
-        profileId: profile.id,
-        smsFrom: from,
-        event: restoreRecentEvent,
-      })
-    }
-    const reply = 'Got it, starting fresh. What would you like to do?'
-    await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
-    return reply
   }
 
   const directIntent = intentOverride || parseSmsIntent(intentBody, profile.timezone)
@@ -6902,7 +6916,7 @@ export async function handleIncomingSms({
     return reply
   }
 
-  const reply = activePending
+  const reply = activePending || externalCancelPending || externalReschedulePending
     ? `I didn't quite follow that. You can say things like "schedule a call Thursday at 2pm" or "what's on my calendar today?"\nIf you want to drop the current request and start fresh, say "start over."`
     : `I didn't quite follow that. You can say things like "schedule a call Thursday at 2pm" or "what's on my calendar today?"`
   await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
