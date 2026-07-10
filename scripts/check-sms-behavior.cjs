@@ -20,9 +20,11 @@ const { scheduleCandidateTimesForTitle } = require('../src/lib/calendar/scheduli
 const { applyDemoText, createDemoState } = require('../src/lib/demoSms.ts')
 const { classifyEventAuthority } = require('../src/lib/eventAuthority.ts')
 const {
+  applyPosterVisionChoiceToEvent,
   calendarImageTranscriptToEvents,
   calendarImagePayloadToSmsText,
   calendarImagePayloadToSmsTexts,
+  choosePreferredSingleImageEvent,
 } = require('../src/lib/sms/calendarImage.ts')
 const {
   isInviteeEmailFollowUp,
@@ -651,5 +653,74 @@ assert.equal(
   sovereigntySummitEvents[0].location,
   '3389 County Hwy. H / Laona, WI 54541',
 )
+
+const posterStructuredBase = choosePreferredSingleImageEvent({
+  mode: 'poster',
+  structuredEvents: [{
+    title: 'Spirit Warrior Woodland Relay',
+    dateYmd: '2026-07-30',
+    endDateYmd: null,
+    time24h: '08:00',
+    isAllDay: false,
+    durationMinutes: null,
+    location: 'PCC',
+    organizerOrSource: null,
+    itemType: 'other',
+    isConfirmedOrFixed: true,
+    confidence: 'high',
+    notes: null,
+    smsText: 'add Spirit Warrior Woodland Relay on 7/30/2026 at 8:00am at PCC',
+  }],
+  transcriptEvents: [{
+    title: 'SPIRIT',
+    dateYmd: '2026-07-30',
+    endDateYmd: null,
+    time24h: '08:00',
+    isAllDay: false,
+    durationMinutes: null,
+    location: null,
+    organizerOrSource: null,
+    itemType: 'other',
+    isConfirmedOrFixed: true,
+    confidence: 'medium',
+    notes: null,
+    smsText: 'add SPIRIT on 7/30/2026 at 8:00am',
+  }],
+})
+assert.equal(posterStructuredBase.title, 'Spirit Warrior Woodland Relay')
+
+const aiPosterOverride = applyPosterVisionChoiceToEvent({
+  baseEvent: {
+    title: 'Indigenous food sovereignty',
+    dateYmd: '2026-07-20',
+    endDateYmd: '2026-07-31',
+    time24h: null,
+    isAllDay: true,
+    durationMinutes: null,
+    location: null,
+    organizerOrSource: null,
+    itemType: 'other',
+    isConfirmedOrFixed: true,
+    confidence: 'medium',
+    notes: null,
+    smsText: 'add Indigenous food sovereignty from 7/20/2026 to 7/31/2026 all day',
+  },
+  choice: {
+    headline: 'Bodewadmik Food Sovereignty Summit',
+    start_date_ymd: '2026-07-30',
+    end_date_ymd: '2026-07-31',
+    time_24h: null,
+    is_all_day: true,
+    duration_minutes: null,
+    location: '3389 County Hwy. H / Laona, WI 54541',
+    confidence: 'high',
+    notes: null,
+  },
+  mode: 'poster',
+})
+assert.equal(aiPosterOverride.title, 'Bodewadmik Food Sovereignty Summit')
+assert.equal(aiPosterOverride.dateYmd, '2026-07-30')
+assert.equal(aiPosterOverride.endDateYmd, '2026-07-31')
+assert.equal(aiPosterOverride.location, '3389 County Hwy. H / Laona, WI 54541')
 
 console.log('SMS behavior checks passed.')

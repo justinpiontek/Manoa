@@ -58,6 +58,18 @@ export type CalendarImageResult = {
   needsTitleClarification?: boolean
 }
 
+type PosterVisionChoicePayload = {
+  headline: string | null
+  start_date_ymd: string | null
+  end_date_ymd: string | null
+  time_24h: string | null
+  is_all_day: boolean | null
+  duration_minutes: number | null
+  location: string | null
+  confidence: 'high' | 'medium' | 'low'
+  notes: string | null
+}
+
 function buildCalendarImageSmsText(event: Omit<CalendarImageEvent, 'smsText'>) {
   const date = displayDate(event.dateYmd)
   const endDate = displayDate(event.endDateYmd)
@@ -259,6 +271,26 @@ function transcriptImageInstructions(timeZone: string) {
     'Do not summarize, interpret, or label the text.\n' +
     'Do not add commentary.\n' +
     'If the image is unreadable, return exactly NO_EVENT.'
+  )
+}
+
+function posterVisionChoiceInstructions(timeZone: string) {
+  return (
+    `You read event posters and social event graphics for Manoa, a calendar assistant.\n` +
+    `Current timezone: ${timeZone}.\n` +
+    `Current local date: ${currentLocalDateString(timeZone)}.\n` +
+    'Pick the main calendar event headline and core schedule details from the image.\n' +
+    'Return the public event name a person would actually want on their calendar.\n' +
+    'Do not use a slogan, tagline, subtitle, bullet point, organizer name, venue name, or contact line as the headline unless it is truly part of the visible event name.\n' +
+    'If the headline spans multiple stacked lines, combine them into one headline.\n' +
+    'Examples:\n' +
+    '- "1ST ANNUAL" + "BODEWADMIK FOOD" + "SOVEREIGNTY SUMMIT" => "BODEWADMIK FOOD SOVEREIGNTY SUMMIT"\n' +
+    '- "SPIRIT" + "WARRIOR" + "WOODLAND" + "RELAY" => "SPIRIT WARRIOR WOODLAND RELAY"\n' +
+    '- "ROOTED IN CULTURE, GROWING FOR TOMORROW" is a subtitle, not the headline.\n' +
+    '- "Indigenous food sovereignty" is body copy, not the headline.\n' +
+    'If the poster covers multiple dates, include both start and end dates.\n' +
+    'If it shows one clear event time, include it. If it shows no event-wide time, leave time_24h null and set is_all_day appropriately.\n' +
+    'Use has confidence=high only when the headline and schedule details are very clear.'
   )
 }
 
@@ -1130,6 +1162,173 @@ function createCalendarImageEvent(
   }
 }
 
+function isValidYmd(value: string | null | undefined) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(cleanText(value))
+}
+
+function isValidTime24h(value: string | null | undefined) {
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(cleanText(value))
+}
+
+function sameNormalizedTitle(left: string | null | undefined, right: string | null | undefined) {
+  return cleanText(left).toLowerCase() === cleanText(right).toLowerCase()
+}
+
+function shouldRunPosterVisionChoice({
+  mode,
+  structuredEvents,
+  transcriptEvents,
+}: {
+  mode: CalendarImageMode
+  structuredEvents: CalendarImageEvent[]
+  transcriptEvents: CalendarImageEvent[]
+}) {
+  if (mode !== 'poster' && mode !== 'social_post') return false
+  if (structuredEvents.length > 1 || transcriptEvents.length > 1) return false
+
+  const structured = structuredEvents[0] || null
+  const transcript = transcriptEvents[0] || null
+  if (!structured && !transcript) return false
+
+  const structuredTitle = structured?.title || ''
+  const transcriptTitle = transcript?.title || ''
+
+  if (!structuredTitle || !transcriptTitle) return true
+  if (isWeakCalendarImageTitle(structuredTitle, mode)) return true
+  if (isWeakCalendarImageTitle(transcriptTitle, mode)) return true
+  if (!sameNormalizedTitle(structuredTitle, transcriptTitle)) return true
+  if ((structured?.dateYmd || null) !== (transcript?.dateYmd || null)) return true
+  if ((structured?.endDateYmd || null) !== (transcript?.endDateYmd || null)) return true
+
+  return false
+}
+
+export function choosePreferredSingleImageEvent({
+  mode,
+  structuredEvents,
+  transcriptEvents,
+}: {
+  mode: CalendarImageMode
+  structuredEvents: CalendarImageEvent[]
+  transcriptEvents: CalendarImageEvent[]
+}) {
+  const structured = structuredEvents.length === 1 ? structuredEvents[0] : null
+  const transcript = transcriptEvents.length === 1 ? transcriptEvents[0] : null
+
+  if (mode === 'poster' || mode === 'social_post') {
+    if (structured && transcript) return mergeCalendarImageEvent(structured, transcript)
+    return structured || transcript
+  }
+
+  if (!transcript) return structured
+  if (!structured) return transcript
+
+  return shouldPreferTranscriptSingleEvent(structuredEvents, transcript, mode)
+    ? mergeCalendarImageEvent(transcript, structured)
+    : structured
+}
+
+export function applyPosterVisionChoiceToEvent({
+  baseEvent,
+  choice,
+  mode,
+}: {
+  baseEvent: CalendarImageEvent
+  choice: PosterVisionChoicePayload
+  mode: CalendarImageMode
+}) {
+  const selectedHeadline = cleanTranscriptEventTitle(choice.headline, mode, [baseEvent.title])
+  const title =
+    selectedHeadline &&
+    !sloganLikeTitlePattern.test(selectedHeadline) &&
+    scoreEventTitleCandidate(selectedHeadline, mode) >= scoreEventTitleCandidate(baseEvent.title, mode)
+      ? selectedHeadline
+      : baseEvent.title
+
+  const dateYmd = isValidYmd(choice.start_date_ymd) ? cleanText(choice.start_date_ymd) : baseEvent.dateYmd
+  const rawEndDateYmd = isValidYmd(choice.end_date_ymd) ? cleanText(choice.end_date_ymd) : baseEvent.endDateYmd
+  const endDateYmd =
+    rawEndDateYmd && rawEndDateYmd >= dateYmd ? rawEndDateYmd : rawEndDateYmd && rawEndDateYmd === dateYmd ? rawEndDateYmd : null
+  const isAllDay = choice.is_all_day == null ? baseEvent.isAllDay : choice.is_all_day
+  const time24h = isAllDay
+    ? null
+    : isValidTime24h(choice.time_24h)
+      ? cleanText(choice.time_24h)
+      : baseEvent.time24h
+  const durationMinutes =
+    typeof choice.duration_minutes === 'number' && choice.duration_minutes > 0
+      ? choice.duration_minutes
+      : baseEvent.durationMinutes
+  const location = cleanText(choice.location) || baseEvent.location || null
+
+  const merged = createCalendarImageEvent({
+    title,
+    dateYmd,
+    endDateYmd,
+    time24h,
+    isAllDay,
+    durationMinutes,
+    location,
+    organizerOrSource: baseEvent.organizerOrSource,
+    itemType: baseEvent.itemType,
+    isConfirmedOrFixed: baseEvent.isConfirmedOrFixed,
+    confidence: strongerConfidence(baseEvent.confidence, choice.confidence),
+    notes: cleanText(choice.notes) || baseEvent.notes,
+  })
+
+  return merged || baseEvent
+}
+
+async function choosePosterVisionChoice({
+  dataUrl,
+  timeZone,
+  mode,
+  transcriptText,
+  structuredEvent,
+  transcriptEvent,
+  timeoutMs,
+}: {
+  dataUrl: string
+  timeZone: string
+  mode: CalendarImageMode
+  transcriptText: string | null
+  structuredEvent: CalendarImageEvent | null
+  transcriptEvent: CalendarImageEvent | null
+  timeoutMs: number
+}) {
+  const outputText = await openAiImageResponse({
+    dataUrl,
+    timeZone,
+    instructions: posterVisionChoiceInstructions(timeZone),
+    userText: [
+      `This is a ${mode === 'social_post' ? 'social event image' : 'poster-style event image'}.`,
+      structuredEvent ? `Structured candidate: ${structuredEvent.title} on ${structuredEvent.dateYmd}${structuredEvent.endDateYmd ? ` through ${structuredEvent.endDateYmd}` : ''}${structuredEvent.time24h ? ` at ${structuredEvent.time24h}` : ''}.` : null,
+      transcriptEvent ? `Transcript candidate: ${transcriptEvent.title} on ${transcriptEvent.dateYmd}${transcriptEvent.endDateYmd ? ` through ${transcriptEvent.endDateYmd}` : ''}${transcriptEvent.time24h ? ` at ${transcriptEvent.time24h}` : ''}.` : null,
+      transcriptText ? `Visible transcript text:\n${transcriptText}` : null,
+      'Return only the main calendar event headline and core schedule details.',
+    ].filter(Boolean).join('\n\n'),
+    timeoutMs,
+    body: {
+      text: {
+        format: {
+          type: 'json_schema',
+          name: 'manoa_poster_vision_choice',
+          strict: true,
+          schema: posterVisionChoiceSchema(),
+        },
+      },
+    },
+  })
+
+  if (!outputText) return null
+
+  try {
+    return JSON.parse(outputText) as PosterVisionChoicePayload
+  } catch {
+    return null
+  }
+}
+
 function parseTranscriptSingleEvent(
   outputText: string,
   timeZone: string,
@@ -1485,6 +1684,35 @@ function calendarImageSchema() {
   }
 }
 
+function posterVisionChoiceSchema() {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      headline: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+      start_date_ymd: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+      end_date_ymd: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+      time_24h: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+      is_all_day: { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
+      duration_minutes: { anyOf: [{ type: 'integer' }, { type: 'null' }] },
+      location: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+      confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+      notes: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    },
+    required: [
+      'headline',
+      'start_date_ymd',
+      'end_date_ymd',
+      'time_24h',
+      'is_all_day',
+      'duration_minutes',
+      'location',
+      'confidence',
+      'notes',
+    ],
+  }
+}
+
 export function calendarImagePayloadToSmsText(payload: CalendarImagePayload) {
   return calendarImagePayloadToSmsTexts(payload)[0] || null
 }
@@ -1751,6 +1979,7 @@ export async function calendarImageToSmsText({
   let events: CalendarImageEvent[] = []
   let smsTexts: string[] = []
   let structuredFailure: Error | null = null
+  let preferredSingleEvent: CalendarImageEvent | null = null
 
   try {
     transcriptText = await openAiImageResponse({
@@ -1802,15 +2031,61 @@ export async function calendarImageToSmsText({
     if (transcriptModeEvents.length > 1 && transcriptModeEvents.length > events.length) {
       events = transcriptModeEvents
       payload.confidence = strongerConfidence(payload.confidence, 'medium')
-    } else if (
-      transcriptModeEvents.length === 1 &&
-      shouldPreferTranscriptSingleEvent(events, transcriptModeEvents[0], classifiedMode)
-    ) {
-      events = [mergeCalendarImageEvent(transcriptModeEvents[0], events[0])]
-      payload.confidence = strongerConfidence(payload.confidence, 'medium')
     }
     if (transcriptText) {
       events = enrichSingleEventLocationFromTranscript(events, transcriptText)
+    }
+
+    if (
+      shouldRunPosterVisionChoice({
+        mode: classifiedMode,
+        structuredEvents: events,
+        transcriptEvents: transcriptModeEvents,
+      })
+    ) {
+      try {
+        const posterVisionChoice = await choosePosterVisionChoice({
+          dataUrl,
+          timeZone,
+          mode: classifiedMode,
+          transcriptText,
+          structuredEvent: events.length === 1 ? events[0] : null,
+          transcriptEvent: transcriptModeEvents.length === 1 ? transcriptModeEvents[0] : null,
+          timeoutMs: secondaryTimeoutMs,
+        })
+        const baseEvent = choosePreferredSingleImageEvent({
+          mode: classifiedMode,
+          structuredEvents: events,
+          transcriptEvents: transcriptModeEvents,
+        })
+        if (posterVisionChoice && baseEvent) {
+          preferredSingleEvent = applyPosterVisionChoiceToEvent({
+            baseEvent,
+            choice: posterVisionChoice,
+            mode: classifiedMode,
+          })
+        }
+      } catch (error) {
+        const posterVisionFailure =
+          error instanceof Error ? error : new Error('Poster vision choice failed.')
+        console.error('Poster vision choice failed.', {
+          mode: classifiedMode,
+          error: posterVisionFailure.message,
+        })
+      }
+    }
+
+    if (!preferredSingleEvent) {
+      preferredSingleEvent = choosePreferredSingleImageEvent({
+        mode: classifiedMode,
+        structuredEvents: events,
+        transcriptEvents: transcriptModeEvents,
+      })
+    }
+
+    if (preferredSingleEvent) {
+      events = [preferredSingleEvent]
+      payload.confidence = strongerConfidence(payload.confidence, preferredSingleEvent.confidence)
     }
     smsTexts = events.map((event) => event.smsText)
   } catch (error) {
