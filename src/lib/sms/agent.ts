@@ -274,9 +274,11 @@ function visibleCalendarChoices(calendars: CalendarPlacementOption[]) {
 function calendarChoiceReply({
   heading,
   calendars,
+  details,
 }: {
   heading: string
   calendars: CalendarPlacementOption[]
+  details?: string | null
 }) {
   const visibleCalendars = visibleCalendarChoices(calendars)
   const extraCount = calendars.length - visibleCalendars.length
@@ -289,7 +291,7 @@ function calendarChoiceReply({
   footerLines.push('Reply with a number or calendar name.')
   return {
     reply: sectionedListReply({
-      intro: `🗓️ ${heading}`,
+      intro: [`🗓️ ${heading}`, details].filter(Boolean).join('\n'),
       list: calendarChoiceList(visibleCalendars, calendars),
       footer: footerLines.join('\n'),
     }),
@@ -301,6 +303,32 @@ function eventTitleCalendarChoiceHeading(title: string | null | undefined) {
   const cleaned = (title || '').replace(/\s+/g, ' ').trim()
   if (!cleaned) return 'Which calendar should I put that on?'
   return `Which calendar should I put "${cleaned}" on?`
+}
+
+function scheduleRequestCalendarChoiceDetails(
+  scheduleRequest: PendingPayload['scheduleRequest'] | undefined,
+  timeZone: string,
+) {
+  if (!scheduleRequest) return null
+
+  const baseDate = new Date(scheduleRequest.baseDate)
+  if (Number.isNaN(baseDate.getTime())) return null
+
+  if (scheduleRequest.allDay) {
+    const endDate = scheduleRequest.endDate ? new Date(scheduleRequest.endDate) : null
+    const timing =
+      endDate && !sameCalendarDay(baseDate, endDate, timeZone)
+        ? `${formatSmsDate(baseDate, timeZone)} through ${formatSmsDate(endDate, timeZone)} (all day)`
+        : `${formatSmsDate(baseDate, timeZone)} (all day)`
+    return `Current request: ${timing}.`
+  }
+
+  if (scheduleRequest.exactTime) {
+    const start = setTime(baseDate, scheduleRequest.exactTime, timeZone)
+    return `Current request: ${formatSmsDate(start, timeZone)} at ${formatSmsTime(start, timeZone)}.`
+  }
+
+  return `Current request: ${formatSmsDate(baseDate, timeZone)}.`
 }
 
 function actionChoiceList(lines: string[]) {
@@ -5762,11 +5790,24 @@ export async function handleIncomingSms({
           ? placement.matches
           : placement.bookingCalendars,
       )
+      const pendingScheduleRequest = {
+        title: scheduleIntent.title,
+        baseDate: scheduleIntent.baseDate.toISOString(),
+        endDate: scheduleIntent.endDate?.toISOString() || null,
+        dateWindow: serializeDateWindow(scheduleIntent.dateWindow),
+        exactTime: scheduleIntent.exactTime,
+        durationMinutes: scheduleDurationMinutes,
+        allDay: scheduleIntent.allDay,
+        recurrence: scheduleIntent.recurrence,
+        location: scheduleIntent.location,
+        serviceConfirmed: userAlreadyConfirmedServiceBooking(intentBody),
+      } satisfies NonNullable<PendingPayload['scheduleRequest']>
       const choicePrompt = calendarChoiceReply({
         heading:
           placement.matches.length === 0 && !placement.genericHint
             ? `I couldn't tell which calendar "${scheduleIntent.calendarHint}" means. Which calendar should I use?`
             : eventTitleCalendarChoiceHeading(scheduleIntent.title),
+        details: scheduleRequestCalendarChoiceDetails(pendingScheduleRequest, profile.timezone),
         calendars: calendarChoices,
       })
 
@@ -5779,18 +5820,7 @@ export async function handleIncomingSms({
           visibleCalendarChoiceCount: choicePrompt.visibleCount,
           attendees: inviteeContext.invitees,
           unresolvedInvitees: inviteeContext.unresolvedNames,
-          scheduleRequest: {
-            title: scheduleIntent.title,
-            baseDate: scheduleIntent.baseDate.toISOString(),
-            endDate: scheduleIntent.endDate?.toISOString() || null,
-            dateWindow: serializeDateWindow(scheduleIntent.dateWindow),
-            exactTime: scheduleIntent.exactTime,
-            durationMinutes: scheduleDurationMinutes,
-            allDay: scheduleIntent.allDay,
-            recurrence: scheduleIntent.recurrence,
-            location: scheduleIntent.location,
-            serviceConfirmed: userAlreadyConfirmedServiceBooking(intentBody),
-          },
+          scheduleRequest: pendingScheduleRequest,
         },
       })
 
