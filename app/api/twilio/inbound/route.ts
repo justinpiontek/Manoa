@@ -7,6 +7,7 @@ import {
   storePhotoBatchCalendarChoicePending,
   storePhotoEventClarificationPending,
   storePhotoEventTimeClarificationPending,
+  storePhotoEventTitleClarificationPending,
 } from '@/src/lib/sms/agent'
 import { calendarImageToSmsText, type CalendarImageResult } from '@/src/lib/sms/calendarImage'
 import {
@@ -284,6 +285,26 @@ export async function POST(request: NextRequest) {
 
         if (imageResult.needsTimeClarification && imageResult.events[0]) {
           const reply = await storePhotoEventTimeClarificationPending({
+            profileId: profile.id,
+            smsFrom: from,
+            timeZone: profile.timezone,
+            defaultDurationMinutes: profile.default_event_duration_minutes,
+            calendarHint: calendarHintFromImageCaption(finalBody),
+            needsTitleAfterTime: Boolean(imageResult.needsTitleClarification),
+            event: imageResult.events[0],
+          })
+          await logDirectTwilioReply({
+            profileId: profile.id,
+            from,
+            inboundBody: finalBody || 'Photo with calendar schedule',
+            outboundBody: reply,
+            twilioMessageSid,
+          })
+          return twilioXmlResponse(messageXml(reply), { status: 200 })
+        }
+
+        if (imageResult.needsTitleClarification && imageResult.events[0]) {
+          const reply = await storePhotoEventTitleClarificationPending({
             profileId: profile.id,
             smsFrom: from,
             timeZone: profile.timezone,

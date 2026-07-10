@@ -11,6 +11,7 @@ import {
   storePhotoBatchCalendarChoicePending,
   storePhotoEventClarificationPending,
   storePhotoEventTimeClarificationPending,
+  storePhotoEventTitleClarificationPending,
 } from '@/src/lib/sms/agent'
 import { dashboardSender } from '@/src/lib/sms/sender'
 import { listSmsThreadEntries, toSmsThreadMessages } from '@/src/lib/sms/thread'
@@ -205,6 +206,38 @@ export async function POST(request: NextRequest) {
 
     if (result.needsTimeClarification && result.events[0]) {
       const reply = await storePhotoEventTimeClarificationPending({
+        profileId: profile.id,
+        smsFrom: from,
+        timeZone: profile.timezone,
+        defaultDurationMinutes: profile.default_event_duration_minutes,
+        calendarHint: calendarHintFromImageCaption(caption),
+        needsTitleAfterTime: Boolean(result.needsTitleClarification),
+        event: result.events[0],
+      })
+
+      await logDashboardPhotoReply({
+        profileId: profile.id,
+        from,
+        caption,
+        reply,
+      })
+
+      const thread = toSmsThreadMessages(await listSmsThreadEntries(profile.id))
+      const response = NextResponse.json({
+        messages: thread,
+        extractedText: result.smsText,
+        confidence: result.confidence,
+      })
+
+      cookiesToSet.forEach(({ name, value, options }) => {
+        response.cookies.set(name, value, options)
+      })
+
+      return response
+    }
+
+    if (result.needsTitleClarification && result.events[0]) {
+      const reply = await storePhotoEventTitleClarificationPending({
         profileId: profile.id,
         smsFrom: from,
         timeZone: profile.timezone,

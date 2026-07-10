@@ -55,6 +55,7 @@ export type CalendarImageResult = {
   mode: CalendarImageMode
   needsClarification?: boolean
   needsTimeClarification?: boolean
+  needsTitleClarification?: boolean
 }
 
 function buildCalendarImageSmsText(event: Omit<CalendarImageEvent, 'smsText'>) {
@@ -1604,7 +1605,6 @@ function singleImageNeedsClarification({
 }) {
   if (!event) return false
   if (confidence === 'low' || event.confidence === 'low') return true
-  if (isWeakCalendarImageTitle(event.title, mode)) return true
 
   if (!transcriptText) return false
 
@@ -1612,6 +1612,18 @@ function singleImageNeedsClarification({
   if (visibleTimes.length > 0 && event.isAllDay) return true
 
   return false
+}
+
+function singleImageNeedsTitleClarification({
+  event,
+  mode,
+}: {
+  event: CalendarImageEvent | null | undefined
+  mode: CalendarImageMode
+}) {
+  if (!event) return false
+  if (mode === 'list_flyer') return false
+  return isWeakCalendarImageTitle(event.title, mode)
 }
 
 function transcriptIndicatesExplicitAllDay(transcriptText: string) {
@@ -1752,41 +1764,41 @@ export async function calendarImageToSmsText({
     resultSmsTexts?: string[]
     resultConfidence?: CalendarImagePayload['confidence']
     resultNotes?: string | null
-  } = {}): CalendarImageResult => ({
-    smsText: resultSmsTexts[0] || null,
-    smsTexts: resultSmsTexts,
-    events: resultEvents,
-    confidence: resultConfidence,
-    notes: resultNotes,
-    mode: classifiedMode,
-    needsClarification:
-      resultEvents.length === 1
-        ? singleImageNeedsClarification({
-            event: resultEvents[0],
-            mode: classifiedMode,
-            transcriptText,
-            confidence: resultConfidence,
-          })
-        : false,
-    needsTimeClarification:
-      resultEvents.length === 1 &&
-      !(
-        resultEvents.length === 1
-          ? singleImageNeedsClarification({
-              event: resultEvents[0],
-              mode: classifiedMode,
-              transcriptText,
-              confidence: resultConfidence,
-            })
-          : false
-      )
-        ? singleImageNeedsTimeClarification({
-            event: resultEvents[0],
-            mode: classifiedMode,
-            transcriptText,
-          })
-        : false,
-  })
+  } = {}): CalendarImageResult => {
+    const singleEvent = resultEvents.length === 1 ? resultEvents[0] : null
+    const needsTitleClarification = singleImageNeedsTitleClarification({
+      event: singleEvent,
+      mode: classifiedMode,
+    })
+    const needsTimeClarification =
+      !needsTitleClarification &&
+      singleImageNeedsTimeClarification({
+        event: singleEvent,
+        mode: classifiedMode,
+        transcriptText,
+      })
+    const needsClarification =
+      !needsTitleClarification &&
+      !needsTimeClarification &&
+      singleImageNeedsClarification({
+        event: singleEvent,
+        mode: classifiedMode,
+        transcriptText,
+        confidence: resultConfidence,
+      })
+
+    return {
+      smsText: resultSmsTexts[0] || null,
+      smsTexts: resultSmsTexts,
+      events: resultEvents,
+      confidence: resultConfidence,
+      notes: resultNotes,
+      mode: classifiedMode,
+      needsClarification,
+      needsTimeClarification,
+      needsTitleClarification,
+    }
+  }
 
   if (isSmsMode && smsTexts.length > 1) {
     return buildResult()

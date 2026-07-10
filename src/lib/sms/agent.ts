@@ -159,7 +159,8 @@ type PendingPayload = {
   }
   photoBatchEvents?: CalendarImageEvent[]
   clarification?: {
-    type: 'image_event' | 'image_event_time'
+    type: 'image_event' | 'image_event_time' | 'image_event_title'
+    needsTitleAfterTime?: boolean
   }
 }
 
@@ -505,17 +506,40 @@ function imageEventClarificationReply({
 function imageEventTimeClarificationReply({
   scheduleRequest,
   timeZone,
+  hideTitle = false,
+}: {
+  scheduleRequest: NonNullable<PendingPayload['scheduleRequest']>
+  timeZone: string
+  hideTitle?: boolean
+}) {
+  const summary = hideTitle
+    ? scheduleRequestSummaryText(scheduleRequest, timeZone)
+    : scheduleRequestReferenceText(scheduleRequest, timeZone)
+  const locationLine = scheduleRequest.location?.trim() ? `📍 ${scheduleRequest.location.trim()}.` : null
+
+  return [
+    summary
+      ? `🕒 I found ${hideTitle ? `an event on ${summary}` : summary}, but I couldn't tell the start time.`
+      : "🕒 I found an event, but I couldn't tell the start time.",
+    locationLine,
+    'Reply with a time like 5pm, or say ALL DAY.',
+  ].filter(Boolean).join('\n\n')
+}
+
+function imageEventTitleClarificationReply({
+  scheduleRequest,
+  timeZone,
 }: {
   scheduleRequest: NonNullable<PendingPayload['scheduleRequest']>
   timeZone: string
 }) {
-  const summary = scheduleRequestReferenceText(scheduleRequest, timeZone)
+  const summary = scheduleRequestSummaryText(scheduleRequest, timeZone)
   const locationLine = scheduleRequest.location?.trim() ? `📍 ${scheduleRequest.location.trim()}.` : null
 
   return [
-    `🕒 I found ${summary}, but I couldn't tell the start time.`,
+    summary ? `📝 I found an event on ${summary}.` : '📝 I found an event.',
     locationLine,
-    'Reply with a time like 5pm, or say ALL DAY.',
+    'What should I call it?',
   ].filter(Boolean).join('\n\n')
 }
 
@@ -2008,6 +2032,9 @@ function reminderForPending(pending: PendingAction) {
       return 'Reply with the option you want, like 1, 2, or 3.'
     case 'choose_calendar':
     case 'photo_batch_choose_calendar':
+      if (pending.payload.clarification?.type === 'image_event_title') {
+        return 'Reply with the event name.'
+      }
       if (pending.payload.clarification?.type === 'image_event_time') {
         return 'Reply with a time like 5pm, or say ALL DAY.'
       }
@@ -3595,6 +3622,12 @@ function normalizeImageClarifiedTitle(text: string) {
   return stripped
 }
 
+function isWeakClarifiedImageTitle(text: string) {
+  const normalized = text.trim().toLowerCase()
+  if (!normalized) return true
+  return /^(event|meeting|appointment|party|school|sports|travel|deadline|other)$/i.test(normalized)
+}
+
 export async function storePhotoEventClarificationPending({
   profileId,
   smsFrom,
@@ -3669,6 +3702,7 @@ export async function storePhotoEventTimeClarificationPending({
   timeZone,
   defaultDurationMinutes,
   calendarHint,
+  needsTitleAfterTime = false,
   event,
 }: {
   profileId: string
@@ -3676,6 +3710,7 @@ export async function storePhotoEventTimeClarificationPending({
   timeZone: string
   defaultDurationMinutes: number
   calendarHint?: string | null
+  needsTitleAfterTime?: boolean
   event: CalendarImageEvent
 }) {
   const scheduleRequest = scheduleRequestFromCalendarImageEvent({
@@ -3724,12 +3759,78 @@ export async function storePhotoEventTimeClarificationPending({
       scheduleRequest: updatedScheduleRequest,
       clarification: {
         type: 'image_event_time',
+        needsTitleAfterTime,
       },
     },
   })
 
   return imageEventTimeClarificationReply({
     scheduleRequest: updatedScheduleRequest,
+    timeZone,
+    hideTitle: needsTitleAfterTime,
+  })
+}
+
+export async function storePhotoEventTitleClarificationPending({
+  profileId,
+  smsFrom,
+  timeZone,
+  defaultDurationMinutes,
+  calendarHint,
+  event,
+}: {
+  profileId: string
+  smsFrom: string
+  timeZone: string
+  defaultDurationMinutes: number
+  calendarHint?: string | null
+  event: CalendarImageEvent
+}) {
+  const scheduleRequest = scheduleRequestFromCalendarImageEvent({
+    event,
+    timeZone,
+    defaultDurationMinutes,
+  })
+  if (!scheduleRequest) {
+    return 'I could not read one clear calendar event from that photo. Try a closer crop or type the details.'
+  }
+
+  const placement = await resolveCalendarPlacement(profileId, calendarHint || undefined)
+  if (!placement.bookingCalendars.length) {
+    return `Almost ready. I can see your calendars, but none are set to accept new events yet. Open ${appUrl()}/dashboard, then turn on "Books here" for one calendar in Calendar settings.`
+  }
+
+  const plan = planCalendarSelection({
+    placement,
+    calendarHint,
+    defaultHeading: eventTitleCalendarChoiceHeading(scheduleRequest.title),
+  })
+
+  const calendarChoices = plan.needsChoice
+    ? plan.calendarChoices
+    : plan.chosenCalendar
+      ? [plan.chosenCalendar]
+      : placement.bookingCalendars.slice(0, 1)
+
+  await storePendingAction({
+    profileId,
+    smsFrom,
+    kind: 'choose_calendar',
+    payload: {
+      calendarChoices,
+      visibleCalendarChoiceCount: Math.max(
+        1,
+        Math.min(calendarChoices.length || 1, maxCalendarChoicesToDisplay),
+      ),
+      scheduleRequest,
+      clarification: {
+        type: 'image_event_title',
+      },
+    },
+  })
+
+  return imageEventTitleClarificationReply({
+    scheduleRequest,
     timeZone,
   })
 }
@@ -5848,6 +5949,70 @@ export async function handleIncomingSms({
     )
 
     if (
+      activePending.payload.clarification?.type === 'image_event_title' &&
+      activePending.payload.scheduleRequest
+    ) {
+      const correctedTitle = normalizeImageClarifiedTitle(body)
+      if (!correctedTitle || isWeakClarifiedImageTitle(correctedTitle)) {
+        const reply = 'Reply with the event name, like "Family Night" or "Coffee Talk."'
+        await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+        return reply
+      }
+
+      const updatedScheduleRequest = {
+        ...activePending.payload.scheduleRequest,
+        title: correctedTitle,
+      }
+
+      await clearPendingAction(activePending.id)
+
+      if (activePending.payload.scheduleRequest.exactTime == null && !activePending.payload.scheduleRequest.allDay) {
+        await storePendingAction({
+          profileId: profile.id,
+          smsFrom: from,
+          kind: 'choose_calendar',
+          payload: {
+            ...activePending.payload,
+            scheduleRequest: updatedScheduleRequest,
+            clarification: {
+              type: 'image_event_time',
+            },
+          },
+        })
+
+        const reply = imageEventTimeClarificationReply({
+          scheduleRequest: updatedScheduleRequest,
+          timeZone: profile.timezone,
+        })
+        await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+        return reply
+      }
+
+      const calendarChoices = activePending.payload.calendarChoices || []
+      const choicePrompt = scheduleRequestCalendarChoiceReply({
+        scheduleRequest: updatedScheduleRequest,
+        calendars: calendarChoices,
+        timeZone: profile.timezone,
+      })
+
+      await storePendingAction({
+        profileId: profile.id,
+        smsFrom: from,
+        kind: 'choose_calendar',
+        payload: {
+          ...activePending.payload,
+          scheduleRequest: updatedScheduleRequest,
+          clarification: undefined,
+          visibleCalendarChoiceCount: choicePrompt.visibleCount,
+        },
+      })
+
+      const reply = choicePrompt.reply
+      await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+      return reply
+    }
+
+    if (
       activePending.payload.clarification?.type === 'image_event_time' &&
       activePending.payload.scheduleRequest
     ) {
@@ -5866,14 +6031,39 @@ export async function handleIncomingSms({
         allDay: wantsAllDay,
         endDate: wantsAllDay ? activePending.payload.scheduleRequest.endDate : null,
       }
+      const needsTitleAfterTime = Boolean(activePending.payload.clarification?.needsTitleAfterTime)
       const calendarChoices = activePending.payload.calendarChoices || []
+
+      await clearPendingAction(activePending.id)
+
+      if (needsTitleAfterTime) {
+        await storePendingAction({
+          profileId: profile.id,
+          smsFrom: from,
+          kind: 'choose_calendar',
+          payload: {
+            ...activePending.payload,
+            scheduleRequest: updatedScheduleRequest,
+            clarification: {
+              type: 'image_event_title',
+            },
+          },
+        })
+
+        const reply = imageEventTitleClarificationReply({
+          scheduleRequest: updatedScheduleRequest,
+          timeZone: profile.timezone,
+        })
+        await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+        return reply
+      }
+
       const choicePrompt = scheduleRequestCalendarChoiceReply({
         scheduleRequest: updatedScheduleRequest,
         calendars: calendarChoices,
         timeZone: profile.timezone,
       })
 
-      await clearPendingAction(activePending.id)
       await storePendingAction({
         profileId: profile.id,
         smsFrom: from,
