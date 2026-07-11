@@ -1,4 +1,5 @@
 import { stripe } from '@/src/lib/stripeClient'
+import { onboardingExampleTexts } from '@/src/lib/onboarding'
 import { formatPhoneForDisplay } from '@/src/lib/phone'
 import { getAuthenticatedDashboardProfile } from '@/src/lib/dashboardAuth'
 import ManoaWordmark from '@/src/components/ManoaWordmark'
@@ -125,10 +126,16 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
             <span className="step-number">3</span>
             <h2>Text Manoa</h2>
             {displayNumber && displayUserPhone ? (
-              <p>
-                Text <strong>{displayNumber}</strong> from <strong>{displayUserPhone}</strong>. Try things like
-                “9am meeting Tuesday on work calendar” or “what&apos;s on my calendar tomorrow?”
-              </p>
+              <>
+                <p>
+                  Text <strong>{displayNumber}</strong> from <strong>{displayUserPhone}</strong>.
+                </p>
+                <ul className="dashboard-example-list">
+                  {onboardingExampleTexts.map((example) => (
+                    <li key={example}>{example}</li>
+                  ))}
+                </ul>
+              </>
             ) : (
               <p>
                 Texting is optional. If you want it later, add your phone and turn on SMS from the dashboard.

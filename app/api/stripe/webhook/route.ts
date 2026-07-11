@@ -1,6 +1,7 @@
 import type Stripe from 'stripe'
 import { NextRequest } from 'next/server'
-import { requiredEnv } from '@/src/lib/env'
+import { appUrl, requiredEnv } from '@/src/lib/env'
+import { welcomeTextForLogin } from '@/src/lib/onboarding'
 import { findProfileIdForSubscription, upsertStripeSubscription } from '@/src/lib/subscriptions'
 import { stripe } from '@/src/lib/stripeClient'
 import { supabaseAdmin } from '@/src/lib/supabaseAdmin'
@@ -9,8 +10,6 @@ import { sendSms } from '@/src/lib/twilioClient'
 export const runtime = 'nodejs'
 
 const activeWelcomeStatuses = new Set<Stripe.Subscription.Status>(['active', 'trialing'])
-const welcomeText =
-  'Welcome to Manoa. Your account is set up. Connect Google, Outlook, or Apple in your dashboard to get started. Reply STOP to opt out or HELP for help.'
 
 async function findProfileIdForCheckoutSession(session: Stripe.Checkout.Session) {
   const directProfileId = session.metadata?.profile_id || session.client_reference_id
@@ -56,7 +55,7 @@ async function welcomeTextAlreadySent(profileId: string) {
     .select('id')
     .eq('profile_id', profileId)
     .eq('direction', 'outbound')
-    .eq('body', welcomeText)
+    .ilike('body', 'Welcome to Manoa.%')
     .limit(1)
     .maybeSingle<{ id: string }>()
 
@@ -78,13 +77,16 @@ async function sendWelcomeTextIfEligible({
 
   const { data: profile, error } = await supabaseAdmin
     .from('profiles')
-    .select('phone_e164,sms_opted_out_at')
+    .select('email,phone_e164,sms_opted_out_at')
     .eq('id', profileId)
-    .maybeSingle<{ phone_e164: string | null; sms_opted_out_at: string | null }>()
+    .maybeSingle<{ email: string; phone_e164: string | null; sms_opted_out_at: string | null }>()
 
   if (error) throw error
   if (!profile?.phone_e164 || profile.sms_opted_out_at) return
   if (await welcomeTextAlreadySent(profileId)) return
+
+  const loginUrl = `${appUrl()}/login?email=${encodeURIComponent(profile.email)}`
+  const welcomeText = welcomeTextForLogin(loginUrl)
 
   try {
     const result = await sendSms({ to: profile.phone_e164, body: welcomeText })

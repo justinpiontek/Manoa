@@ -1,5 +1,6 @@
 import { stripe } from '@/src/lib/stripeClient'
 import { appUrl } from '@/src/lib/env'
+import { onboardingExampleTexts } from '@/src/lib/onboarding'
 import { formatPhoneForDisplay } from '@/src/lib/phone'
 import { listConfiguredCalendarAccounts, type CalendarProvider } from '@/src/lib/calendar/google'
 import { getAuthenticatedDashboardProfile } from '@/src/lib/dashboardAuth'
@@ -178,6 +179,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     ? '/setup/apple-calendar'
     : `/setup/apple-calendar?account_id=${appleAccounts[0]?.accountId || ''}`
   const totalConnectedAccounts = calendarAccounts.length
+  const totalBookingCalendars = calendarAccounts.reduce(
+    (count, account) => count + account.calendars.filter((calendar) => calendar.allowNewEvents).length,
+    0,
+  )
+  const needsBookingCalendar = totalConnectedAccounts > 0 && totalBookingCalendars === 0
   const readyToText = Boolean(manoaNumber && profile.calendarConnected && smsReady)
   const connectedAccountLabel = `${totalConnectedAccounts} connected account${totalConnectedAccounts === 1 ? '' : 's'}`
   let dashboardLede = 'Connect Google, Outlook, or Apple to start using Manoa.'
@@ -204,15 +210,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       : 'Once connected, you can test the real texting flow here.'
   const quickExamples = totalConnectedAccounts > 1
     ? [
+        onboardingExampleTexts[0],
         'Schedule lunch Tuesday on Personal',
-        "What's on my calendar tomorrow?",
-        'Reschedule dentist',
+        onboardingExampleTexts[2],
       ]
-    : [
-        'Need a meeting with Beth this week',
-        "What's on my calendar tomorrow?",
-        'Reschedule dentist',
-      ]
+    : onboardingExampleTexts
   const initialThreadMessages = toSmsThreadMessages(await listSmsThreadEntries(profile.id))
 
   return (
@@ -380,6 +382,14 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </div>
         ) : null}
 
+        {needsBookingCalendar ? (
+          <div className="notice warning" role="status" aria-live="polite">
+            Your calendar is connected, but Manoa still needs one place to add new events. Open
+            Calendar settings and turn on <strong>Books here</strong> for one calendar. You only
+            need one.
+          </div>
+        ) : null}
+
         <section className="dashboard-stage dashboard-stage-connect">
           <div className="dashboard-stage-head">
             <div>
@@ -487,6 +497,20 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
               <h2>Send a text here.</h2>
               <p>{textingStageCopy}</p>
             </div>
+          </div>
+
+          <div className="dashboard-example-card">
+            <span className="dashboard-example-label">Try first</span>
+            <strong>
+              {totalConnectedAccounts
+                ? 'Start with one of these texts.'
+                : 'Once your calendar is connected, start with one of these texts.'}
+            </strong>
+            <ul className="dashboard-example-list">
+              {onboardingExampleTexts.map((example) => (
+                <li key={example}>{example}</li>
+              ))}
+            </ul>
           </div>
 
           {manoaNumber && totalConnectedAccounts && smsReady ? (

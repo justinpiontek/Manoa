@@ -43,6 +43,11 @@ import {
 } from '../peopleContacts'
 import { createCalendarImageBatchOnCalendar } from './calendarImageBatch'
 import type { CalendarImageEvent } from './calendarImage'
+import {
+  noBookingCalendarReply,
+  onboardingExampleTexts,
+  readyToTextExamplesReply,
+} from '../onboarding'
 import { profileIdFromDashboardSender } from './sender'
 import { DEFAULT_REMINDER_LEAD_MINUTES } from '../reminders'
 import {
@@ -1839,13 +1844,13 @@ function isSingleScheduleConfirmation(text: string) {
 }
 
 function isCancelPendingRequest(text: string) {
-  return /^(?:actually\s+)?(?:cancel that|cancel it|cancel this|never mind|nevermind|scratch that|forget it|drop that|stop that|leave it)[.!]*$/i.test(
+  return /^(?:actually(?:[,\s]+))?(?:cancel that|cancel it|cancel this|never mind|nevermind|scratch that|forget it|drop that|stop that|leave it)(?:\s+please)?[.!]*$/i.test(
     text.trim(),
   )
 }
 
 function isPendingEscapeRequest(text: string) {
-  return /^(?:start over|start fresh|reset|oops|never mind|nevermind|nvm|forget it|forget that|scratch that|drop it|drop that|leave it)[.!]*$/i.test(
+  return /^(?:actually(?:[,\s]+))?(?:start over|start fresh|reset|oops|never mind|nevermind|nvm|forget it|forget that|scratch that|drop it|drop that|leave it)(?:\s+please)?[.!]*$/i.test(
     text.trim(),
   )
 }
@@ -3335,6 +3340,16 @@ function wantsCalendarSetupHelp(lowerBody: string) {
   )
 }
 
+function isHelpRequest(lowerBody: string) {
+  return /^(?:help|help me|menu|commands)(?:\s+please)?[.!?]*$/.test(lowerBody.trim())
+}
+
+function isCapabilitiesRequest(lowerBody: string) {
+  return /^(?:what(?:\s+all)?\s+can\s+(?:you|manoa)\s+do|what\s+do\s+(?:you|manoa)\s+do|how\s+do\s+i\s+use\s+(?:this|manoa)|how\s+does\s+(?:this|manoa)\s+work)(?:\s+please)?[.!?]*$/.test(
+    lowerBody.trim(),
+  )
+}
+
 function loginLinkForProfile(profile: SmsProfile) {
   return `${appUrl()}/login?email=${encodeURIComponent(profile.email)}`
 }
@@ -3358,10 +3373,50 @@ async function calendarSetupReply(profile: SmsProfile, lowerBody: string) {
 
   const placement = await resolveCalendarPlacement(profile.id, 'Calendar')
   if (!placement.bookingCalendars.length) {
-    return `Almost ready. I can see your calendars, but I still need one calendar set to Books here. Open ${loginLink}, then turn on "Books here" for one calendar in Calendar settings.`
+    return noBookingCalendarReply(loginLink)
   }
 
-  return `Your calendar setup looks ready. Text me what you want to schedule, or open ${loginLink} if you want to review your settings.`
+  return readyToTextExamplesReply(loginLink)
+}
+
+async function helpReply(profile: SmsProfile | null, isDashboardConsole: boolean) {
+  if (!profile) {
+    return 'Sign up for Manoa first, then text this number from your saved phone.'
+  }
+
+  if (!activeSubscriptionStatuses.has(profile.subscriptionStatus)) {
+    return 'Your Manoa subscription is not active yet. Finish checkout, then text me again.'
+  }
+
+  if (!(await hasConnectedCalendar(profile.id))) {
+    return `${await calendarSetupReply(profile, 'add calendar')}\n\nIf you get stuck, say "start over" or "nevermind."`
+  }
+
+  const placement = await resolveCalendarPlacement(profile.id, 'Calendar')
+  if (!placement.bookingCalendars.length) {
+    return `${noBookingCalendarReply(loginLinkForProfile(profile))}\n\nIf you get stuck, say "start over" or "nevermind."`
+  }
+
+  const lines = [
+    'Manoa can help with things like:',
+    `1. ${onboardingExampleTexts[0]}`,
+    `2. ${onboardingExampleTexts[1]}`,
+    `3. ${onboardingExampleTexts[2]}`,
+    '4. Cancel soccer practice.',
+    '5. Add calendar.',
+    'You can also send a photo or screenshot.',
+    'If you get stuck, say "start over" or "nevermind."',
+  ]
+
+  if (!isDashboardConsole) {
+    lines.push(
+      profile.sms_opted_out_at
+        ? 'Reply START to turn Manoa texts back on.'
+        : 'Reply STOP to opt out or HELP any time for help.',
+    )
+  }
+
+  return lines.join('\n')
 }
 
 async function profileForSender(sender: string) {
@@ -3654,7 +3709,7 @@ export async function storePhotoEventClarificationPending({
 
   const placement = await resolveCalendarPlacement(profileId, calendarHint || undefined)
   if (!placement.bookingCalendars.length) {
-    return `Almost ready. I can see your calendars, but none are set to accept new events yet. Open ${appUrl()}/dashboard, then turn on "Books here" for one calendar in Calendar settings.`
+    return noBookingCalendarReply(`${appUrl()}/dashboard`)
   }
 
   const plan = planCalendarSelection({
@@ -3724,7 +3779,7 @@ export async function storePhotoEventTimeClarificationPending({
 
   const placement = await resolveCalendarPlacement(profileId, calendarHint || undefined)
   if (!placement.bookingCalendars.length) {
-    return `Almost ready. I can see your calendars, but none are set to accept new events yet. Open ${appUrl()}/dashboard, then turn on "Books here" for one calendar in Calendar settings.`
+    return noBookingCalendarReply(`${appUrl()}/dashboard`)
   }
 
   const plan = planCalendarSelection({
@@ -3797,7 +3852,7 @@ export async function storePhotoEventTitleClarificationPending({
 
   const placement = await resolveCalendarPlacement(profileId, calendarHint || undefined)
   if (!placement.bookingCalendars.length) {
-    return `Almost ready. I can see your calendars, but none are set to accept new events yet. Open ${appUrl()}/dashboard, then turn on "Books here" for one calendar in Calendar settings.`
+    return noBookingCalendarReply(`${appUrl()}/dashboard`)
   }
 
   const plan = planCalendarSelection({
@@ -5568,10 +5623,8 @@ export async function handleIncomingSms({
     return reply
   }
 
-  if (lowerBody === 'help') {
-    const reply = profile
-      ? 'Manoa can schedule, reschedule, cancel, and send your agenda. Reply STOP to opt out or START to opt back in.'
-      : 'Sign up for Manoa first, then text this number from your saved phone.'
+  if (isHelpRequest(lowerBody) || isCapabilitiesRequest(lowerBody)) {
+    const reply = await helpReply(profile, isDashboardConsole)
     await safeLogSms({ profileId: profile?.id, from, body: reply, direction: 'outbound' })
     return reply
   }
@@ -6534,7 +6587,7 @@ export async function handleIncomingSms({
 
     const placement = await resolveCalendarPlacement(profile.id, scheduleIntent.calendarHint)
     if (!placement.bookingCalendars.length) {
-      const reply = `Almost ready. I can see your calendars, but none are set to accept new events yet. Open ${loginLinkForProfile(profile)}, then turn on "Books here" for one calendar in Calendar settings.`
+      const reply = noBookingCalendarReply(loginLinkForProfile(profile))
       await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
       return reply
     }
@@ -6917,8 +6970,8 @@ export async function handleIncomingSms({
   }
 
   const reply = activePending || externalCancelPending || externalReschedulePending
-    ? `I didn't quite follow that. You can say things like "schedule a call Thursday at 2pm" or "what's on my calendar today?"\nIf you want to drop the current request and start fresh, say "start over."`
-    : `I didn't quite follow that. You can say things like "schedule a call Thursday at 2pm" or "what's on my calendar today?"`
+    ? `I didn't quite follow that. Try "schedule lunch Tuesday at noon" or "what's on my calendar tomorrow?"\nReply HELP for ideas, or say "start over" to drop the current request.`
+    : `I didn't quite follow that. Try "schedule lunch Tuesday at noon," "what's on my calendar tomorrow?," or "add calendar."\nReply HELP for more ideas.`
   await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
   return reply
 }
