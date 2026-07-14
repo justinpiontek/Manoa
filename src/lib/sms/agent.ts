@@ -370,6 +370,22 @@ function isExplicitRetitleCommand(text: string) {
   return explicitRetitleCommandPattern().test(text.trim())
 }
 
+function extractRetitleCommandText(text: string) {
+  const trimmed = text.trim()
+  if (!trimmed) return null
+
+  const withoutPrefix = trimmed
+    .replace(explicitRetitleCommandPattern(), '')
+    .replace(/^[:\-\s]+/, '')
+    .trim()
+    .replace(/^["']+|["']+$/g, '')
+    .trim()
+
+  if (!withoutPrefix) return null
+  if (!/[a-z]/i.test(withoutPrefix)) return null
+  return withoutPrefix
+}
+
 function scheduleRequestReferenceText(
   scheduleRequest: NonNullable<PendingPayload['scheduleRequest']>,
   timeZone: string,
@@ -2294,6 +2310,10 @@ function isExplicitPendingContinuation({
   if (isShortAcknowledgement(text)) return true
 
   if (pending.kind === 'choose_calendar' || pending.kind === 'photo_batch_choose_calendar') {
+    if (pending.payload.scheduleRequest && isExplicitRetitleCommand(text)) {
+      return true
+    }
+
     return Boolean(
       resolveCalendarChoiceFromText(
         text,
@@ -3833,7 +3853,7 @@ function normalizeImageClarifiedTitle(text: string) {
 
 function normalizeRetitleCommand(text: string) {
   if (!isExplicitRetitleCommand(text)) return null
-  return normalizeImageClarifiedTitle(text)
+  return extractRetitleCommandText(text)
 }
 
 function isWeakClarifiedImageTitle(text: string) {
