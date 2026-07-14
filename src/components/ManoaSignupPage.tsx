@@ -65,8 +65,7 @@ const homepageFaqs = [
   },
   {
     question: 'What calendars work with Manoa?',
-    answer:
-      'Manoa connects to Google Calendar, Outlook, and Apple Calendar.',
+    answer: 'Manoa connects to Google Calendar, Outlook, and Apple Calendar.',
   },
   {
     question: 'Will Manoa change things without me knowing?',
@@ -89,6 +88,82 @@ const homepageFaqs = [
       'Enter your email and phone, finish checkout, connect your calendar, and send your first text. The whole flow is designed to stay short.',
   },
 ]
+
+const heroFeaturePoints = [
+  { icon: 'chat', label: 'Text to schedule' },
+  { icon: 'calendar', label: 'Add from screenshots & flyers' },
+  { icon: 'bell', label: 'Smart reminders' },
+  { icon: 'lock', label: 'Secure & private' },
+] as const
+
+type FeatureCard = {
+  href: string
+  icon: IconName
+  title: string
+  example: string
+  badge?: string
+}
+
+const featureCards: FeatureCard[] = [
+  {
+    href: '/schedule-by-text',
+    icon: 'chat',
+    title: 'Schedule anything',
+    example: '"Lunch with Sarah next Tuesday at noon."',
+  },
+  {
+    href: '/calendar-reminders-by-text',
+    icon: 'search',
+    title: 'Check your day',
+    example: '"What\'s on my calendar tomorrow?"',
+  },
+  {
+    href: '/reschedule-appointments-by-text',
+    icon: 'edit',
+    title: 'Reschedule in seconds',
+    example: '"Move my dentist appointment."',
+  },
+  {
+    href: '/calendar-reminders-by-text',
+    icon: 'bell',
+    title: 'Set smart reminders',
+    example: '"Remind me to call Mom tomorrow."',
+  },
+  {
+    href: '/add-event-from-screenshot',
+    icon: 'image',
+    title: 'Add from anything',
+    example: '"(sends screenshot of a flyer)"',
+    badge: 'New',
+  },
+] as const
+
+const controlPoints = [
+  {
+    icon: 'shield',
+    title: "You're in control",
+    body: 'Manoa only takes action after you confirm.',
+  },
+  {
+    icon: 'lock',
+    title: 'Secure & private',
+    body: 'We never sell your data. Your calendar stays yours.',
+  },
+  {
+    icon: 'chat',
+    title: 'Works over text',
+    body: 'No app to download. Text from any phone number.',
+  },
+] as const
+
+const pricingBullets = [
+  'Unlimited scheduling over text',
+  'Smart reminders',
+  'Add events from screenshots & flyers',
+  'Cancel anytime',
+]
+
+const reviewPeople = ['JS', 'AM', 'RB', 'KT']
 
 const siteUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
@@ -132,6 +207,193 @@ const homepageUseCaseStructuredData = {
     name: useCase.title,
     url: `${siteUrl}${useCase.href}`,
   })),
+}
+
+type IconName =
+  | 'chat'
+  | 'calendar'
+  | 'bell'
+  | 'lock'
+  | 'search'
+  | 'edit'
+  | 'image'
+  | 'shield'
+  | 'question'
+
+function ArrowIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M3.25 8h9.5M8.75 3l4 5-4 5"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.7"
+      />
+    </svg>
+  )
+}
+
+function FeatureIcon({ name }: { name: IconName }) {
+  switch (name) {
+    case 'calendar':
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="4" y="5.5" width="16" height="14.5" rx="3" fill="none" stroke="currentColor" strokeWidth="1.8" />
+          <path d="M8 3.8v3.4M16 3.8v3.4M4 9.5h16" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+        </svg>
+      )
+    case 'bell':
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 4.5a4.2 4.2 0 0 0-4.2 4.2v2.1c0 1.1-.4 2.1-1.2 3l-1 1h12.8l-1-1a4.2 4.2 0 0 1-1.2-3V8.7A4.2 4.2 0 0 0 12 4.5Z" fill="none" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" />
+          <path d="M10.1 18.2a2.2 2.2 0 0 0 3.8 0" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+        </svg>
+      )
+    case 'lock':
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="5.5" y="10.3" width="13" height="9" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
+          <path d="M8.5 10.3V8.5a3.5 3.5 0 0 1 7 0v1.8" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+        </svg>
+      )
+    case 'search':
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="11" cy="11" r="5.8" fill="none" stroke="currentColor" strokeWidth="1.8" />
+          <path d="m16 16 3.5 3.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+        </svg>
+      )
+    case 'edit':
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M6 18.2h3.1L18.4 9a1.8 1.8 0 0 0 0-2.6l-.8-.8a1.8 1.8 0 0 0-2.6 0L5.8 14.8V18.2Z" fill="none" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" />
+          <path d="M13.7 6.9 17.1 10.3M6 20.1h12" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+        </svg>
+      )
+    case 'image':
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="4" y="5" width="16" height="14" rx="3" fill="none" stroke="currentColor" strokeWidth="1.8" />
+          <circle cx="9" cy="10" r="1.6" fill="none" stroke="currentColor" strokeWidth="1.8" />
+          <path d="m7 16 3.4-3.8 2.7 2.7 1.7-1.9 2.2 3" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+        </svg>
+      )
+    case 'shield':
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 4.2 6.5 6.3v5.5c0 3.5 2.2 6.5 5.5 7.9 3.3-1.4 5.5-4.4 5.5-7.9V6.3L12 4.2Z" fill="none" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" />
+          <path d="M12 8v7M8.8 11.2H15.2" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+        </svg>
+      )
+    case 'question':
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" strokeWidth="1.8" />
+          <path d="M9.7 9.5a2.5 2.5 0 1 1 4.5 1.5c-.7.8-1.5 1.2-1.5 2.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+          <circle cx="12" cy="16.8" r="1" fill="currentColor" />
+        </svg>
+      )
+    case 'chat':
+    default:
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M6 7.2h12a3 3 0 0 1 3 3v3.9a3 3 0 0 1-3 3H11l-3.8 2.6v-2.6H6a3 3 0 0 1-3-3v-3.9a3 3 0 0 1 3-3Z" fill="none" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.8" />
+          <path d="M8 11.2h8M8 14h5" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+        </svg>
+      )
+  }
+}
+
+function MiniBrand() {
+  return (
+    <div className="landing-mini-brand">
+      <span className="landing-mini-brand-mark">M</span>
+      <strong>Manoa</strong>
+    </div>
+  )
+}
+
+function PhoneMockup({ variant }: { variant: 'schedule' | 'agenda' }) {
+  const scheduleMessages = {
+    top: 'Schedule a meeting this week',
+    middle: ['Here are 3 times that work:', 'Tue 10am', 'Wed 2pm', 'Thu 11am'],
+    reply: 'Wed 2pm',
+    successTitle: 'All set!',
+    successLines: ['Meeting scheduled for', 'Wednesday at 2:00 PM.'],
+  }
+
+  const agendaMessages = {
+    top: "What's on my calendar tomorrow?",
+    middle: ['You have 3 events tomorrow:', '• 9:00 AM – Team standup', '• 11:00 AM – Project sync', '• 2:00 PM – Client call'],
+    reply: 'Add lunch with Mike Friday at 12pm',
+    successTitle: 'All set!',
+    successLines: ['Lunch with Mike', 'Friday, 12:00 PM'],
+  }
+
+  const content = variant === 'schedule' ? scheduleMessages : agendaMessages
+
+  return (
+    <div className={`landing-phone-frame ${variant === 'agenda' ? 'is-agenda' : ''}`}>
+      <div className="landing-phone-shell">
+        <div className="landing-phone-notch" aria-hidden="true" />
+        <div className="landing-phone-screen">
+          <div className="landing-phone-status">
+            <span>8:41</span>
+            <div className="landing-phone-status-icons" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </div>
+          </div>
+          <div className="landing-phone-header">
+            <MiniBrand />
+            <button className="landing-phone-menu" type="button" aria-label="Open menu">
+              <span />
+              <span />
+              <span />
+            </button>
+          </div>
+
+          <div className="landing-phone-thread">
+            <div className="landing-phone-bubble user">
+              <span>{content.top}</span>
+            </div>
+            <div className="landing-phone-bubble card">
+              {content.middle.map((line) => (
+                <span key={line}>{line}</span>
+              ))}
+              <small>8:41 AM</small>
+            </div>
+            <div className="landing-phone-bubble user secondary">
+              <span>{content.reply}</span>
+            </div>
+            <div className="landing-phone-bubble success">
+              <div className="landing-success-pill" aria-hidden="true" />
+              <div>
+                <strong>{content.successTitle}</strong>
+                {content.successLines.map((line) => (
+                  <span key={line}>{line}</span>
+                ))}
+              </div>
+              <small>8:41 AM</small>
+            </div>
+          </div>
+
+          <div className="landing-phone-composer">
+            <button type="button" className="landing-composer-icon" aria-label="Add">
+              +
+            </button>
+            <div className="landing-composer-input">Text Manoa anything...</div>
+            <button type="button" className="landing-composer-send" aria-label="Send">
+              <ArrowIcon />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export default function ManoaSignupPage() {
@@ -194,7 +456,6 @@ export default function ManoaSignupPage() {
         tone: 'warning',
         text: 'Use the same email and phone number you signed up with to open your dashboard.',
       })
-      return
     }
   }, [])
 
@@ -238,7 +499,7 @@ export default function ManoaSignupPage() {
   }
 
   return (
-    <main className="shell">
+    <main className="shell landing-page">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
@@ -257,39 +518,49 @@ export default function ManoaSignupPage() {
           __html: JSON.stringify(homepageUseCaseStructuredData),
         }}
       />
-      <header className="topbar">
-        <ManoaWordmark className="brand" href="/" priority />
-        <button
-          className={`menu-toggle ${mobileMenuOpen ? 'open' : ''}`}
-          type="button"
-          aria-label="Open navigation"
-          aria-expanded={mobileMenuOpen}
-          onClick={() => setMobileMenuOpen((open) => !open)}
-        >
-          <span />
-          <span />
-          <span />
-        </button>
-        <nav className={`top-nav ${mobileMenuOpen ? 'open' : ''}`} aria-label="Main navigation">
-          <a className="top-link" href="/use-cases" onClick={() => setMobileMenuOpen(false)}>
-            Features
+
+      <header className="topbar landing-topbar">
+        <ManoaWordmark className="landing-brand" href="/" priority />
+        <div className="landing-header-right">
+          <nav className={`top-nav landing-top-nav ${mobileMenuOpen ? 'open' : ''}`} aria-label="Main navigation">
+            <a className="top-link landing-top-link" href="#features" onClick={() => setMobileMenuOpen(false)}>
+              Features
+            </a>
+            <a className="top-link landing-top-link" href="#how-it-works" onClick={() => setMobileMenuOpen(false)}>
+              How It Works
+            </a>
+            <a className="top-link landing-top-link" href="#pricing" onClick={() => setMobileMenuOpen(false)}>
+              Pricing
+            </a>
+            <a className="top-link landing-top-link" href="#faq" onClick={() => setMobileMenuOpen(false)}>
+              FAQ
+            </a>
+            <a className="top-link landing-utility-link" href="/login" onClick={() => setMobileMenuOpen(false)}>
+              Log in
+            </a>
+            <a className="button landing-nav-cta" href="#signup" onClick={() => setMobileMenuOpen(false)}>
+              Start setup
+              <ArrowIcon />
+            </a>
+          </nav>
+
+          <a className="button landing-header-cta" href="#signup">
+            Start setup
+            <ArrowIcon />
           </a>
-          <a className="top-link" href="#how-it-works" onClick={() => setMobileMenuOpen(false)}>
-            How it works
-          </a>
-          <a className="top-link" href="#pricing" onClick={() => setMobileMenuOpen(false)}>
-            Pricing
-          </a>
-          <a className="top-link" href="#signup" onClick={() => setMobileMenuOpen(false)}>
-            Sign up
-          </a>
-          <a className="top-link" href="#faq" onClick={() => setMobileMenuOpen(false)}>
-            FAQ
-          </a>
-          <a className="nav-link secondary" href="/login" onClick={() => setMobileMenuOpen(false)}>
-            Log in
-          </a>
-        </nav>
+
+          <button
+            className={`menu-toggle landing-menu-toggle ${mobileMenuOpen ? 'open' : ''}`}
+            type="button"
+            aria-label="Open navigation"
+            aria-expanded={mobileMenuOpen}
+            onClick={() => setMobileMenuOpen((open) => !open)}
+          >
+            <span />
+            <span />
+            <span />
+          </button>
+        </div>
       </header>
 
       {statusNotice ? (
@@ -298,135 +569,240 @@ export default function ManoaSignupPage() {
         </div>
       ) : null}
 
-      <section className="simple-hero" aria-label="Text Manoa">
-        <p className="eyebrow">Calendar assistant by text</p>
-        <h1>Text your calendar instead of opening it.</h1>
-        <p className="simple-hero-lede">
-          Manoa is a calendar assistant by text. Schedule meetings, add events from screenshots
-          and flyers, and get reminders without opening another app.
-        </p>
+      <section className="landing-hero" aria-label="Text Manoa">
+        <div className="landing-hero-copy">
+          <p className="eyebrow landing-badge">Calendar assistant by text</p>
+          <h1 className="landing-title">Text your calendar instead of opening it.</h1>
+          <p className="landing-lede">
+            Manoa is a calendar assistant by text. Schedule meetings, add events from screenshots
+            and flyers, and get reminders without opening another app.
+          </p>
 
-        <div className="simple-thread" aria-label="Example conversation">
-          <div className="simple-bubble user">Schedule a meeting this week</div>
-          <div className="simple-bubble manoa">
-            <span>Here are 3 times that work:</span>
-            <span>Tue 10am</span>
-            <span>Wed 2pm</span>
-            <span>Thu 11am</span>
+          <div className="landing-hero-actions">
+            <a className="button landing-primary-button" href="#signup">
+              Start setup - takes 30 seconds
+              <ArrowIcon />
+            </a>
+            <a className="landing-secondary-button" href="#demo">
+              Try the demo
+            </a>
+          </div>
+
+          <div className="landing-hero-points" aria-label="What Manoa does">
+            {heroFeaturePoints.map((point) => (
+              <div key={point.label} className="landing-hero-point">
+                <div className="landing-icon-tile">
+                  <FeatureIcon name={point.icon} />
+                </div>
+                <span>{point.label}</span>
+              </div>
+            ))}
           </div>
         </div>
 
-        <a className="button simple-hero-button" href="#pricing">
-          Start texting Manoa
-        </a>
-        <p className="simple-hero-note">Takes 30 seconds • Cancel anytime</p>
-        <ul className="simple-hero-benefits" aria-label="Why Manoa feels simple">
-          <li>No apps or links</li>
-          <li>Send photos, screenshots, flyers, and reminder cards</li>
-          <li>Never forget anything with daily agenda and reminders by text</li>
-        </ul>
-      </section>
-
-      <section className="home-section capability-section" aria-label="What Manoa can handle">
-        <div className="capability-copy">
-          <p className="section-label section-label-left">Send what you have</p>
-          <h2>Text it, snap it, or paste it.</h2>
-          <p>
-            Manoa can read event details from text messages, screenshots, school flyers, and
-            photos, then ask before adding anything to your calendar.
-          </p>
-        </div>
-        <div className="capability-grid">
-          <article>
-            <strong>Photo to calendar</strong>
-            <span>Appointment cards, school flyers, invitations, full schedules.</span>
-          </article>
-          <article>
-            <strong>Plain text requests</strong>
-            <span>Meetings, lunches, calls, workouts, reminders, and errands.</span>
-          </article>
-          <article>
-            <strong>Agenda and reminders</strong>
-            <span>Ask what is next or get nudged before things start.</span>
-          </article>
-          <article>
-            <strong>Asks when unclear</strong>
-            <span>If the date, time, calendar, or person is missing, Manoa asks.</span>
-          </article>
+        <div className="landing-hero-visual">
+          <PhoneMockup variant="schedule" />
         </div>
       </section>
 
-      <section className="home-section" aria-label="Popular ways to use Manoa">
-        <p className="section-label section-label-left">Popular searches</p>
-        <h2>Start with the calendar problem you already have.</h2>
-        <p className="use-case-lede">
-          These pages cover the ways people are most likely to find and use Manoa: scheduling by
-          text, adding events from screenshots, turning school flyers into calendar events, and
-          getting reminders by text.
-        </p>
-        <div className="use-case-list-grid">
-          {homepageUseCases.map((useCase) => (
-            <a key={useCase.href} className="use-case-link-card" href={useCase.href}>
-              <strong>{useCase.title}</strong>
-              <span>{useCase.description}</span>
+      <section id="features" className="landing-feature-section">
+        <p className="landing-section-kicker">Text Manoa like you text a friend</p>
+        <h2 className="landing-section-title">Powerful scheduling. As easy as texting.</h2>
+
+        <div className="landing-feature-grid">
+          {featureCards.map((card) => (
+            <a key={card.title} className="landing-feature-card" href={card.href}>
+              <div className="landing-feature-icon">
+                <FeatureIcon name={card.icon} />
+              </div>
+              {card.badge ? <span className="landing-feature-badge">{card.badge}</span> : null}
+              <strong>{card.title}</strong>
+              <span>{card.example}</span>
             </a>
           ))}
         </div>
       </section>
 
-      <section className="home-section working-demo-section" aria-label="Working demo">
-        <div className="working-demo-grid">
-          <div>
-            <p className="section-label section-label-left">Working demo</p>
-            <h2 className="working-demo-title">Try the real texting flow.</h2>
-            <p className="working-demo-lede">
-              This demo uses the same style Manoa uses in the real product: short replies, clear
-              numbered options, and honest follow-ups when something still needs a real call.
-            </p>
-            <button className="demo-prompt working-demo-reset" type="button" onClick={resetDemo}>
-              Reset demo
-            </button>
+      <section id="how-it-works" className="landing-control-section">
+        <div className="landing-control-visual">
+          <PhoneMockup variant="agenda" />
+        </div>
+
+        <div className="landing-control-copy">
+          <div className="landing-control-icon">
+            <FeatureIcon name="shield" />
+          </div>
+          <h2 className="landing-control-title">
+            Your calendar stays yours. <span>You&apos;re always in control.</span>
+          </h2>
+
+          <div className="landing-control-points">
+            {controlPoints.map((point) => (
+              <article key={point.title} className="landing-control-point">
+                <div className="landing-control-point-icon">
+                  <FeatureIcon name={point.icon} />
+                </div>
+                <div>
+                  <strong>{point.title}</strong>
+                  <p>{point.body}</p>
+                </div>
+              </article>
+            ))}
           </div>
 
-          <div className="demo-panel" aria-busy={demoPending}>
-            <div className="phone-preview" aria-label="SMS preview">
-              <div className="phone-header">
-                <span>Manoa</span>
-                <small>Text message</small>
+          <div className="landing-proof">
+            <div className="landing-avatar-stack" aria-hidden="true">
+              {reviewPeople.map((person) => (
+                <span key={person} className="landing-avatar-chip">
+                  {person}
+                </span>
+              ))}
+            </div>
+            <div>
+              <p className="landing-proof-stars">★★★★★</p>
+              <p className="landing-proof-copy">
+                Loved by busy professionals, parents, and student athletes.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="pricing" className="landing-pricing-section">
+        <div className="landing-pricing-copy">
+          <p className="landing-section-kicker">Simple pricing</p>
+          <h2 className="landing-pricing-title">
+            Less than the cost of <span>lunch</span> each month.
+          </h2>
+          <ul className="landing-pricing-list">
+            {pricingBullets.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+
+        <aside id="signup" className="panel landing-pricing-card" aria-label="Start Manoa">
+          <p className="landing-plan-label">Manoa Premium</p>
+          <div className="landing-plan-price">
+            <strong>$19.99</strong>
+            <span>/month</span>
+          </div>
+          <p className="landing-plan-copy">
+            Everything you need to manage your calendar - over text.
+          </p>
+
+          <ul className="landing-pricing-card-list">
+            {pricingBullets.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+
+          <form action="/api/start-checkout" method="post" className="landing-signup-form">
+            <input type="hidden" name="plan" value="personal_monthly_1999" />
+            <div className="pricing-form-grid landing-pricing-form-grid">
+              <div className="field">
+                <label htmlFor="email">Email</label>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  required
+                />
               </div>
-              <div ref={threadRef} className="demo-thread" aria-live="polite">
-                {messages.map((message, messageIndex) => (
-                  <div key={`${message.role}-${messageIndex}`} className={`sms ${message.role}`}>
-                    {message.lines.map((line, lineIndex) => (
-                      <span key={`${line}-${lineIndex}`}>
-                        {line}
-                        {lineIndex < message.lines.length - 1 ? <br /> : null}
-                      </span>
-                    ))}
-                    {message.options ? (
-                      <div className="demo-choices">
-                        {message.options.map((option, optionIndex) => (
-                          <button
-                            key={`${option.start}-${option.calendarName}-${optionIndex}`}
-                            type="button"
-                            className="demo-choice"
-                            disabled={demoPending}
-                            onClick={() => {
-                              void handleDemoText(String(optionIndex + 1))
-                            }}
-                          >
-                            {optionIndex + 1}. {option.dayLabel} at {option.timeLabel} on{' '}
-                            {option.calendarName}
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
+              <div className="field">
+                <label htmlFor="phone">
+                  Phone <span className="field-label-note">(optional - for texting features)</span>
+                </label>
+                <input
+                  id="phone"
+                  name="phone"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  placeholder="+1 555 555 5555"
+                />
               </div>
             </div>
+
+            <button className="button landing-pricing-button" type="submit">
+              Start setup
+              <ArrowIcon />
+            </button>
+
+            <p className="landing-card-meta">Secure checkout. Cancel anytime.</p>
+
+            <label className="consent-check pricing-consent" htmlFor="sms-consent">
+              <input id="sms-consent" name="sms_consent" type="checkbox" value="yes" />
+              <span>
+                I agree to receive recurring service-related SMS messages from Manoa, including
+                scheduling, reminders, and account notifications. Message frequency varies. Msg
+                &amp; data rates may apply. Reply STOP to opt out and HELP for help. See{' '}
+                <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms</a>.
+              </span>
+            </label>
+
+            <p className="pricing-trial-note">
+              Start with 14 days free. Cancel before billing if it is not for you.
+            </p>
+            <p className="pricing-optional-note">
+              You can use Manoa without texting. Add a phone and turn texts on later if you want.
+            </p>
+          </form>
+        </aside>
+      </section>
+
+      <section id="demo" className="landing-demo-section" aria-label="Interactive demo">
+        <div className="landing-demo-copy">
+          <p className="landing-section-kicker">Try the demo</p>
+          <h2 className="landing-demo-title">See the real texting flow.</h2>
+          <p className="landing-demo-lede">
+            This keeps the live demo working on the homepage. Try a scheduling request, an agenda
+            question, or a reschedule and see how the replies feel.
+          </p>
+          <button className="landing-secondary-button landing-demo-reset" type="button" onClick={resetDemo}>
+            Reset demo
+          </button>
+        </div>
+
+        <div className="landing-demo-panel" aria-busy={demoPending}>
+          <div className="landing-demo-phone">
+            <div className="landing-demo-phone-head">
+              <MiniBrand />
+              <small>Live demo</small>
+            </div>
+            <div ref={threadRef} className="landing-demo-thread" aria-live="polite">
+              {messages.map((message, messageIndex) => (
+                <div key={`${message.role}-${messageIndex}`} className={`landing-demo-message ${message.role}`}>
+                  {message.lines.map((line, lineIndex) => (
+                    <span key={`${line}-${lineIndex}`}>
+                      {line}
+                      {lineIndex < message.lines.length - 1 ? <br /> : null}
+                    </span>
+                  ))}
+                  {message.options ? (
+                    <div className="landing-demo-choices">
+                      {message.options.map((option, optionIndex) => (
+                        <button
+                          key={`${option.start}-${option.calendarName}-${optionIndex}`}
+                          type="button"
+                          className="landing-demo-choice"
+                          disabled={demoPending}
+                          onClick={() => {
+                            void handleDemoText(String(optionIndex + 1))
+                          }}
+                        >
+                          {optionIndex + 1}. {option.dayLabel} at {option.timeLabel} on {option.calendarName}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
             <form
-              className="demo-form"
+              className="landing-demo-form"
               onSubmit={async (event) => {
                 event.preventDefault()
                 await handleDemoText(demoInput)
@@ -441,7 +817,7 @@ export default function ManoaSignupPage() {
                 aria-label="Text Manoa demo"
                 disabled={demoPending}
               />
-              <button className="button" type="submit" disabled={demoPending}>
+              <button className="button landing-demo-send" type="submit" disabled={demoPending}>
                 {demoPending ? 'Sending...' : 'Send'}
               </button>
             </form>
@@ -449,116 +825,40 @@ export default function ManoaSignupPage() {
         </div>
       </section>
 
-      <section id="how-it-works" className="home-section anchor-section" aria-label="How Manoa works">
-        <p className="section-label">How it works</p>
-        <div className="simple-step-grid">
-          <article className="simple-step-card">
-            <span className="step-number">1</span>
-            <h3>Connect your calendar</h3>
-            <p>Takes seconds</p>
-          </article>
-          <article className="simple-step-card">
-            <span className="step-number">2</span>
-            <h3>Text what you need</h3>
-            <p>&ldquo;Schedule a meeting this week&rdquo;</p>
-          </article>
-          <article className="simple-step-card">
-            <span className="step-number">3</span>
-            <h3>Pick a time</h3>
-            <p>Manoa handles the rest</p>
-          </article>
-        </div>
-        <ul className="simple-benefit-list" aria-label="Why Manoa feels simple">
-          <li>Finds your free time instantly</li>
-          <li>No apps or links</li>
-          <li>Daily agenda and reminders get sent by text</li>
-        </ul>
-      </section>
-
-      <section id="pricing" className="home-section pricing-section anchor-section" aria-label="Pricing">
-        <p className="section-label">Simple pricing</p>
-        <h2 className="pricing-title">$19.99 / month</h2>
-        <p className="pricing-trial">14-day free trial</p>
-        <p className="pricing-lede">Your availability handled for you — by text.</p>
-
-        <aside id="signup" className="panel pricing-card" aria-label="Start Manoa">
-          <form action="/api/start-checkout" method="post">
-            <input type="hidden" name="plan" value="personal_monthly_1999" />
-            <div className="pricing-form-grid">
-              <div className="field">
-                <label htmlFor="email">Email</label>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  placeholder="you@example.com"
-                  required
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="phone">
-                  Phone <span className="field-label-note">(optional — for texting features)</span>
-                </label>
-                <input
-                  id="phone"
-                  name="phone"
-                  type="tel"
-                  inputMode="tel"
-                  autoComplete="tel"
-                  placeholder="+1 555 555 5555"
-                />
-              </div>
-            </div>
-            <button className="button pricing-button" type="submit">
-              Start setup
-            </button>
-            <p className="pricing-trial-note">Start with 14 days free. Cancel before billing if it is not for you.</p>
-            <label className="consent-check pricing-consent" htmlFor="sms-consent">
-              <input
-                id="sms-consent"
-                name="sms_consent"
-                type="checkbox"
-                value="yes"
-              />
-              <span>
-                I agree to receive recurring service-related SMS messages from Manoa, including
-                scheduling, reminders, and account notifications. Message frequency varies. Msg
-                &amp; data rates may apply. Reply STOP to opt out and HELP for help. See{' '}
-                <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms</a>.
+      <section id="faq" className="landing-faq-section">
+        <details className="landing-faq-panel">
+          <summary>
+            <span className="landing-faq-summary-copy">
+              <span className="landing-faq-summary-icon">
+                <FeatureIcon name="question" />
               </span>
-            </label>
-            <p className="pricing-optional-note">
-              You can use Manoa without texting. Add a phone and turn texts on later if you want.
-            </p>
-          </form>
+              Questions? We&apos;ve got answers.
+            </span>
+            <span className="landing-faq-summary-chevron" aria-hidden="true">
+              <ArrowIcon />
+            </span>
+          </summary>
 
-          <p className="pricing-meta">Connect Google, Outlook, or Apple after checkout.</p>
-          <p className="fine-print pricing-fine-print">
-            Manoa only sends service-related account texts. Message frequency varies. Msg &amp;
-            data rates may apply.
-          </p>
-        </aside>
+          <div className="landing-faq-grid">
+            {homepageFaqs.map((faq) => (
+              <article key={faq.question} className="landing-faq-item">
+                <h3>{faq.question}</h3>
+                <p>{faq.answer}</p>
+              </article>
+            ))}
+          </div>
+        </details>
       </section>
 
-      <section id="faq" className="faq anchor-section" aria-label="Frequently asked questions">
-        <p className="faq-label">FAQ</p>
-        <h2>Answers before you sign up.</h2>
-        <div className="faq-grid">
-          {homepageFaqs.map((faq) => (
-            <article key={faq.question} className="faq-item">
-              <h3>{faq.question}</h3>
-              <p>{faq.answer}</p>
-            </article>
-          ))}
+      <footer className="home-footer landing-footer">
+        <div className="landing-footer-brand">
+          <ManoaWordmark className="landing-footer-wordmark" href="/" />
+          <p>&copy; {new Date().getFullYear()} Manoa. All rights reserved.</p>
         </div>
-      </section>
-
-      <footer className="home-footer">
-        <p>Manoa. Text your calendar back into shape.</p>
-        <p className="home-footer-links">
-          <a href="/use-cases">Use cases</a> · <a href="/privacy">Privacy</a> ·{' '}
-          <a href="/terms">Terms</a> · <a href={`mailto:${siteSupportEmail}`}>Support</a>
+        <p className="home-footer-links landing-footer-links">
+          <a href="/privacy">Privacy</a>
+          <a href="/terms">Terms</a>
+          <a href={`mailto:${siteSupportEmail}`}>Contact</a>
         </p>
       </footer>
     </main>
