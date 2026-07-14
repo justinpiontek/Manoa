@@ -26,7 +26,7 @@ import {
   setTime,
   startOfDay,
 } from '../calendar/dates'
-import { appUrl } from '../env'
+import { appUrl, defaultTimezone } from '../env'
 import { parseGoogleRecurrence, recurrenceSummary, type RecurrenceSpec } from '../calendar/recurrence'
 import { scheduleCandidateTimesForTitle } from '../calendar/schedulingPreferences'
 import {
@@ -362,6 +362,14 @@ function scheduleRequestSummaryText(
   return formatSmsDate(baseDate, timeZone)
 }
 
+function explicitRetitleCommandPattern() {
+  return /^(?:(?:actually|just|please)\s+)*(?:rename(?:\s+(?:it|that|this|event))?(?:\s+to)?|change\s+(?:the\s+)?title(?:\s+to)?|set\s+(?:the\s+)?title(?:\s+to)?|call it|name it|the title is|title is)\b/i
+}
+
+function isExplicitRetitleCommand(text: string) {
+  return explicitRetitleCommandPattern().test(text.trim())
+}
+
 function scheduleRequestReferenceText(
   scheduleRequest: NonNullable<PendingPayload['scheduleRequest']>,
   timeZone: string,
@@ -564,6 +572,42 @@ function scheduleRequestCalendarChoiceReply({
   })
 }
 
+async function restartChooseCalendarWithUpdatedScheduleRequest({
+  profileId,
+  smsFrom,
+  payload,
+  scheduleRequest,
+  timeZone,
+  clearClarification = false,
+}: {
+  profileId: string
+  smsFrom: string
+  payload: PendingPayload
+  scheduleRequest: NonNullable<PendingPayload['scheduleRequest']>
+  timeZone: string
+  clearClarification?: boolean
+}) {
+  const choicePrompt = scheduleRequestCalendarChoiceReply({
+    scheduleRequest,
+    calendars: payload.calendarChoices || [],
+    timeZone,
+  })
+
+  await storePendingAction({
+    profileId,
+    smsFrom,
+    kind: 'choose_calendar',
+    payload: {
+      ...payload,
+      scheduleRequest,
+      clarification: clearClarification ? undefined : payload.clarification,
+      visibleCalendarChoiceCount: choicePrompt.visibleCount,
+    },
+  })
+
+  return choicePrompt.reply
+}
+
 function actionChoiceList(lines: string[]) {
   return lines.join('\n')
 }
@@ -680,6 +724,56 @@ async function restoreRecentCreatedPending({
   }
 }
 
+async function renameRecentlyCreatedEvent({
+  profile,
+  smsFrom,
+  pending,
+  requestedTitle,
+}: {
+  profile: SmsProfile
+  smsFrom: string
+  pending: PendingAction
+  requestedTitle: string
+}) {
+  const target = recentEventFromPending(pending)
+  if (!target) return 'I could not find that event to rename right now.'
+
+  const cleanedTitle = requestedTitle.trim()
+  if (!cleanedTitle) return 'Text the new event name, like "Family Night."'
+  if (cleanedTitle.toLowerCase() === target.title.trim().toLowerCase()) {
+    return `It is already called "${target.title}".`
+  }
+
+  const option = optionFromRetitledEvent(target, cleanedTitle, profile.timezone)
+  if (!option) {
+    return `I found ${target.title}, but I could not rename it from Manoa yet. Try again in a minute.`
+  }
+
+  try {
+    await updateCalendarEvent(profile.id, target.id, option, 'none')
+  } catch (error) {
+    console.error('Could not rename recently created event.', {
+      profileId: profile.id,
+      eventId: target.id,
+      requestedTitle: cleanedTitle,
+      error,
+    })
+    return `I found ${target.title}, but I could not rename it from Manoa yet. Try again in a minute.`
+  }
+
+  await restoreRecentCreatedPending({
+    profileId: profile.id,
+    smsFrom,
+    event: {
+      ...target,
+      title: cleanedTitle,
+      timeLabel: option.timeLabel,
+    },
+  })
+
+  return `Updated the title to "${cleanedTitle}".`
+}
+
 function providerCanSendInvites(provider: ScheduleOption['provider']) {
   return ['apple', 'google', 'outlook'].includes(provider)
 }
@@ -726,8 +820,11 @@ function exactAvailabilityReply({
     )}.`)
   }
 
-  lines.push('Book it? Reply YES to book or NO to leave it.')
-  return lines.join('\n')
+  return sectionedListReply({
+    intro: lines[0],
+    list: lines.slice(1).join('\n'),
+    footer: 'Book it? Reply YES to book or NO to leave it.',
+  })
 }
 
 function normalizeEmail(value: string | null | undefined) {
@@ -827,7 +924,11 @@ function pendingInviteScheduleReply({
     lines.push('Reply 1 to book over it anyway, or text a different day or time.')
   }
 
-  return lines.join('\n')
+  return sectionedListReply({
+    intro: lines[0],
+    list: lines.slice(1, -1).join('\n'),
+    footer: lines[lines.length - 1],
+  })
 }
 
 function hardConflictScheduleReply({
@@ -860,7 +961,11 @@ function hardConflictScheduleReply({
     lines.push('Reply 1 to book anyway, or text a different day or time.')
   }
 
-  return lines.join('\n')
+  return sectionedListReply({
+    intro: lines[0],
+    list: lines.slice(1, -1).join('\n'),
+    footer: lines[lines.length - 1],
+  })
 }
 
 function pendingInviteRescheduleReply({
@@ -893,7 +998,11 @@ function pendingInviteRescheduleReply({
     lines.push('Reply 1 to move it anyway, or text a different day or time.')
   }
 
-  return lines.join('\n')
+  return sectionedListReply({
+    intro: lines[0],
+    list: lines.slice(1, -1).join('\n'),
+    footer: lines[lines.length - 1],
+  })
 }
 
 function hardConflictRescheduleReply({
@@ -926,7 +1035,11 @@ function hardConflictRescheduleReply({
     lines.push('Reply 1 to move it anyway, or text a different day or time.')
   }
 
-  return lines.join('\n')
+  return sectionedListReply({
+    intro: lines[0],
+    list: lines.slice(1, -1).join('\n'),
+    footer: lines[lines.length - 1],
+  })
 }
 
 function genericNoOpeningReply({
@@ -2046,6 +2159,9 @@ function reminderForPending(pending: PendingAction) {
       if (pending.payload.clarification?.type === 'image_event' && (pending.payload.calendarChoices || []).length <= 1) {
         return 'Reply YES to use it, or text the corrected event name.'
       }
+      if (pending.payload.scheduleRequest) {
+        return 'Reply with the calendar name or number you want. If the title is off, say "call it ...".'
+      }
       return 'Reply with the calendar name or number you want.'
     case 'reschedule':
       if (pending.payload.stage === 'scope') {
@@ -2067,7 +2183,7 @@ function reminderForPending(pending: PendingAction) {
         return 'Reply YES to cancel it, or text a little more of the title.'
       }
       if (pending.payload.recentlyCreated) {
-        return 'You are set. Say "cancel that" if you want me to remove the event I just booked.'
+        return 'You are set. Say "cancel that" to remove it, or "call it ..." to rename it.'
       }
       return 'Reply with which one to cancel, like 1, 2, or 3.'
     case 'invited_reschedule_action':
@@ -2703,6 +2819,41 @@ function optionFromHeldExternalAppointment(target: EventSummary, timeZone?: stri
     timeLabel: formatSmsTime(start, timeZone),
     timeZone,
     location: target.location || null,
+  }
+}
+
+function optionFromRetitledEvent(
+  target: EventSummary,
+  title: string,
+  timeZone?: string,
+): ScheduleOption | null {
+  const isAllDay = target.timeLabel === 'All day' || /^\d{4}-\d{2}-\d{2}$/.test(target.start)
+  const allDayStart = isAllDay && /^\d{4}-\d{2}-\d{2}$/.test(target.start)
+    ? dateFromYmdInTimeZone(target.start.slice(0, 10), timeZone || defaultTimezone())
+    : null
+  const allDayEnd = isAllDay && /^\d{4}-\d{2}-\d{2}$/.test(target.end)
+    ? dateFromYmdInTimeZone(target.end.slice(0, 10), timeZone || defaultTimezone())
+    : null
+  const start = allDayStart || new Date(target.start)
+  const end = allDayEnd || new Date(target.end)
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return null
+  }
+
+  return {
+    title,
+    start: start.toISOString(),
+    end: end.toISOString(),
+    isAllDay,
+    provider: target.provider,
+    calendarId: target.calendarId,
+    calendarName: target.calendarName,
+    dayLabel: formatSmsDate(start, timeZone),
+    timeLabel: isAllDay ? 'All day' : formatSmsTime(start, timeZone),
+    timeZone,
+    location: target.location || null,
+    ownerEmail: target.ownerEmail || target.organizerEmail || null,
   }
 }
 
@@ -3660,7 +3811,10 @@ function normalizeImageClarifiedTitle(text: string) {
   while (stripped && stripped !== previous) {
     previous = stripped
     stripped = stripped
-      .replace(/^(?:it(?:'s| is)?|its|call it|name it|the title is|title is|actually|just)\s+/i, '')
+      .replace(
+        /^(?:rename(?:\s+(?:it|that|this|event))?(?:\s+to)?|change\s+(?:the\s+)?title(?:\s+to)?|set\s+(?:the\s+)?title(?:\s+to)?|it(?:'s| is)?|its|call it|name it|the title is|title is|actually|just|please)\s+/i,
+        '',
+      )
       .trim()
   }
 
@@ -3675,6 +3829,11 @@ function normalizeImageClarifiedTitle(text: string) {
   }
   if (isSingleScheduleConfirmation(stripped) || isSingleScheduleDecline(stripped)) return null
   return stripped
+}
+
+function normalizeRetitleCommand(text: string) {
+  if (!isExplicitRetitleCommand(text)) return null
+  return normalizeImageClarifiedTitle(text)
 }
 
 function isWeakClarifiedImageTitle(text: string) {
@@ -5920,6 +6079,20 @@ export async function handleIncomingSms({
     return reply
   }
 
+  if (activePending?.kind === 'select_cancel_target' && activePending.payload.recentlyCreated) {
+    const requestedTitle = normalizeRetitleCommand(body)
+    if (requestedTitle) {
+      const reply = await renameRecentlyCreatedEvent({
+        profile,
+        smsFrom: from,
+        pending: activePending,
+        requestedTitle,
+      })
+      await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+      return reply
+    }
+  }
+
   const correctedSchedule = activePending
     ? correctedScheduleIntentFromPending(
         body,
@@ -6187,6 +6360,25 @@ export async function handleIncomingSms({
         })
 
         const reply = choicePrompt.reply
+        await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
+        return reply
+      }
+    }
+
+    if (!pickedCalendar && activePending.payload.scheduleRequest) {
+      const correctedTitle = normalizeRetitleCommand(body)
+      if (correctedTitle && correctedTitle !== activePending.payload.scheduleRequest.title) {
+        const reply = await restartChooseCalendarWithUpdatedScheduleRequest({
+          profileId: profile.id,
+          smsFrom: from,
+          payload: activePending.payload,
+          scheduleRequest: {
+            ...activePending.payload.scheduleRequest,
+            title: correctedTitle,
+          },
+          timeZone: profile.timezone,
+          clearClarification: activePending.payload.clarification?.type === 'image_event',
+        })
         await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
         return reply
       }
