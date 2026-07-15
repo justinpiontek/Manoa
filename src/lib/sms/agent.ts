@@ -2243,11 +2243,13 @@ function reminderForPending(pending: PendingAction) {
 }
 
 function isInviteeResolutionAbort(text: string) {
-  return /^(?:skip|cancel|never mind|nevermind|no invite|no invites)[.!]*$/i.test(text.trim())
+  return /^(?:skip|cancel|never mind|nevermind|no invite|no invites|no thanks|no thank you)[.!]*$/i.test(
+    text.trim(),
+  )
 }
 
 function isInviteeResolutionBookWithoutInvites(text: string) {
-  return /\b(skip|just book it|book it anyway|without invites|without invite|no invites|dont invite|don't invite)\b/i.test(
+  return /\b(skip|just book it|book it anyway|without invites|without invite|no invites|dont invite|don't invite|no thanks|no thank you)\b/i.test(
     text.trim(),
   )
 }
