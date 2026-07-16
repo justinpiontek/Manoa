@@ -37,9 +37,9 @@ function normalizeIso(value: string | null | undefined) {
 
 function agendaText(events: Awaited<ReturnType<typeof listAgenda>>) {
   if (!events.length) return "📅 Good morning. You're clear today."
-  return `📅 Good morning. Today:\n${sortAgendaEvents(events)
+  return `📅 Good morning. Today:\n\n${sortAgendaEvents(events)
     .map((event) => `${event.timeLabel} ${event.title} (${event.calendarName})`)
-    .join('\n')}`
+    .join('\n\n')}`
 }
 
 export async function activeSubscriberProfiles() {

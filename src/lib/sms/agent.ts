@@ -1796,16 +1796,16 @@ function agendaText(day: 'today' | 'tomorrow', events: EventSummary[]) {
   }
 
   const heading = day === 'tomorrow' ? "📅 Tomorrow's schedule:" : '📅 Today:'
-  return `${heading}\n${sortAgendaEvents(events)
+  return `${heading}\n\n${sortAgendaEvents(events)
     .map((event) => `${event.timeLabel} ${event.title} (${event.calendarName})`)
-    .join('\n')}`
+    .join('\n\n')}`
 }
 
 function agendaWindowText(label: string, events: EventSummary[], timeZone?: string) {
   if (!events.length) return `📅 Nothing on your calendar for ${label}.`
-  return `📅 ${label[0]?.toUpperCase() || ''}${label.slice(1)}:\n${sortAgendaEvents(events)
+  return `📅 ${label[0]?.toUpperCase() || ''}${label.slice(1)}:\n\n${sortAgendaEvents(events)
     .map((event) => `${eventDateLabel(event, timeZone)} ${event.title} (${event.calendarName})`)
-    .join('\n')}`
+    .join('\n\n')}`
 }
 
 function reminderLeadLabel(minutes: number) {
