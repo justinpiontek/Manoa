@@ -1121,6 +1121,210 @@ function blockedDayNoOpeningReply({
   })
 }
 
+function blockedWindowNoOpeningReply({
+  conflict,
+  pendingInvite,
+  options,
+  dateLabel,
+  attendees,
+  unresolvedInvitees,
+  sameConflictAcrossOptions,
+}: {
+  conflict: EventSummary
+  pendingInvite: boolean
+  options: ScheduleOption[]
+  dateLabel?: string | null
+  attendees: Invitee[]
+  unresolvedInvitees: string[]
+  sameConflictAcrossOptions: boolean
+}) {
+  const intro = sameConflictAcrossOptions
+    ? pendingInvite
+      ? `⚠️ "${conflict.title}" is already on ${conflict.calendarName} during ${dateLabel || 'that time'} as a pending invite.`
+      : `⚠️ "${conflict.title}" is already booked on ${conflict.calendarName} during ${dateLabel || 'that time'}.`
+    : pendingInvite
+      ? `⚠️ I couldn't find a clear opening${dateLabel ? ` for ${dateLabel}` : ''}. One thing already there is "${conflict.title}" at ${conflict.timeLabel} on ${conflict.calendarName}.`
+      : `⚠️ I couldn't find a clear opening${dateLabel ? ` for ${dateLabel}` : ''}. One thing already there is "${conflict.title}" at ${conflict.timeLabel} on ${conflict.calendarName}.`
+  const footerLines: string[] = []
+
+  if (options.length >= 3) {
+    footerLines.push('Reply 1, 2, or 3.')
+  } else if (options.length === 2) {
+    footerLines.push('Reply 1 or 2.')
+  } else {
+    footerLines.push('Reply 1 to book anyway, or text a different day or time.')
+  }
+
+  if (attendees.length) {
+    footerLines.push(`✉️ Ready to invite: ${inviteeSummary(attendees)}.`)
+  }
+  if (unresolvedInvitees.length) {
+    footerLines.push(
+      `✉️ I still need email${unresolvedInvitees.length > 1 ? 's' : ''} for ${unresolvedInviteeSummary(
+        unresolvedInvitees,
+      )}.`,
+    )
+  }
+
+  return sectionedListReply({
+    intro,
+    list: options
+      .map(
+        (option, index) =>
+          `${emojiListMarker(index)} Book anyway: ${optionTimingText(option)} on ${option.calendarName}`,
+      )
+      .join('\n'),
+    footer: footerLines.join('\n'),
+  })
+}
+
+function buildScheduleOptionForDay({
+  title,
+  day,
+  time,
+  durationMinutes,
+  chosenCalendar,
+  location,
+  timeZone,
+}: {
+  title: string
+  day: Date
+  time: { hour: number; minute: number }
+  durationMinutes: number
+  chosenCalendar: CalendarPlacementOption
+  location?: string | null
+  timeZone: string
+}) {
+  const start = setTime(day, time, timeZone)
+  return {
+    title,
+    start: start.toISOString(),
+    end: addMinutes(start, durationMinutes).toISOString(),
+    location,
+    provider: chosenCalendar.provider,
+    calendarId: chosenCalendar.calendarId,
+    calendarName: chosenCalendar.calendarLabel,
+    dayLabel: formatSmsDate(start, timeZone),
+    timeLabel: formatSmsTime(start, timeZone),
+    timeZone,
+    ownerEmail: chosenCalendar.accountEmail || chosenCalendar.accountId || null,
+    recurrence: null,
+  } satisfies ScheduleOption
+}
+
+async function blockedWindowBookAnywayContext({
+  profile,
+  title,
+  durationMinutes,
+  dateWindow,
+  chosenCalendar,
+  location,
+}: {
+  profile: SmsProfile
+  title: string
+  durationMinutes: number
+  dateWindow: DateWindow
+  chosenCalendar: CalendarPlacementOption
+  location?: string | null
+}) {
+  type BlockedWindowChoice = {
+    option: ScheduleOption
+    conflict: EventSummary
+    pendingInvite: boolean
+    overlapCount: number
+  }
+
+  const perDayChoices: Array<{
+    option: ScheduleOption
+    conflict: EventSummary
+    pendingInvite: boolean
+    overlapCount: number
+  }> = []
+
+  for (
+    let day = dateWindow.start;
+    day.getTime() <= dateWindow.end.getTime() && perDayChoices.length < 10;
+    day = addDays(day, 1, profile.timezone)
+  ) {
+    const dayStart = setTime(day, { hour: 0, minute: 0 }, profile.timezone)
+    const events = await listUpcomingEvents({
+      profileId: profile.id,
+      startAt: dayStart,
+      windowMinutes: 24 * 60,
+      maxResults: 50,
+      timeZone: profile.timezone,
+    })
+
+    const rankedOptions: BlockedWindowChoice[] = []
+
+    for (const option of scheduleCandidateTimesForTitle(title)
+      .map((time) =>
+        buildScheduleOptionForDay({
+          title,
+          day,
+          time,
+          durationMinutes,
+          chosenCalendar,
+          location,
+          timeZone: profile.timezone,
+        }),
+      )
+      .filter((option) => new Date(option.start).getTime() > Date.now() + 5 * 60_000)) {
+      const start = new Date(option.start)
+      const end = new Date(option.end)
+      const overlappingEvents = events.filter((event) => overlapsOption(event, start, end))
+      if (!overlappingEvents.length) continue
+
+      const pendingInviteConflict = overlappingEvents.find((event) =>
+        isPendingInviteConflict(event, profile.email),
+      )
+      const representativeConflict =
+        pendingInviteConflict ||
+        overlappingEvents.find((event) => event.timeLabel === 'All day') ||
+        overlappingEvents[0]
+
+      if (!representativeConflict) continue
+
+      rankedOptions.push({
+        option,
+        conflict: representativeConflict,
+        pendingInvite: Boolean(pendingInviteConflict),
+        overlapCount: overlappingEvents.length,
+      })
+    }
+
+    rankedOptions.sort((left, right) => {
+      if (left.overlapCount !== right.overlapCount) return left.overlapCount - right.overlapCount
+      return new Date(left.option.start).getTime() - new Date(right.option.start).getTime()
+    })
+
+    if (rankedOptions[0]) {
+      perDayChoices.push(rankedOptions[0])
+    }
+  }
+
+  if (!perDayChoices.length) return null
+
+  const selected = perDayChoices
+    .sort((left, right) => {
+      if (left.overlapCount !== right.overlapCount) return left.overlapCount - right.overlapCount
+      return new Date(left.option.start).getTime() - new Date(right.option.start).getTime()
+    })
+    .slice(0, 3)
+
+  const firstConflict = selected[0].conflict
+  const sameConflictAcrossOptions = selected.every((item) =>
+    isSameEventSummaryIdentity(item.conflict, firstConflict),
+  )
+
+  return {
+    options: selected.map((item) => item.option),
+    conflict: firstConflict,
+    pendingInvite: selected.every((item) => item.pendingInvite),
+    sameConflictAcrossOptions,
+  }
+}
+
 async function explainNoOpeningDayConflict({
   profile,
   title,
@@ -1333,6 +1537,52 @@ async function noOpeningScheduleReply({
   }
 
   if (conflictReply) return conflictReply
+
+  if (
+    chosenCalendar &&
+    !exactTime &&
+    !recurrence &&
+    dateWindow &&
+    !sameCalendarDay(dateWindow.start, dateWindow.end, profile.timezone)
+  ) {
+    const bookAnywayContext = await blockedWindowBookAnywayContext({
+      profile,
+      title,
+      durationMinutes,
+      dateWindow,
+      chosenCalendar,
+      location,
+    })
+
+    if (bookAnywayContext?.options.length) {
+      await storeScheduleOptionsPending({
+        profileId: profile.id,
+        smsFrom,
+        options: bookAnywayContext.options,
+        attendees,
+        unresolvedInvitees,
+        scheduleRequest: {
+          title,
+          baseDate: baseDate.toISOString(),
+          dateWindow: serializeDateWindow(dateWindow),
+          exactTime: exactTime ?? null,
+          durationMinutes,
+          recurrence: recurrence || null,
+          location: location || null,
+        },
+      })
+
+      return blockedWindowNoOpeningReply({
+        conflict: bookAnywayContext.conflict,
+        pendingInvite: bookAnywayContext.pendingInvite,
+        options: bookAnywayContext.options,
+        dateLabel: dateWindow.label,
+        attendees,
+        unresolvedInvitees,
+        sameConflictAcrossOptions: bookAnywayContext.sameConflictAcrossOptions,
+      })
+    }
+  }
 
   return genericNoOpeningReply({
     calendarLabel,
