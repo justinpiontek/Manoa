@@ -359,6 +359,10 @@ function scheduleRequestSummaryText(
     return `${formatSmsDate(start, timeZone)} at ${formatSmsTime(start, timeZone)}`
   }
 
+  if (scheduleRequest.dateWindow?.label) {
+    return scheduleRequest.dateWindow.label
+  }
+
   return formatSmsDate(baseDate, timeZone)
 }
 
@@ -2584,6 +2588,20 @@ function daysToSearch(baseDate: Date, window: DateWindow | null | undefined, tim
   return days
 }
 
+function windowSearchStart(baseDate: Date, window: DateWindow | null | undefined) {
+  if (!window) return baseDate
+
+  if (baseDate.getTime() < window.start.getTime()) {
+    return window.start
+  }
+
+  if (baseDate.getTime() > window.end.getTime()) {
+    return window.start
+  }
+
+  return baseDate
+}
+
 async function findScheduleOptionsAcrossWindow({
   profileId,
   title,
@@ -2610,10 +2628,11 @@ async function findScheduleOptionsAcrossWindow({
   timeZone?: string
 }) {
   const collected: ScheduleOption[] = []
-  const totalDays = daysToSearch(baseDate, dateWindow, timeZone)
+  const searchStart = windowSearchStart(baseDate, dateWindow)
+  const totalDays = daysToSearch(searchStart, dateWindow, timeZone)
 
   for (let offset = 0; offset < totalDays && collected.length < 3; offset += 1) {
-    const candidateBaseDate = addDays(baseDate, offset, timeZone)
+    const candidateBaseDate = addDays(searchStart, offset, timeZone)
     const dayOptions = await findScheduleOptions({
       profileId,
       title,
@@ -2661,10 +2680,11 @@ async function findExternalCallPrepOptions({
 }) {
   const allowedWeekdays = externalAvailabilityWeekdays(availabilityTitle)
   const collected: ScheduleOption[] = []
-  const totalDays = dateWindow ? daysToSearch(baseDate, dateWindow, timeZone) : 14
+  const searchStart = windowSearchStart(baseDate, dateWindow)
+  const totalDays = dateWindow ? daysToSearch(searchStart, dateWindow, timeZone) : 14
 
   for (let offset = 0; offset < totalDays && collected.length < 3; offset += 1) {
-    const candidateBaseDate = addDays(baseDate, offset, timeZone)
+    const candidateBaseDate = addDays(searchStart, offset, timeZone)
 
     if (!allowedWeekdays.has(dateTimePartsInTimeZone(candidateBaseDate, timeZone).weekday)) {
       continue

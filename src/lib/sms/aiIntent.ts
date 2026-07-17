@@ -82,6 +82,7 @@ function parseBaseDate(
 ) {
   const explicitFromText = parseExplicitDate(originalText, timeZone)
   if (explicitFromText) return explicitFromText
+  const parsedWindow = parseDateWindow(originalText, timeZone)
 
   const ymdMatch = dateYmd?.match(/^(\d{4})-(\d{2})-(\d{2})$/)
   if (ymdMatch) {
@@ -101,6 +102,7 @@ function parseBaseDate(
   if (day === 'today') return startOfDay(0, timeZone)
   if (day === 'tomorrow') return startOfDay(1, timeZone)
   if (weekday) return nextDateForWeekday(weekdayNumbers[weekday], timeZone)
+  if (parsedWindow) return parsedWindow.start
   if (/\bthis week\b/i.test(originalText)) return startOfDay(0, timeZone)
   return startOfDay(1, timeZone)
 }

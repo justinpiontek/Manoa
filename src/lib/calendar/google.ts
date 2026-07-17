@@ -1,5 +1,5 @@
 import { parseGoogleRecurrence, recurrenceRule, recurrenceSummary, type RecurrenceSpec } from './recurrence'
-import { scheduleCandidateTimesForTitle } from './schedulingPreferences'
+import { hasSpecificScheduleTimePreference, scheduleCandidateTimesForTitle } from './schedulingPreferences'
 import type { Invitee } from '../sms/invitees'
 import { google, type calendar_v3 } from 'googleapis'
 import type { Credentials } from 'google-auth-library'
@@ -754,6 +754,87 @@ function exactScheduleCandidateStarts({
       .filter((start) => sameCalendarDay(start, requestedStart, timeZone))
       .map((start) => [start.getTime(), start] as const),
   ).values()]
+}
+
+function flexibleScheduleFallbackStarts(baseDate: Date, timeZone: string) {
+  const starts: Date[] = []
+
+  for (let hour = 8; hour <= 18; hour += 1) {
+    starts.push(setTime(baseDate, { hour, minute: 0 }, timeZone))
+    if (hour < 18) {
+      starts.push(setTime(baseDate, { hour, minute: 30 }, timeZone))
+    }
+  }
+
+  return starts
+}
+
+function uniqueFutureCandidateStarts(starts: Date[]) {
+  const minimumStartMs = Date.now() + 5 * 60_000
+
+  return [...new Map(
+    starts
+      .filter((start) => start.getTime() > minimumStartMs)
+      .map((start) => [start.getTime(), start] as const),
+  ).values()]
+}
+
+async function availableScheduleOptionsForStarts({
+  connections,
+  targetConnection,
+  candidateStarts,
+  durationMinutes,
+  title,
+  location,
+  recurrence,
+  timeZone,
+}: {
+  connections: CalendarConnection[]
+  targetConnection: CalendarConnection
+  candidateStarts: Date[]
+  durationMinutes: number
+  title: string
+  location?: string | null
+  recurrence?: RecurrenceSpec | null
+  timeZone: string
+}) {
+  if (!candidateStarts.length) return []
+
+  const timeMin = candidateStarts[0]
+  const lastCandidateStart = candidateStarts[candidateStarts.length - 1]
+  const proposedTimeMax = addMinutes(lastCandidateStart, durationMinutes)
+  const timeMax =
+    proposedTimeMax.getTime() > timeMin.getTime()
+      ? proposedTimeMax
+      : addMinutes(timeMin, Math.max(15, durationMinutes))
+  const skippedConnectionIds = new Set<string>()
+  const busy = await busyBlocks(connections, timeMin, timeMax, timeZone, { skippedConnectionIds })
+
+  if (skippedConnectionIds.has(targetConnection.id)) {
+    throw new Error(`Reconnect ${displayCalendarName(targetConnection)} in Manoa before adding events there.`)
+  }
+
+  return candidateStarts
+    .map((start) => ({
+      start,
+      end: addMinutes(start, durationMinutes),
+    }))
+    .filter((candidate) => !overlaps(candidate, busy))
+    .slice(0, 3)
+    .map<ScheduleOption>((candidate) => ({
+      title,
+      start: candidate.start.toISOString(),
+      end: candidate.end.toISOString(),
+      location,
+      provider: targetConnection.provider,
+      calendarId: targetConnection.calendar_id,
+      calendarName: displayCalendarName(targetConnection),
+      dayLabel: formatSmsDate(candidate.start, timeZone),
+      timeLabel: formatSmsTime(candidate.start, timeZone),
+      timeZone,
+      ownerEmail: targetConnection.account_email || targetConnection.account_id || null,
+      recurrence,
+    }))
 }
 
 function parseIcsProperty(rawLine: string) {
@@ -2958,47 +3039,36 @@ export async function findScheduleOptions({
         timeZone: resolvedTimeZone,
       })
     : scheduleCandidateTimesForTitle(title).map((time) => setTime(baseDate, time, resolvedTimeZone))
-  const futureCandidateStarts = candidateStarts.filter((start) => {
-    return start.getTime() > Date.now() + 5 * 60_000
+  const futureCandidateStarts = uniqueFutureCandidateStarts(candidateStarts)
+  const options = await availableScheduleOptionsForStarts({
+    connections,
+    targetConnection,
+    candidateStarts: futureCandidateStarts,
+    durationMinutes: safeDurationMinutes,
+    title,
+    location,
+    recurrence,
+    timeZone: resolvedTimeZone,
   })
 
-  if (!futureCandidateStarts.length) return []
-
-  const timeMin = futureCandidateStarts[0]
-  const lastCandidateStart = futureCandidateStarts[futureCandidateStarts.length - 1]
-  const proposedTimeMax = addMinutes(lastCandidateStart, safeDurationMinutes)
-  const timeMax =
-    proposedTimeMax.getTime() > timeMin.getTime()
-      ? proposedTimeMax
-      : addMinutes(timeMin, Math.max(15, safeDurationMinutes))
-  const skippedConnectionIds = new Set<string>()
-  const busy = await busyBlocks(connections, timeMin, timeMax, timeZone, { skippedConnectionIds })
-
-  if (skippedConnectionIds.has(targetConnection.id)) {
-    throw new Error(`Reconnect ${displayCalendarName(targetConnection)} in Manoa before adding events there.`)
+  if (options.length || exactTime || hasSpecificScheduleTimePreference(title)) {
+    return options
   }
 
-  return futureCandidateStarts
-    .map((start) => ({
-      start,
-      end: addMinutes(start, safeDurationMinutes),
-    }))
-    .filter((candidate) => !overlaps(candidate, busy))
-    .slice(0, 3)
-    .map<ScheduleOption>((candidate) => ({
-      title,
-      start: candidate.start.toISOString(),
-      end: candidate.end.toISOString(),
-      location,
-      provider: targetConnection.provider,
-      calendarId: targetConnection.calendar_id,
-      calendarName: displayCalendarName(targetConnection),
-      dayLabel: formatSmsDate(candidate.start, resolvedTimeZone),
-      timeLabel: formatSmsTime(candidate.start, resolvedTimeZone),
-      timeZone: resolvedTimeZone,
-      ownerEmail: targetConnection.account_email || targetConnection.account_id || null,
-      recurrence,
-    }))
+  const fallbackCandidateStarts = uniqueFutureCandidateStarts(
+    flexibleScheduleFallbackStarts(baseDate, resolvedTimeZone),
+  )
+
+  return availableScheduleOptionsForStarts({
+    connections,
+    targetConnection,
+    candidateStarts: fallbackCandidateStarts,
+    durationMinutes: safeDurationMinutes,
+    title,
+    location,
+    recurrence,
+    timeZone: resolvedTimeZone,
+  })
 }
 
 export async function createCalendarEvent(
