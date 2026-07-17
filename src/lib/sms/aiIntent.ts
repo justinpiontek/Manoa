@@ -42,7 +42,7 @@ const weekdayNumbers: Record<NonNullable<AiIntentPayload['weekday']>, number> = 
   saturday: 6,
 }
 
-const aiIntentTimeoutMs = 12_000
+const aiIntentTimeoutMs = 5_000
 
 function hasAiSmsUnderstanding() {
   return Boolean(process.env.OPENAI_API_KEY)

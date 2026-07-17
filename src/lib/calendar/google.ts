@@ -779,6 +779,12 @@ function uniqueFutureCandidateStarts(starts: Date[]) {
   ).values()]
 }
 
+function mergeCandidateStarts(preferred: Date[], fallback: Date[]) {
+  return [...new Map(
+    [...preferred, ...fallback].map((start) => [start.getTime(), start] as const),
+  ).values()]
+}
+
 async function availableScheduleOptionsForStarts({
   connections,
   targetConnection,
@@ -3031,7 +3037,7 @@ export async function findScheduleOptions({
   })
   if (!targetConnection) return []
 
-  const candidateStarts = exactTime
+  const preferredCandidateStarts = exactTime
     ? exactScheduleCandidateStarts({
         title,
         baseDate,
@@ -3039,30 +3045,19 @@ export async function findScheduleOptions({
         timeZone: resolvedTimeZone,
       })
     : scheduleCandidateTimesForTitle(title).map((time) => setTime(baseDate, time, resolvedTimeZone))
+  const candidateStarts =
+    !exactTime && !hasSpecificScheduleTimePreference(title)
+      ? mergeCandidateStarts(
+          preferredCandidateStarts,
+          flexibleScheduleFallbackStarts(baseDate, resolvedTimeZone),
+        )
+      : preferredCandidateStarts
   const futureCandidateStarts = uniqueFutureCandidateStarts(candidateStarts)
-  const options = await availableScheduleOptionsForStarts({
-    connections,
-    targetConnection,
-    candidateStarts: futureCandidateStarts,
-    durationMinutes: safeDurationMinutes,
-    title,
-    location,
-    recurrence,
-    timeZone: resolvedTimeZone,
-  })
-
-  if (options.length || exactTime || hasSpecificScheduleTimePreference(title)) {
-    return options
-  }
-
-  const fallbackCandidateStarts = uniqueFutureCandidateStarts(
-    flexibleScheduleFallbackStarts(baseDate, resolvedTimeZone),
-  )
 
   return availableScheduleOptionsForStarts({
     connections,
     targetConnection,
-    candidateStarts: fallbackCandidateStarts,
+    candidateStarts: futureCandidateStarts,
     durationMinutes: safeDurationMinutes,
     title,
     location,

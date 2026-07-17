@@ -6668,10 +6668,18 @@ export async function handleIncomingSms({
   }
 
   let aiConversation: AiConversationTurn[] = []
+  let parserIntent: ParsedSmsIntent | null = null
   if (!intentOverride) {
-    const directSettingsIntent = parseSmsIntent(intentBody, profile.timezone)
-    if (directSettingsIntent.type === 'settings') {
-      intentOverride = directSettingsIntent
+    parserIntent = parseSmsIntent(intentBody, profile.timezone)
+    if (
+      parserIntent.type === 'settings' ||
+      parserIntent.type === 'choice' ||
+      (!activePending &&
+        (parserIntent.type === 'schedule' ||
+          parserIntent.type === 'agenda' ||
+          parserIntent.type === 'lookup'))
+    ) {
+      intentOverride = parserIntent
     }
   }
 
@@ -6689,7 +6697,7 @@ export async function handleIncomingSms({
     ? intentOverride
     : usedAiIntent && aiIntent
       ? aiIntent
-      : parseSmsIntent(intentBody, profile.timezone)
+      : parserIntent || parseSmsIntent(intentBody, profile.timezone)
 
   if (activePending && intent.type === 'settings') {
     await clearPendingAction(activePending.id)
