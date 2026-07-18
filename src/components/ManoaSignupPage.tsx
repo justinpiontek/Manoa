@@ -59,6 +59,11 @@ const homepageUseCases = [
 
 const homepageFaqs = [
   {
+    question: 'What can I text Manoa?',
+    answer:
+      'Try things like "Schedule lunch Tuesday at noon," "What\'s on my calendar tomorrow?," "Move dentist to Friday at 3pm," or send a screenshot or flyer and tell Manoa which calendar to use.',
+  },
+  {
     question: 'Do I need an app?',
     answer:
       'No. You sign up on the site once, connect your calendar, and then use Manoa by text.',
@@ -90,10 +95,10 @@ const homepageFaqs = [
 ]
 
 const heroFeaturePoints = [
-  { icon: 'chat', label: 'Text to schedule' },
-  { icon: 'calendar', label: 'Add from screenshots & flyers' },
-  { icon: 'bell', label: 'Smart reminders' },
-  { icon: 'lock', label: 'Secure & private' },
+  { icon: 'chat', label: 'Schedule by text' },
+  { icon: 'edit', label: 'Move or cancel plans' },
+  { icon: 'calendar', label: 'Add from photos & flyers' },
+  { icon: 'bell', label: 'Agenda & reminder texts' },
 ] as const
 
 type FeatureCard = {
@@ -108,32 +113,32 @@ const featureCards: FeatureCard[] = [
   {
     href: '/schedule-by-text',
     icon: 'chat',
-    title: 'Schedule anything',
-    example: '"Lunch with Sarah next Tuesday at noon."',
+    title: 'Schedule something new',
+    example: '"Schedule lunch Tuesday at noon."',
   },
   {
     href: '/calendar-reminders-by-text',
     icon: 'search',
-    title: 'Check your day',
+    title: 'Check your schedule',
     example: '"What\'s on my calendar tomorrow?"',
   },
   {
     href: '/reschedule-appointments-by-text',
     icon: 'edit',
-    title: 'Reschedule in seconds',
-    example: '"Move my dentist appointment."',
+    title: 'Move or cancel a plan',
+    example: '"Move dentist to Friday at 3pm."',
   },
   {
     href: '/calendar-reminders-by-text',
     icon: 'bell',
-    title: 'Set smart reminders',
-    example: '"Remind me to call Mom tomorrow."',
+    title: 'Get agenda & reminders',
+    example: '"Turn on morning agenda."',
   },
   {
     href: '/add-event-from-screenshot',
     icon: 'image',
-    title: 'Add from anything',
-    example: '"(sends screenshot of a flyer)"',
+    title: 'Add from photos & flyers',
+    example: '"(sends a screenshot or school flyer)"',
     badge: 'New',
   },
 ] as const
@@ -157,10 +162,10 @@ const controlPoints = [
 ] as const
 
 const pricingBullets = [
-  'Unlimited scheduling over text',
-  'Smart reminders',
+  'Schedule and reschedule by text',
+  'Agenda and reminder texts',
   'Add events from screenshots & flyers',
-  'Cancel anytime',
+  'Works with Google, Outlook, and Apple',
 ]
 
 const reviewPeople = ['JS', 'AM', 'RB', 'KT']
@@ -175,7 +180,7 @@ const homepageSoftwareApplicationStructuredData = {
   operatingSystem: 'Any',
   url: siteUrl,
   description:
-    'Manoa is a calendar assistant by text. Schedule meetings, add events from screenshots and flyers, get reminders, and manage your calendar without opening another app.',
+    'Manoa is your calendar assistant by text. Schedule events, move plans, add events from screenshots and flyers, and get agenda and reminder texts without opening another app.',
   offers: {
     '@type': 'Offer',
     price: '19.99',
@@ -574,8 +579,8 @@ export default function ManoaSignupPage() {
           <p className="eyebrow landing-badge">Calendar assistant by text</p>
           <h1 className="landing-title">Text your calendar instead of opening it.</h1>
           <p className="landing-lede">
-            Manoa is a calendar assistant by text. Schedule meetings, add events from screenshots
-            and flyers, and get reminders without opening another app.
+            Schedule something new, move plans, add events from screenshots and flyers, and get
+            agenda and reminder texts without opening another app.
           </p>
 
           <div className="landing-hero-actions">
@@ -606,8 +611,8 @@ export default function ManoaSignupPage() {
       </section>
 
       <section id="features" className="landing-feature-section">
-        <p className="landing-section-kicker">Text Manoa like you text a friend</p>
-        <h2 className="landing-section-title">Powerful scheduling. As easy as texting.</h2>
+        <p className="landing-section-kicker">What Manoa helps with</p>
+        <h2 className="landing-section-title">The everyday calendar jobs Manoa handles by text.</h2>
 
         <div className="landing-feature-grid">
           {featureCards.map((card) => (

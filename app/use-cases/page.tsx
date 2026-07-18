@@ -5,7 +5,7 @@ import { useCases } from '@/src/lib/useCases'
 export const metadata: Metadata = {
   title: 'Use Cases | Manoa',
   description:
-    'Explore ways to use Manoa to schedule by text, add events from screenshots and school flyers, get calendar reminders, and handle appointment changes without opening another app.',
+    'Explore the core ways to use Manoa: schedule by text, check your day, add events from screenshots and flyers, and handle calendar changes without opening another app.',
 }
 
 export default function UseCasesPage() {
@@ -15,10 +15,10 @@ export default function UseCasesPage() {
         <ManoaWordmark className="legal-back compact" href="/" />
 
         <p className="use-case-eyebrow">Use cases</p>
-        <h1 className="use-case-title">Ways people can use Manoa right now.</h1>
+        <h1 className="use-case-title">The main jobs Manoa helps with right now.</h1>
         <p className="use-case-lede">
-          If you want to see where Manoa fits into your day before signing up, start with the
-          workflow that sounds most like you.
+          If you want to know what Manoa actually does, start with the job you want done first:
+          schedule something, check your day, move a plan, or add an event from a photo.
         </p>
 
         <div className="use-case-hub-grid">

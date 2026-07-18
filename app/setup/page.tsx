@@ -7,7 +7,7 @@ import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
   title: 'Set Up Manoa',
-  description: 'Connect your calendar so Manoa can schedule by text.',
+  description: 'Connect your calendar so Manoa can schedule by text, add events from photos, and send reminders.',
 }
 
 type SetupPageProps = {
@@ -51,8 +51,8 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
         </h1>
         <p className="setup-lede">
           {calendarConnected
-            ? 'Your calendar is connected. Manoa can now check your availability, offer open times, and book events after you confirm by text.'
-            : 'After you subscribe, connect Google, Outlook, or Apple Calendar so Manoa can see availability and book events for you by text.'}
+            ? 'Your calendar is connected. Manoa can now check your availability, book events after you confirm, read event images, and send agenda and reminder texts.'
+            : 'After you subscribe, connect Google, Outlook, or Apple Calendar so Manoa can schedule by text, read event images, and keep reminders in sync.'}
         </p>
 
         <div className="status-row" aria-label="Setup status">
@@ -99,9 +99,9 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
             <span className="step-number">2</span>
             <h2>Calendar connection</h2>
             <p>
-              Connect Google, Outlook, or Apple so Manoa can find open times, book events, send daily
-              agendas, and keep reminders accurate. Apple Calendar still uses the longer manual iCloud
-              path.
+              Connect Google, Outlook, or Apple so Manoa can find open times, book events, answer
+              schedule questions, send daily agendas, and keep reminders accurate. Apple Calendar
+              still uses the longer manual iCloud path.
             </p>
             {authenticatedForThisSetup ? (
               <div className="dashboard-hero-actions">
@@ -130,11 +130,19 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
                 <p>
                   Text <strong>{displayNumber}</strong> from <strong>{displayUserPhone}</strong>.
                 </p>
+                <p>
+                  Best first uses: check tomorrow, schedule something new, or move an event that is
+                  already on your calendar.
+                </p>
                 <ul className="dashboard-example-list">
                   {onboardingExampleTexts.map((example) => (
                     <li key={example}>{example}</li>
                   ))}
                 </ul>
+                <p className="setup-note">
+                  You can also send a photo or screenshot when the event details are sitting in an
+                  image instead of your calendar.
+                </p>
               </>
             ) : (
               <p>
