@@ -218,6 +218,12 @@ function isAgendaRequest(lower: string, day: 'today' | 'tomorrow') {
   return hasDay && agendaLanguage
 }
 
+function isScheduleReviewQuestion(lower: string) {
+  return /\b(?:(?:how(?:'s|s| is)?)|(?:what(?:'s| is)?)|(?:what does))\s+(?:my\s+)?(?:schedule|calendar|day)\s+(?:look(?:ing)?(?:\s+like)?|looking)\b/.test(
+    lower,
+  )
+}
+
 export function parseSmsTime(text: string) {
   const lower = text.toLowerCase()
   const explicitMatch = lower.match(/\b(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)\b/)
@@ -897,6 +903,8 @@ export function parseSmsIntent(body: string, timeZone?: string): ParsedSmsIntent
   const lower = text.toLowerCase()
   const allDaySpan = parseAllDayDateSpan(text, timeZone)
   const dateWindow = parseDateWindow(text, timeZone)
+  const asksForScheduleReview = isScheduleReviewQuestion(lower)
+  const asksForUpcomingAgenda = /\bcoming up\b|\bupcoming\b/.test(lower)
 
   const choice = parseChoiceIntent(text)
   if (choice) return { type: 'choice', choice }
@@ -918,6 +926,7 @@ export function parseSmsIntent(body: string, timeZone?: string): ParsedSmsIntent
     (lower === 'today' ||
       lower === "today's schedule" ||
       isAgendaRequest(lower, 'today') ||
+      (asksForScheduleReview && !dateWindow && !asksForUpcomingAgenda) ||
       (!/\btomorrow'?s?\b|\btmrw\b|\btmmrw\b|\btomorow\b|\btommorow\b|\btommorrow\b|\btomororws?\b/.test(lower) &&
         (lower.includes("what's my day") ||
           lower.includes('what is my day') ||
@@ -926,7 +935,7 @@ export function parseSmsIntent(body: string, timeZone?: string): ParsedSmsIntent
 
   const isBroadAgenda =
     !startsWithScheduleCommand &&
-    (lower.includes('agenda') ||
+    (((lower.includes('agenda') ||
       /\bschedule\b/.test(lower) ||
       lower.includes("what's on") ||
       lower.includes('what is on') ||
@@ -939,16 +948,16 @@ export function parseSmsIntent(body: string, timeZone?: string): ParsedSmsIntent
       lower.includes('am i open') ||
       lower.includes('am i available') ||
       lower.includes('calendar') ||
-      lower.includes('coming up') ||
-      lower.includes('upcoming')) &&
-    Boolean(dateWindow || /\bcoming up\b|\bupcoming\b/.test(lower))
+      asksForUpcomingAgenda) &&
+      Boolean(dateWindow || asksForUpcomingAgenda)) ||
+      (asksForScheduleReview && Boolean(dateWindow)))
 
   if (isTodayAgenda || isBroadAgenda) {
     return {
       type: 'agenda',
       day: isTomorrowAgenda ? 'tomorrow' : agendaDayFromWindow(dateWindow, timeZone),
       dateWindow,
-      label: dateWindow?.label || (/\bcoming up\b|\bupcoming\b/.test(lower) ? 'coming up' : undefined),
+      label: dateWindow?.label || (asksForUpcomingAgenda ? 'coming up' : undefined),
     }
   }
 

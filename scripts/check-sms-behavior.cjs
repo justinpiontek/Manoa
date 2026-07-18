@@ -205,6 +205,14 @@ assert.equal(
 
 assertAgendaWindow("what's coming up", 'coming up')
 
+const casualScheduleReview = parseSmsIntent('Hows my schedule looking?', timeZone)
+assert.equal(casualScheduleReview.type, 'agenda')
+assert.equal(casualScheduleReview.day, 'today')
+
+const datedScheduleReview = parseSmsIntent('How is my schedule looking next week?', timeZone)
+assert.equal(datedScheduleReview.type, 'agenda')
+assert.equal(datedScheduleReview.dateWindow?.label, 'next week')
+
 const lookup = parseSmsIntent("When's Oakleys appointment", timeZone)
 assert.equal(lookup.type, 'lookup')
 assert.equal(lookup.query, 'Oakleys appointment')
