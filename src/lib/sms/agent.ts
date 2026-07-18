@@ -2214,6 +2214,58 @@ function isShortAcknowledgement(text: string) {
   )
 }
 
+function isGreetingText(text: string) {
+  return /^(?:hi|hey|hello|hiya|hey there|hello there|yo|good morning|good afternoon|good evening|morning|afternoon|evening)(?:\s+manoa)?[.!?]*$/i.test(
+    text.trim(),
+  )
+}
+
+function isThanksText(text: string) {
+  return /^(?:thanks|thank you|thx|thanks manoa|thank you manoa|thanks so much|thank you so much|appreciate it|i appreciate it|awesome thanks)[.!?]*$/i.test(
+    text.trim(),
+  )
+}
+
+function isApologyText(text: string) {
+  return /^(?:sorry|so sorry|sorry about that|my bad|oops|whoops)[.!?]*$/i.test(text.trim())
+}
+
+function isHowAreYouText(text: string) {
+  return /^(?:how are you|how're you|hows it going|how is it going|how you doing)[.!?]*$/i.test(
+    text.trim(),
+  )
+}
+
+function isFarewellText(text: string) {
+  return /^(?:bye|goodbye|see ya|see you|talk soon|good night|night)[.!?]*$/i.test(text.trim())
+}
+
+function smallTalkReply(text: string, pending?: PendingAction | null) {
+  const trimmed = text.trim()
+  if (!trimmed) return null
+
+  let reply: string | null = null
+
+  if (isGreetingText(trimmed)) {
+    reply = 'Hey.'
+  } else if (isThanksText(trimmed)) {
+    reply = 'You got it.'
+  } else if (isApologyText(trimmed)) {
+    reply = 'No worries.'
+  } else if (isHowAreYouText(trimmed)) {
+    reply = 'Doing well. Ready when you are.'
+  } else if (isFarewellText(trimmed)) {
+    reply = 'Talk soon.'
+  } else if (isShortAcknowledgement(trimmed)) {
+    reply = 'Sounds good.'
+  }
+
+  if (!reply) return null
+
+  const reminder = pending ? reminderForPending(pending) : null
+  return reminder ? `${reply}\n\n${reminder}` : reply
+}
+
 function isSingleScheduleDecline(text: string) {
   return /^(?:no|nope|nah|n|cancel|leave it|do not|don't|dont|not now|never mind|nevermind)[.!]*$/i.test(
     text.trim(),
@@ -6814,7 +6866,7 @@ export async function handleIncomingSms({
   }
 
   if (activePending && isShortAcknowledgement(body)) {
-    const reply = reminderForPending(activePending)
+    const reply = smallTalkReply(body, activePending) || reminderForPending(activePending)
     await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
     return reply
   }
@@ -7459,6 +7511,12 @@ export async function handleIncomingSms({
     const reply = await cancelCalendarTarget({ profile, target: confidentMatch, smsFrom: from })
     await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
     return reply
+  }
+
+  const smallTalk = smallTalkReply(body, activePending)
+  if (smallTalk) {
+    await logSms({ profileId: profile.id, from, body: smallTalk, direction: 'outbound' })
+    return smallTalk
   }
 
   const reply = activePending || externalCancelPending || externalReschedulePending
