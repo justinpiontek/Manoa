@@ -5,6 +5,7 @@ export type RecurrenceSpec =
       unit: 'week'
       interval: 1 | 2
       weekday?: number
+      weekdays?: number[]
     }
   | {
       unit: 'month'
@@ -65,6 +66,35 @@ function asDate(value: Date | string) {
   return value instanceof Date ? new Date(value) : new Date(value)
 }
 
+function uniqueSortedWeekdays(days: number[]) {
+  return [...new Set(days.filter((value) => Number.isInteger(value) && value >= 0 && value <= 6))].sort((left, right) => left - right)
+}
+
+function joinLabels(labels: string[]) {
+  if (!labels.length) return ''
+  if (labels.length === 1) return labels[0]
+  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`
+  return `${labels.slice(0, -1).join(', ')}, and ${labels[labels.length - 1]}`
+}
+
+export function weeklyRecurrenceDays(
+  spec: RecurrenceSpec | null | undefined,
+  start: Date | string,
+  timeZone?: string,
+) {
+  if (!spec || spec.unit !== 'week') return []
+
+  const date = asDate(start)
+  if (Number.isNaN(date.getTime())) return []
+  const fallbackWeekday = dateTimePartsInTimeZone(date, timeZone).weekday
+
+  return uniqueSortedWeekdays(
+    Array.isArray(spec.weekdays) && spec.weekdays.length
+      ? spec.weekdays
+      : [spec.weekday ?? fallbackWeekday],
+  )
+}
+
 export function recurrenceSummary(
   spec: RecurrenceSpec | null | undefined,
   start: Date | string,
@@ -77,7 +107,9 @@ export function recurrenceSummary(
   const parts = dateTimePartsInTimeZone(date, timeZone)
 
   if (spec.unit === 'week') {
-    const weekday = weekdayNames[spec.weekday ?? parts.weekday]
+    const weekday = joinLabels(
+      weeklyRecurrenceDays(spec, date, timeZone).map((value) => weekdayNames[value]),
+    ) || weekdayNames[spec.weekday ?? parts.weekday]
     return spec.interval === 2
       ? `Repeats every other ${weekday}.`
       : `Repeats every ${weekday}.`
@@ -102,12 +134,16 @@ export function recurrenceRule(
   const date = asDate(start)
   if (Number.isNaN(date.getTime())) return null
   const parts = dateTimePartsInTimeZone(date, timeZone)
-  const weekday = spec.weekday ?? parts.weekday
 
   if (spec.unit === 'week') {
-    return `RRULE:FREQ=WEEKLY;INTERVAL=${spec.interval};BYDAY=${weekdayCodes[weekday]}`
+    const weekdays = weeklyRecurrenceDays(spec, date, timeZone)
+    const byDay = weekdays.length
+      ? weekdays.map((weekday) => weekdayCodes[weekday]).join(',')
+      : weekdayCodes[spec.weekday ?? parts.weekday]
+    return `RRULE:FREQ=WEEKLY;INTERVAL=${spec.interval};BYDAY=${byDay}`
   }
 
+  const weekday = spec.weekday ?? parts.weekday
   if (spec.mode === 'nth_weekday') {
     return `RRULE:FREQ=MONTHLY;INTERVAL=1;BYDAY=${weekdayCodes[weekday]};BYSETPOS=${nthWeekdayOfMonth(
       parts.day,
@@ -133,14 +169,24 @@ export function parseGoogleRecurrence(recurrence: string[] | null | undefined): 
 
   if (fields.FREQ === 'WEEKLY') {
     const interval = Number(fields.INTERVAL || '1')
-    const weekday = fields.BYDAY?.split(',')[0]
-    const weekdayIndex = weekday ? weekdayCodes.indexOf(weekday as (typeof weekdayCodes)[number]) : -1
-    if ((interval === 1 || interval === 2) && fields.BYDAY) {
-      return {
-        unit: 'week',
-        interval: interval as 1 | 2,
-        weekday: weekdayIndex >= 0 ? weekdayIndex : undefined,
-      }
+    const weekdayIndexes = uniqueSortedWeekdays(
+      (fields.BYDAY || '')
+        .split(',')
+        .map((weekday) => weekdayCodes.indexOf(weekday as (typeof weekdayCodes)[number]))
+        .filter((value) => value >= 0),
+    )
+    if ((interval === 1 || interval === 2) && weekdayIndexes.length) {
+      return weekdayIndexes.length === 1
+        ? {
+            unit: 'week',
+            interval: interval as 1 | 2,
+            weekday: weekdayIndexes[0],
+          }
+        : {
+            unit: 'week',
+            interval: interval as 1 | 2,
+            weekdays: weekdayIndexes,
+          }
     }
   }
 

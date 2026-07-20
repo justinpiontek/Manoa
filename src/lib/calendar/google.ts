@@ -1,4 +1,10 @@
-import { parseGoogleRecurrence, recurrenceRule, recurrenceSummary, type RecurrenceSpec } from './recurrence'
+import {
+  parseGoogleRecurrence,
+  recurrenceRule,
+  recurrenceSummary,
+  type RecurrenceSpec,
+  weeklyRecurrenceDays,
+} from './recurrence'
 import { hasSpecificScheduleTimePreference, scheduleCandidateTimesForTitle } from './schedulingPreferences'
 import type { Invitee } from '../sms/invitees'
 import { google, type calendar_v3 } from 'googleapis'
@@ -1003,13 +1009,26 @@ function projectSimpleRecurringEventIntoRange(
   let candidateStart: Date | null = null
 
   if (spec.unit === 'week') {
-    const originalParts = dateTimePartsInTimeZone(originalStart, timeZone)
-    const targetWeekday = spec.weekday ?? originalParts.weekday
-    let weekdayOffset = targetWeekday - originalParts.weekday
-    if (weekdayOffset < 0) weekdayOffset += 7
-    candidateStart = weekdayOffset === 0 ? new Date(originalStart) : addDays(originalStart, weekdayOffset, timeZone)
-    while (candidateStart.getTime() < timeRange.timeMin.getTime()) {
-      candidateStart = addDays(candidateStart, spec.interval * 7, timeZone)
+    const recurringDays = weeklyRecurrenceDays(spec, originalStart, timeZone)
+    for (let weekOffset = 0; weekOffset < 104 && !candidateStart; weekOffset += spec.interval) {
+      const weekAnchor =
+        weekOffset === 0 ? new Date(originalStart) : addDays(originalStart, weekOffset * 7, timeZone)
+      if (weekAnchor.getTime() >= timeRange.timeMax.getTime()) break
+
+      const anchorWeekday = dateTimePartsInTimeZone(weekAnchor, timeZone).weekday
+      for (const weekday of recurringDays) {
+        let weekdayOffset = weekday - anchorWeekday
+        if (weekdayOffset < 0) weekdayOffset += 7
+
+        const candidate =
+          weekdayOffset === 0 ? new Date(weekAnchor) : addDays(weekAnchor, weekdayOffset, timeZone)
+        if (candidate.getTime() < originalStart.getTime()) continue
+        if (candidate.getTime() < timeRange.timeMin.getTime()) continue
+        if (candidate.getTime() >= timeRange.timeMax.getTime()) continue
+
+        candidateStart = candidate
+        break
+      }
     }
   } else {
     for (let monthOffset = 0; monthOffset < 36; monthOffset += spec.interval) {
@@ -1548,15 +1567,27 @@ function parseOutlookRecurrence(
   const daysOfWeek = Array.isArray((pattern as { daysOfWeek?: unknown }).daysOfWeek)
     ? ((pattern as { daysOfWeek?: unknown[] }).daysOfWeek || []).map((value) => String(value).toLowerCase())
     : []
-  const weekday = daysOfWeek.length ? weekdayNames.indexOf(daysOfWeek[0]) : -1
+  const weekdays = [...new Set(
+    daysOfWeek
+      .map((value) => weekdayNames.indexOf(value))
+      .filter((value) => value >= 0),
+  )]
 
   if (type === 'weekly' && (interval === 1 || interval === 2)) {
-    return {
-      unit: 'week',
-      interval: interval as 1 | 2,
-      weekday: weekday >= 0 ? weekday : undefined,
-    }
+    return weekdays.length <= 1
+      ? {
+          unit: 'week',
+          interval: interval as 1 | 2,
+          weekday: weekdays[0],
+        }
+      : {
+          unit: 'week',
+          interval: interval as 1 | 2,
+          weekdays,
+        }
   }
+
+  const weekday = weekdays[0] ?? -1
 
   if (type === 'absoluteMonthly') {
     return {
@@ -1612,11 +1643,12 @@ function outlookRecurrenceBody(
   const startDate = recurrenceStartDate(date, timeZone)
 
   if (spec.unit === 'week') {
+    const recurrenceWeekdays = weeklyRecurrenceDays(spec, date, timeZone).map((weekday) => weekdayNames[weekday])
     return {
       pattern: {
         type: 'weekly',
         interval: spec.interval,
-        daysOfWeek: [weekdayNames[parts.weekday]],
+        daysOfWeek: recurrenceWeekdays.length ? recurrenceWeekdays : [weekdayNames[parts.weekday]],
         firstDayOfWeek: 'sunday',
       },
       range: {

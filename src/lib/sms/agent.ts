@@ -333,7 +333,22 @@ function scheduleRequestCalendarChoiceDetails(
   timeZone: string,
 ) {
   const summary = scheduleRequestSummaryText(scheduleRequest, timeZone)
-  return summary ? `Current request: ${summary}.` : null
+  if (!summary) return null
+
+  const lines = [`Current request: ${summary}.`]
+  const baseDate = scheduleRequest ? new Date(scheduleRequest.baseDate) : null
+  const recurrenceStart =
+    scheduleRequest && baseDate && !Number.isNaN(baseDate.getTime())
+      ? scheduleRequest.exactTime
+        ? setTime(baseDate, scheduleRequest.exactTime, timeZone)
+        : baseDate
+      : null
+  const recurring = recurrenceStart
+    ? recurrenceSummary(scheduleRequest?.recurrence, recurrenceStart, timeZone)
+    : null
+
+  if (recurring) lines.push(recurring)
+  return lines.join('\n')
 }
 
 function scheduleRequestSummaryText(
@@ -830,6 +845,11 @@ function exactAvailabilityReply({
     lines.push(`📍 Location: ${option.location.trim()}.`)
   }
 
+  const recurring = recurrenceSummary(option.recurrence, option.start, option.timeZone)
+  if (recurring) {
+    lines.push(recurring)
+  }
+
   if (attendees.length) {
     lines.push(`✉️ Ready to invite: ${inviteeSummary(attendees)}.`)
   }
@@ -944,10 +964,16 @@ function pendingInviteScheduleReply({
     lines.push('Reply 1 to book over it anyway, or text a different day or time.')
   }
 
+  const recurring = recurrenceSummary(
+    requestedOption.recurrence,
+    requestedOption.start,
+    requestedOption.timeZone,
+  )
+
   return sectionedListReply({
     intro: lines[0],
     list: lines.slice(1, -1).join('\n'),
-    footer: lines[lines.length - 1],
+    footer: [recurring, lines[lines.length - 1]].filter(Boolean).join('\n'),
   })
 }
 
@@ -981,10 +1007,16 @@ function hardConflictScheduleReply({
     lines.push('Reply 1 to book anyway, or text a different day or time.')
   }
 
+  const recurring = recurrenceSummary(
+    requestedOption.recurrence,
+    requestedOption.start,
+    requestedOption.timeZone,
+  )
+
   return sectionedListReply({
     intro: lines[0],
     list: lines.slice(1, -1).join('\n'),
-    footer: lines[lines.length - 1],
+    footer: [recurring, lines[lines.length - 1]].filter(Boolean).join('\n'),
   })
 }
 
@@ -1598,6 +1630,7 @@ function requestedExactScheduleOption({
   chosenCalendar,
   timeZone,
   location,
+  recurrence,
 }: {
   title: string
   baseDate: Date
@@ -1606,6 +1639,7 @@ function requestedExactScheduleOption({
   chosenCalendar: CalendarPlacementOption
   timeZone: string
   location?: string | null
+  recurrence?: RecurrenceSpec | null
 }) {
   const requestedStart = setTime(baseDate, exactTime, timeZone)
   const requestedEnd = addMinutes(requestedStart, durationMinutes)
@@ -1621,7 +1655,7 @@ function requestedExactScheduleOption({
       dayLabel: formatSmsDate(requestedStart, timeZone),
       timeLabel: formatSmsTime(requestedStart, timeZone),
       timeZone,
-      recurrence: null,
+      recurrence: recurrence || null,
       location,
     } satisfies ScheduleOption,
     requestedStart,
@@ -1798,7 +1832,7 @@ async function maybeConfirmExactScheduleTime({
   attendees: Invitee[]
   unresolvedInvitees: string[]
 }) {
-  if (!exactTime || recurrence) return null
+  if (!exactTime) return null
 
   const { option: requestedOption, requestedStart, requestedEnd } = requestedExactScheduleOption({
     title,
@@ -1808,6 +1842,7 @@ async function maybeConfirmExactScheduleTime({
     chosenCalendar,
     timeZone: profile.timezone,
     location,
+    recurrence,
   })
 
   const overlappingEvents = (await listUpcomingEvents({

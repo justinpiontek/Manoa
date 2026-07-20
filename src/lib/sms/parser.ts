@@ -108,7 +108,8 @@ const schedulingWords = [
   'event',
 ]
 
-const cancelPattern = /\b(cancel|canceled|cancelled|delete|deleted|remove|removed|drop|dropped)\b|\btake\b.{0,60}\boff\b/
+const cancelPattern =
+  /\b(cancel|canceled|cancelled|delete|deleted|remove|removed|drop(?!\s+off\b)|dropped(?!\s+off\b))\b|\btake\b.{0,60}\boff\b/
 const reschedulePattern = /\b(reschedule|rescheduled|move|moved|change|changed|push|pushed)\b/
 const weekdayPattern =
   /\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday|tomorrow|tmrw|tmmrw|tomorow|tommorow|tommorrow|tomororw|tomororws)\b/
@@ -246,7 +247,12 @@ export function parseSmsTime(text: string) {
     : explicitMatch?.[3]?.startsWith('p')
       ? 'pm'
       : null
-  const period = explicitPeriod || (hour === 12 || (hour >= 1 && hour <= 8) ? 'pm' : 'am')
+  const contextualPeriod = /\bmorning\b/.test(lower)
+    ? 'am'
+    : /\b(afternoon|evening|tonight)\b/.test(lower)
+      ? 'pm'
+      : null
+  const period = explicitPeriod || contextualPeriod || (hour === 12 || (hour >= 1 && hour <= 8) ? 'pm' : 'am')
 
   if (period === 'pm' && hour !== 12) hour += 12
   if (period === 'am' && hour === 12) hour = 0
@@ -272,8 +278,61 @@ function parseDuration(text: string) {
   return match[2].startsWith('hour') || match[2] === 'hr' ? value * 60 : value
 }
 
-function parseRecurrence(text: string): RecurrenceSpec | null {
+function uniqueSortedWeekdays(days: number[]) {
+  return [...new Set(days.filter((value) => Number.isInteger(value) && value >= 0 && value <= 6))].sort(
+    (left, right) => left - right,
+  )
+}
+
+function expandWeekdayRange(start: number, end: number) {
+  const days = [start]
+  let current = start
+
+  while (current !== end && days.length < 7) {
+    current = (current + 1) % 7
+    days.push(current)
+  }
+
+  return uniqueSortedWeekdays(days)
+}
+
+function parseRecurringWeekdays(text: string) {
   const lower = text.toLowerCase()
+  if (/\bweekdays\b/.test(lower)) return [1, 2, 3, 4, 5]
+
+  const weekdayRangePattern = new RegExp(
+    `\\b(${weekdayNameSource})'?s?\\s*(?:through|thru|to|-)\\s*(${weekdayNameSource})'?s?\\b`,
+    'i',
+  )
+  const weekdayRangeMatch = lower.match(weekdayRangePattern)
+  if (weekdayRangeMatch) {
+    const start = weekdayFromAlias(weekdayRangeMatch[1])
+    const end = weekdayFromAlias(weekdayRangeMatch[2])
+    if (start !== null && end !== null) return expandWeekdayRange(start, end)
+  }
+
+  const singleRecurringDayMatch = lower.match(
+    new RegExp(`\\b(?:every|each)(?:\\s+other)?\\s+(${weekdayNameSource})'?s?\\b`, 'i'),
+  )
+  if (singleRecurringDayMatch) {
+    const weekday = weekdayFromAlias(singleRecurringDayMatch[1])
+    return weekday === null ? null : [weekday]
+  }
+
+  if (!/\b(?:every|each)\b/.test(lower)) return null
+
+  const weekdayMatches = uniqueSortedWeekdays(
+    [...lower.matchAll(new RegExp(`\\b(${weekdayNameSource})'?s?\\b`, 'gi'))]
+      .map((match) => weekdayFromAlias(match[1]))
+      .filter((value): value is number => value !== null),
+  )
+
+  return weekdayMatches.length >= 2 ? weekdayMatches : null
+}
+
+export function parseRecurrence(text: string): RecurrenceSpec | null {
+  const lower = text.toLowerCase()
+  const recurringWeekdays = parseRecurringWeekdays(lower)
 
   if (recurringMonthlyPattern.test(lower)) {
     return {
@@ -291,17 +350,27 @@ function parseRecurrence(text: string): RecurrenceSpec | null {
       lower,
     )
   ) {
-    return {
+    const weeklySpec: RecurrenceSpec = {
       unit: 'week',
       interval: 2,
     }
+    if (recurringWeekdays?.length) {
+      if (recurringWeekdays.length === 1) weeklySpec.weekday = recurringWeekdays[0]
+      else weeklySpec.weekdays = recurringWeekdays
+    }
+    return weeklySpec
   }
 
-  if (recurringWeeklyPattern.test(lower) || recurringWeekdayPattern.test(lower)) {
-    return {
+  if (recurringWeeklyPattern.test(lower) || recurringWeekdayPattern.test(lower) || recurringWeekdays?.length) {
+    const weeklySpec: RecurrenceSpec = {
       unit: 'week',
       interval: 1,
     }
+    if (recurringWeekdays?.length) {
+      if (recurringWeekdays.length === 1) weeklySpec.weekday = recurringWeekdays[0]
+      else weeklySpec.weekdays = recurringWeekdays
+    }
+    return weeklySpec
   }
 
   return null
@@ -765,6 +834,11 @@ function parseCalendarHint(text: string) {
 function stripSchedulingNoise(text: string) {
   const cleaned = text
     .toLowerCase()
+    .replace(/\bdrop off\b/g, 'dropoff')
+    .replace(/\bpick up\b/g, 'pickup')
+    .replace(/^(?:can|could|would|will)\s+you\b/g, ' ')
+    .replace(/\bremind\s+me\b/g, ' ')
+    .replace(/\bevery day\b/g, ' ')
     .replace(monthNameDatePattern, ' ')
     .replace(dateMonthNamePattern, ' ')
     .replace(numericDatePattern, ' ')
@@ -786,9 +860,13 @@ function stripSchedulingNoise(text: string) {
       ' ',
     )
     .replace(/\b\d+\s*(minute|min|hour|hr)\b/g, ' ')
+    .replace(/\b(?:through|thru)\b/g, ' ')
     .replace(/\bsometime\b/g, ' ')
     .replace(/\s+/g, ' ')
     .replace(/^[\s,;:-]+|[\s,;:-]+$/g, '')
+    .replace(/\b(?:in|the|a|an|to|for|of|and|or)\b(?:\s+\b(?:in|the|a|an|to|for|of|and|or)\b)*$/g, '')
+    .replace(/\bdropoff\b/g, 'drop off')
+    .replace(/\bpickup\b/g, 'pick up')
     .trim()
 
   return cleaned || 'meeting'

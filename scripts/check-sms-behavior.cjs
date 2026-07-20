@@ -199,6 +199,14 @@ assert.equal(
   'RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
 )
 assert.equal(
+  recurrenceSummary({ unit: 'week', interval: 1, weekdays: [1, 2, 3, 4] }, mondayEveningUtcStart, timeZone),
+  'Repeats every Monday, Tuesday, Wednesday, and Thursday.',
+)
+assert.equal(
+  recurrenceRule({ unit: 'week', interval: 1, weekdays: [1, 2, 3, 4] }, mondayEveningUtcStart, timeZone),
+  'RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,TU,WE,TH',
+)
+assert.equal(
   recurrenceRule({ unit: 'month', interval: 1, mode: 'nth_weekday', weekday: 3 }, mondayEveningUtcStart, timeZone),
   'RRULE:FREQ=MONTHLY;INTERVAL=1;BYDAY=WE;BYSETPOS=3',
 )
@@ -228,6 +236,20 @@ assert.equal(staceyInvite.directInvitees.length, 0)
 const staceyInviteSchedule = parseSmsIntent(staceyInvite.cleanedText, timeZone)
 assert.equal(staceyInviteSchedule.type, 'schedule')
 assert.deepEqual(staceyInviteSchedule.exactTime, { hour: 14, minute: 0 })
+
+const recurringDropOff = parseSmsIntent(
+  'Can you remind me every day at 6:45 Monday through Thursday to drop off the kids in the morning',
+  timeZone,
+)
+assert.equal(recurringDropOff.type, 'schedule')
+assert.deepEqual(recurringDropOff.exactTime, { hour: 6, minute: 45 })
+assert.deepEqual(recurringDropOff.recurrence, {
+  unit: 'week',
+  interval: 1,
+  weekdays: [1, 2, 3, 4],
+})
+assert.equal(parts(recurringDropOff.baseDate).weekday, 1)
+assert.match(recurringDropOff.title, /drop off the kids/i)
 
 assertInviteParse('call with Mike Friday', 'call Friday', ['Mike'])
 assertInviteParse('lunch with Sarah next week', 'lunch next week', ['Sarah'])
