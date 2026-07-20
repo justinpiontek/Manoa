@@ -251,6 +251,42 @@ assert.deepEqual(recurringDropOff.recurrence, {
 assert.equal(parts(recurringDropOff.baseDate).weekday, 1)
 assert.match(recurringDropOff.title, /drop off the kids/i)
 
+const recurringTwoDaysLong = parseSmsIntent(
+  'Remind me to pick up the kids every Monday and Tuesday at 3:45',
+  timeZone,
+)
+assert.equal(recurringTwoDaysLong.type, 'schedule')
+assert.deepEqual(recurringTwoDaysLong.recurrence, {
+  unit: 'week',
+  interval: 1,
+  weekdays: [1, 2],
+})
+assert.equal(recurringTwoDaysLong.title, 'pick up the kids')
+
+const recurringTwoDaysMixed = parseSmsIntent(
+  'Remind me to pick up the kids every mon and Tuesday at 3:45',
+  timeZone,
+)
+assert.equal(recurringTwoDaysMixed.type, 'schedule')
+assert.deepEqual(recurringTwoDaysMixed.recurrence, {
+  unit: 'week',
+  interval: 1,
+  weekdays: [1, 2],
+})
+assert.equal(recurringTwoDaysMixed.title, 'pick up the kids')
+
+const recurringRange = parseSmsIntent(
+  'Remind me to pick up the kids every mon-thur at 3:45',
+  timeZone,
+)
+assert.equal(recurringRange.type, 'schedule')
+assert.deepEqual(recurringRange.recurrence, {
+  unit: 'week',
+  interval: 1,
+  weekdays: [1, 2, 3, 4],
+})
+assert.equal(recurringRange.title, 'pick up the kids')
+
 assertInviteParse('call with Mike Friday', 'call Friday', ['Mike'])
 assertInviteParse('lunch with Sarah next week', 'lunch next week', ['Sarah'])
 assertInviteParse('meeting with Alex in May', 'meeting in May', ['Alex'])

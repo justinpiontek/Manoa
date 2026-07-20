@@ -311,14 +311,6 @@ function parseRecurringWeekdays(text: string) {
     if (start !== null && end !== null) return expandWeekdayRange(start, end)
   }
 
-  const singleRecurringDayMatch = lower.match(
-    new RegExp(`\\b(?:every|each)(?:\\s+other)?\\s+(${weekdayNameSource})'?s?\\b`, 'i'),
-  )
-  if (singleRecurringDayMatch) {
-    const weekday = weekdayFromAlias(singleRecurringDayMatch[1])
-    return weekday === null ? null : [weekday]
-  }
-
   if (!/\b(?:every|each)\b/.test(lower)) return null
 
   const weekdayMatches = uniqueSortedWeekdays(
@@ -327,7 +319,9 @@ function parseRecurringWeekdays(text: string) {
       .filter((value): value is number => value !== null),
   )
 
-  return weekdayMatches.length >= 2 ? weekdayMatches : null
+  if (weekdayMatches.length >= 2) return weekdayMatches
+  if (weekdayMatches.length === 1) return weekdayMatches
+  return null
 }
 
 export function parseRecurrence(text: string): RecurrenceSpec | null {
@@ -846,13 +840,14 @@ function stripSchedulingNoise(text: string) {
     .replace(new RegExp(`\\b(?:early|mid|middle of|late|end of(?: the)?)\\s+(?:${monthNameSource})\\b`, 'g'), ' ')
     .replace(/\bend of (?:the )?(?:current )?month\b|\bend of month\b/g, ' ')
     .replace(/\b(?:this|next)\s+(?:week(?:'s|s)?|weekend|month)\b/g, ' ')
+    .replace(new RegExp(`\\b(?:${weekdayNameSource})'?s?\\b`, 'g'), ' ')
     .replace(/\b(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)\b/g, ' ')
     .replace(/\bat\s+(1[0-2]|0?[1-9])(?::[0-5]\d)?\b/g, ' ')
     .replace(/\b(?:to|for|around|by)\s+(1[0-2]|0?[1-9])(?::[0-5]\d)?\b/g, ' ')
     .replace(/\b(1[0-2]|0?[1-9]):([0-5]\d)\b/g, ' ')
     .replace(/\ball day\b/g, ' ')
     .replace(/\b(noon|midnight|morning|afternoon|evening|tonight|lunchtime)\b/g, ' ')
-    .replace(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday|today|tomorrow|tmrw|tmmrw|tomorow|tommorow|tommorrow|next)\b/g, ' ')
+    .replace(/\b(today|tomorrow|tmrw|tmmrw|tomorow|tommorow|tommorrow|next)\b/g, ' ')
     .replace(/\btomororws?\b/g, ' ')
     .replace(/\b(?:already scheduled|already booked|they scheduled|they booked)\b/g, ' ')
     .replace(
