@@ -125,6 +125,7 @@ type SerializedDateWindow = {
   start: string
   end: string
   label: string
+  allowedWeekdays?: number[] | null
 }
 
 type PendingPayload = {
@@ -1110,16 +1111,22 @@ function blockedDayNoOpeningReply({
   options,
   attendees,
   unresolvedInvitees,
+  calendarLabel,
+  dateLabel,
 }: {
-  conflict: EventSummary
-  pendingInvite: boolean
+  conflict?: EventSummary | null
+  pendingInvite?: boolean
   options: ScheduleOption[]
   attendees: Invitee[]
   unresolvedInvitees: string[]
+  calendarLabel?: string | null
+  dateLabel?: string | null
 }) {
-  const intro = pendingInvite
-    ? `⚠️ You have a pending invite for "${conflict.title}" at ${conflict.timeLabel} on ${conflict.calendarName}.`
-    : `⚠️ That day is already reserved for "${conflict.title}" at ${conflict.timeLabel} on ${conflict.calendarName}.`
+  const intro = conflict
+    ? pendingInvite
+      ? `⚠️ You have a pending invite for "${conflict.title}" at ${conflict.timeLabel} on ${conflict.calendarName}.`
+      : `⚠️ That day is already reserved for "${conflict.title}" at ${conflict.timeLabel} on ${conflict.calendarName}.`
+    : `⚠️ I couldn't find a clear opening${calendarLabel ? ` on ${calendarLabel}` : ''}${dateLabel ? ` for ${dateLabel}` : ''}, but I can still book one of these anyway.`
   const footerLines: string[] = []
 
   if (options.length >= 3) {
@@ -1490,7 +1497,6 @@ async function noOpeningScheduleReply({
   })
 
   if (
-    conflictReply &&
     chosenCalendar &&
     !exactTime &&
     !recurrence &&
@@ -1528,18 +1534,35 @@ async function noOpeningScheduleReply({
         timeZone: profile.timezone,
       })
 
-      const firstOption = bookAnywayOptions[0]
-      const firstStart = new Date(firstOption.start)
-      const firstEnd = new Date(firstOption.end)
-      const pendingInviteConflict = events.find(
-        (event) => overlapsOption(event, firstStart, firstEnd) && isPendingInviteConflict(event, profile.email),
-      )
-      const hardConflict = events.find(
-        (event) => overlapsOption(event, firstStart, firstEnd) && !isPendingInviteConflict(event, profile.email),
-      )
-      const representativeConflict = pendingInviteConflict || hardConflict
+      const optionConflicts = bookAnywayOptions.map((option) => {
+        const optionStart = new Date(option.start)
+        const optionEnd = new Date(option.end)
+        const pendingInviteConflict = events.find(
+          (event) => overlapsOption(event, optionStart, optionEnd) && isPendingInviteConflict(event, profile.email),
+        )
+        const hardConflict = events.find(
+          (event) => overlapsOption(event, optionStart, optionEnd) && !isPendingInviteConflict(event, profile.email),
+        )
+        const representativeConflict =
+          pendingInviteConflict ||
+          hardConflict ||
+          events.find((event) => overlapsOption(event, optionStart, optionEnd))
 
-      if (representativeConflict) {
+        return representativeConflict
+          ? {
+              conflict: representativeConflict,
+              pendingInvite: Boolean(pendingInviteConflict),
+            }
+          : null
+      })
+
+      const representativeOptionConflict =
+        optionConflicts.find((item) => item?.pendingInvite) ||
+        optionConflicts.find((item) => item?.conflict.timeLabel === 'All day') ||
+        optionConflicts.find(Boolean) ||
+        null
+
+      if (representativeOptionConflict || conflictReply) {
         await storeScheduleOptionsPending({
           profileId: profile.id,
           smsFrom,
@@ -1558,11 +1581,13 @@ async function noOpeningScheduleReply({
         })
 
         return blockedDayNoOpeningReply({
-          conflict: representativeConflict,
-          pendingInvite: Boolean(pendingInviteConflict),
+          conflict: representativeOptionConflict?.conflict || null,
+          pendingInvite: representativeOptionConflict?.pendingInvite || false,
           options: bookAnywayOptions,
           attendees,
           unresolvedInvitees,
+          calendarLabel,
+          dateLabel: dateWindow.label || null,
         })
       }
     }
@@ -2895,6 +2920,7 @@ function serializeDateWindow(window: DateWindow | null | undefined) {
         start: window.start.toISOString(),
         end: window.end.toISOString(),
         label: window.label,
+        allowedWeekdays: window.allowedWeekdays || null,
       }
     : null
 }
@@ -2905,13 +2931,16 @@ function deserializeDateWindow(window: SerializedDateWindow | null | undefined):
     start: new Date(window.start),
     end: new Date(window.end),
     label: window.label,
+    allowedWeekdays: window.allowedWeekdays || null,
   }
 }
 
 function isWithinWindow(option: ScheduleOption, window: DateWindow | null | undefined) {
   if (!window) return true
   const start = new Date(option.start)
-  return start >= window.start && start <= window.end
+  if (start < window.start || start > window.end) return false
+  if (!window.allowedWeekdays?.length) return true
+  return window.allowedWeekdays.includes(dateTimePartsInTimeZone(start, option.timeZone).weekday)
 }
 
 function daysToSearch(baseDate: Date, window: DateWindow | null | undefined, timeZone?: string) {
@@ -2970,6 +2999,12 @@ async function findScheduleOptionsAcrossWindow({
 
   for (let offset = 0; offset < totalDays && collected.length < 3; offset += 1) {
     const candidateBaseDate = addDays(searchStart, offset, timeZone)
+    if (
+      dateWindow?.allowedWeekdays?.length &&
+      !dateWindow.allowedWeekdays.includes(dateTimePartsInTimeZone(candidateBaseDate, timeZone).weekday)
+    ) {
+      continue
+    }
     const dayOptions = await findScheduleOptions({
       profileId,
       title,

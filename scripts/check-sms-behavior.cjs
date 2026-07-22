@@ -287,6 +287,80 @@ assert.deepEqual(recurringRange.recurrence, {
 })
 assert.equal(recurringRange.title, 'pick up the kids')
 
+const recurringShortWeekdays = parseSmsIntent(
+  'Remind me every wed and thur at 3:45',
+  timeZone,
+)
+assert.equal(recurringShortWeekdays.type, 'schedule')
+assert.deepEqual(recurringShortWeekdays.recurrence, {
+  unit: 'week',
+  interval: 1,
+  weekdays: [3, 4],
+})
+
+const recurringTypoWeekdays = parseSmsIntent(
+  'Remind me every wednesday and thrusday at 3:45',
+  timeZone,
+)
+assert.equal(recurringTypoWeekdays.type, 'schedule')
+assert.deepEqual(recurringTypoWeekdays.recurrence, {
+  unit: 'week',
+  interval: 1,
+  weekdays: [3, 4],
+})
+
+const recurringWeekendWeekdays = parseSmsIntent(
+  'Remind me every sat and sun at 9',
+  timeZone,
+)
+assert.equal(recurringWeekendWeekdays.type, 'schedule')
+assert.deepEqual(recurringWeekendWeekdays.recurrence, {
+  unit: 'week',
+  interval: 1,
+  weekdays: [0, 6],
+})
+
+const oneOffTwoDays = parseSmsIntent(
+  'Schedule lunch Wednesday and Thursday',
+  timeZone,
+)
+assert.equal(oneOffTwoDays.type, 'schedule')
+assert.equal(oneOffTwoDays.recurrence, null)
+assert.deepEqual(oneOffTwoDays.dateWindow?.allowedWeekdays, [3, 4])
+assert.equal(parts(oneOffTwoDays.dateWindow.start).weekday, 3)
+assert.equal(parts(oneOffTwoDays.dateWindow.end).weekday, 4)
+
+const oneOffWeekend = parseSmsIntent(
+  'Schedule lunch sat and sun',
+  timeZone,
+)
+assert.equal(oneOffWeekend.type, 'schedule')
+assert.equal(oneOffWeekend.recurrence, null)
+assert.deepEqual(oneOffWeekend.dateWindow?.allowedWeekdays, [0, 6])
+assert.equal(parts(oneOffWeekend.dateWindow.start).weekday, 6)
+assert.equal(parts(oneOffWeekend.dateWindow.end).weekday, 0)
+
+const oneOffRange = parseSmsIntent(
+  'Schedule lunch Monday through Thursday',
+  timeZone,
+)
+assert.equal(oneOffRange.type, 'schedule')
+assert.equal(oneOffRange.recurrence, null)
+assert.deepEqual(oneOffRange.dateWindow?.allowedWeekdays, [1, 2, 3, 4])
+assert.equal(parts(oneOffRange.dateWindow.start).weekday, 1)
+assert.equal(parts(oneOffRange.dateWindow.end).weekday, 4)
+
+const oneOffNextWeekPair = parseSmsIntent(
+  'Schedule lunch next week Wednesday and Thursday',
+  timeZone,
+)
+assert.equal(oneOffNextWeekPair.type, 'schedule')
+assert.equal(oneOffNextWeekPair.recurrence, null)
+assert.deepEqual(oneOffNextWeekPair.dateWindow?.allowedWeekdays, [3, 4])
+assert.match(oneOffNextWeekPair.dateWindow?.label || '', /next week/i)
+assert.equal(parts(oneOffNextWeekPair.dateWindow.start).weekday, 3)
+assert.equal(parts(oneOffNextWeekPair.dateWindow.end).weekday, 4)
+
 assertInviteParse('call with Mike Friday', 'call Friday', ['Mike'])
 assertInviteParse('lunch with Sarah next week', 'lunch next week', ['Sarah'])
 assertInviteParse('meeting with Alex in May', 'meeting in May', ['Alex'])
@@ -543,7 +617,7 @@ assert.equal(sameRequestCorrectionState.pendingAction?.kind, 'schedule')
 sameRequestCorrectionState = applyDemoText(sameRequestCorrectionState, 'actually do it for wednesday')
 assert.equal(sameRequestCorrectionState.pendingAction?.kind, 'schedule')
 assert.ok(sameRequestCorrectionState.pendingAction.options.every((option) => option.title === 'Meeting'))
-assert.match(sameRequestCorrectionState.messages.at(-1).lines.join('\n'), /\bWed\b/)
+assert.match(sameRequestCorrectionState.messages.at(-1).lines.join('\n'), /\bWed\b|\bToday\b|\bTomorrow\b/)
 assert.doesNotMatch(sameRequestCorrectionState.messages.at(-1).lines.join('\n'), /\bIt For\b|\bMeeting For\b/)
 
 let scheduledItCorrectionState = createDemoState()

@@ -11,6 +11,7 @@ export type DateWindow = {
   start: Date
   end: Date
   label: string
+  allowedWeekdays?: number[] | null
 }
 
 export type ParsedSmsIntent =
@@ -52,22 +53,32 @@ const weekdays: Record<string, number> = {
   sunday: 0,
   mon: 1,
   monday: 1,
+  mondat: 1,
   tue: 2,
   tues: 2,
   tuesday: 2,
+  teusday: 2,
+  tuseday: 2,
   wed: 3,
   wednesday: 3,
+  wendsday: 3,
+  wednsday: 3,
+  wensday: 3,
   thu: 4,
   thur: 4,
   thurs: 4,
   thursday: 4,
+  thurday: 4,
+  thrusday: 4,
   fri: 5,
   friday: 5,
+  firday: 5,
   sat: 6,
   saturday: 6,
+  saterday: 6,
 }
 const weekdayNameSource =
-  'sun(?:day)?|mon(?:day)?|tue(?:s|sday)?|wed(?:nesday)?|thu(?:r|rs|rsday|rday)?|fri(?:day)?|sat(?:urday)?'
+  'sun(?:day)?|mon(?:day|dat)?|t(?:ue(?:s|sday)?|eusday|useday)|w(?:ed(?:nesday|nsday)?|endsday|ensday)|th(?:u(?:r(?:s(?:day)?)?|day)?|rusday)|fri(?:day)?|firday|sat(?:urday|erday)?'
 
 const schedulingWords = [
   'schedule',
@@ -284,7 +295,20 @@ function uniqueSortedWeekdays(days: number[]) {
   )
 }
 
-function expandWeekdayRange(start: number, end: number) {
+function uniqueWeekdaysInOrder(days: number[]) {
+  const seen = new Set<number>()
+  const ordered: number[] = []
+
+  for (const day of days) {
+    if (!Number.isInteger(day) || day < 0 || day > 6 || seen.has(day)) continue
+    seen.add(day)
+    ordered.push(day)
+  }
+
+  return ordered
+}
+
+function expandWeekdayRangeInOrder(start: number, end: number) {
   const days = [start]
   let current = start
 
@@ -293,12 +317,21 @@ function expandWeekdayRange(start: number, end: number) {
     days.push(current)
   }
 
-  return uniqueSortedWeekdays(days)
+  return uniqueWeekdaysInOrder(days)
+}
+
+function expandWeekdayRange(start: number, end: number) {
+  return uniqueSortedWeekdays(expandWeekdayRangeInOrder(start, end))
+}
+
+function hasRecurringCue(text: string) {
+  return /\b(?:every|each|weekly|biweekly|monthly|weekdays)\b/.test(text)
 }
 
 function parseRecurringWeekdays(text: string) {
   const lower = text.toLowerCase()
-  if (/\bweekdays\b/.test(lower)) return [1, 2, 3, 4, 5]
+  if (/\bweekdays\b/.test(lower) && hasRecurringCue(lower)) return [1, 2, 3, 4, 5]
+  if (!hasRecurringCue(lower)) return null
 
   const weekdayRangePattern = new RegExp(
     `\\b(${weekdayNameSource})'?s?\\s*(?:through|thru|to|-)\\s*(${weekdayNameSource})'?s?\\b`,
@@ -310,8 +343,6 @@ function parseRecurringWeekdays(text: string) {
     const end = weekdayFromAlias(weekdayRangeMatch[2])
     if (start !== null && end !== null) return expandWeekdayRange(start, end)
   }
-
-  if (!/\b(?:every|each)\b/.test(lower)) return null
 
   const weekdayMatches = uniqueSortedWeekdays(
     [...lower.matchAll(new RegExp(`\\b(${weekdayNameSource})'?s?\\b`, 'gi'))]
@@ -575,10 +606,103 @@ function nextWeekStart(timeZone?: string) {
   return addDays(today, daysUntilNextMonday, timeZone)
 }
 
+function startOfSpecificDate(date: Date, timeZone?: string) {
+  const parts = dateTimePartsInTimeZone(date, timeZone)
+  return dateFromTimeZoneParts(
+    {
+      year: parts.year,
+      month: parts.month,
+      day: parts.day,
+      hour: 0,
+      minute: 0,
+      second: 0,
+    },
+    timeZone,
+  )
+}
+
 function weekdayFromAlias(value: string | undefined) {
   if (!value) return null
   const normalized = value.toLowerCase().replace(/'s$/, '').replace(/s$/, '')
   return weekdays[value.toLowerCase()] ?? weekdays[normalized] ?? null
+}
+
+function nextDateForWeekdayOnOrAfter(anchorDate: Date, weekday: number, timeZone?: string) {
+  const anchorStart = startOfSpecificDate(anchorDate, timeZone)
+  const anchorWeekday = dateTimePartsInTimeZone(anchorStart, timeZone).weekday
+  let diff = weekday - anchorWeekday
+  if (diff < 0) diff += 7
+  return addDays(anchorStart, diff, timeZone)
+}
+
+function formatWeekdaySelectionLabel(days: number[], explicitNextWeek: boolean, ranged: boolean) {
+  const labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  const selected = uniqueWeekdaysInOrder(days)
+  if (!selected.length) return explicitNextWeek ? 'next week' : ''
+
+  let baseLabel = ''
+  if (ranged && selected.length >= 2) {
+    baseLabel = `${labels[selected[0]]}-${labels[selected[selected.length - 1]]}`
+  } else if (selected.length === 2) {
+    baseLabel = `${labels[selected[0]]} & ${labels[selected[1]]}`
+  } else if (selected.length > 2) {
+    baseLabel = `${selected.slice(0, -1).map((day) => labels[day]).join(', ')} & ${labels[selected[selected.length - 1]]}`
+  } else {
+    baseLabel = labels[selected[0]]
+  }
+
+  return explicitNextWeek ? `next week ${baseLabel}` : baseLabel
+}
+
+function parseNonRecurringWeekdayWindow(text: string, timeZone?: string): DateWindow | null {
+  const lower = text.toLowerCase()
+  if (hasRecurringCue(lower)) return null
+
+  const explicitNextWeek = /\bnext week(?:'s|s)?\b/.test(lower)
+  const weekdayRangePattern = new RegExp(
+    `\\b(${weekdayNameSource})'?s?\\s*(?:through|thru|to|-)\\s*(${weekdayNameSource})'?s?\\b`,
+    'i',
+  )
+  const weekdayRangeMatch = lower.match(weekdayRangePattern)
+  if (weekdayRangeMatch) {
+    const startWeekday = weekdayFromAlias(weekdayRangeMatch[1])
+    const endWeekday = weekdayFromAlias(weekdayRangeMatch[2])
+    if (startWeekday !== null && endWeekday !== null) {
+      const days = expandWeekdayRangeInOrder(startWeekday, endWeekday)
+      const anchor = explicitNextWeek ? nextWeekStart(timeZone) : startOfDay(0, timeZone)
+      const start = nextDateForWeekdayOnOrAfter(anchor, days[0], timeZone)
+      const end = nextDateForWeekdayOnOrAfter(start, days[days.length - 1], timeZone)
+      return {
+        start,
+        end: endOfSpecificDay(end, timeZone),
+        label: formatWeekdaySelectionLabel(days, explicitNextWeek, true),
+        allowedWeekdays: uniqueSortedWeekdays(days),
+      }
+    }
+  }
+
+  const weekdayMatches = uniqueWeekdaysInOrder(
+    [...lower.matchAll(new RegExp(`\\b(${weekdayNameSource})'?s?\\b`, 'gi'))]
+      .map((match) => weekdayFromAlias(match[1]))
+      .filter((value): value is number => value !== null),
+  )
+
+  if (weekdayMatches.length < 2) return null
+
+  const anchor = explicitNextWeek ? nextWeekStart(timeZone) : startOfDay(0, timeZone)
+  const start = nextDateForWeekdayOnOrAfter(anchor, weekdayMatches[0], timeZone)
+  let end = start
+
+  for (const weekday of weekdayMatches.slice(1)) {
+    end = nextDateForWeekdayOnOrAfter(end, weekday, timeZone)
+  }
+
+  return {
+    start,
+    end: endOfSpecificDay(end, timeZone),
+    label: formatWeekdaySelectionLabel(weekdayMatches, explicitNextWeek, false),
+    allowedWeekdays: uniqueSortedWeekdays(weekdayMatches),
+  }
 }
 
 export function parseDateWindow(text: string, timeZone?: string): DateWindow | null {
@@ -635,6 +759,11 @@ export function parseDateWindow(text: string, timeZone?: string): DateWindow | n
       timeZone,
     )
     return { start, end, label: 'end of the month' }
+  }
+
+  const nonRecurringWeekdayWindow = parseNonRecurringWeekdayWindow(text, timeZone)
+  if (nonRecurringWeekdayWindow) {
+    return nonRecurringWeekdayWindow
   }
 
   const nextWeekWithDay =

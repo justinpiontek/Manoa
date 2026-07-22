@@ -3721,7 +3721,10 @@ footer {
   font-weight: 700;
 }
 
-.landing-utility-link,
+.landing-utility-link {
+  display: inline-flex;
+}
+
 .landing-nav-cta {
   display: none;
 }
