@@ -3946,7 +3946,7 @@ async function calendarSetupReply(profile: SmsProfile, lowerBody: string) {
 
 async function helpReply(profile: SmsProfile | null, isDashboardConsole: boolean) {
   if (!profile) {
-    return 'Sign up for Manoa first, then text this number from your saved phone.'
+    return `You're not set up with Manoa yet. Start here: ${appUrl()}. After signup, text START from this phone to turn texting on.`
   }
 
   if (!activeSubscriptionStatuses.has(profile.subscriptionStatus)) {
@@ -6185,7 +6185,7 @@ export async function handleIncomingSms({
 
   if (!isDashboardConsole && startWords.has(lowerBody)) {
     if (!profile) {
-      const reply = "I don't recognize this number yet. Sign up for Manoa first, then text START from this phone."
+      const reply = `You're not set up with Manoa yet. Start here: ${appUrl()}. After signup, text START from this phone to turn texting on.`
       await safeLogSms({ from, body: reply, direction: 'outbound' })
       return reply
     }
@@ -6203,7 +6203,7 @@ export async function handleIncomingSms({
   }
 
   if (!profile) {
-    const reply = "I don't recognize this number yet. Sign up for Manoa first, then text START from this phone."
+    const reply = `You're not set up with Manoa yet. Start here: ${appUrl()}. After signup, text START from this phone to turn texting on.`
     await safeLogSms({ from, body: reply, direction: 'outbound' })
     return reply
   }
