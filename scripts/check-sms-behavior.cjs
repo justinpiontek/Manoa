@@ -27,7 +27,9 @@ const {
   choosePreferredSingleImageEvent,
 } = require('../src/lib/sms/calendarImage.ts')
 const {
+  isInviteeResolutionAbort,
   isInviteeEmailFollowUp,
+  isInviteeResolutionBookWithoutInvites,
   parseExistingEventInviteRequest,
   parseInviteesFromText,
   resolveInviteeFollowUp,
@@ -231,10 +233,11 @@ assert.equal(whereLookup.type, 'lookup')
 assert.equal(whereLookup.query, 'Oakleys appointment')
 assert.equal(whereLookup.mode, 'where')
 
-const staceyInvite = assertInviteParse('meeting with Stacey tomorrow at 2', 'meeting tomorrow at 2', ['Stacey'])
+const staceyInvite = assertInviteParse('meeting with Stacey tomorrow at 2', 'meeting with Stacey tomorrow at 2', ['Stacey'])
 assert.equal(staceyInvite.directInvitees.length, 0)
 const staceyInviteSchedule = parseSmsIntent(staceyInvite.cleanedText, timeZone)
 assert.equal(staceyInviteSchedule.type, 'schedule')
+assert.equal(staceyInviteSchedule.title, 'meeting with stacey')
 assert.deepEqual(staceyInviteSchedule.exactTime, { hour: 14, minute: 0 })
 
 const recurringDropOff = parseSmsIntent(
@@ -361,15 +364,19 @@ assert.match(oneOffNextWeekPair.dateWindow?.label || '', /next week/i)
 assert.equal(parts(oneOffNextWeekPair.dateWindow.start).weekday, 3)
 assert.equal(parts(oneOffNextWeekPair.dateWindow.end).weekday, 4)
 
-assertInviteParse('call with Mike Friday', 'call Friday', ['Mike'])
-assertInviteParse('lunch with Sarah next week', 'lunch next week', ['Sarah'])
-assertInviteParse('meeting with Alex in May', 'meeting in May', ['Alex'])
+assertInviteParse('call with Mike Friday', 'call with Mike Friday', ['Mike'])
+assertInviteParse('lunch with Sarah next week', 'lunch with Sarah next week', ['Sarah'])
+assertInviteParse('meeting with Alex in May', 'meeting with Alex in May', ['Alex'])
 assertInviteParse('invite Priya to meeting Tuesday', 'meeting Tuesday', ['Priya'])
 
 const directInvite = parseInviteesFromText('meeting with Stacey stacey@example.com tomorrow')
-assert.equal(directInvite.cleanedText, 'meeting tomorrow')
+assert.equal(directInvite.cleanedText, 'meeting with Stacey tomorrow')
 assert.deepEqual(directInvite.names, [])
 assert.deepEqual(directInvite.directInvitees, [{ displayName: 'Stacey', email: 'stacey@example.com' }])
+
+const namedInviteWithoutEmail = parseInviteesFromText('meeting with Beth this week')
+assert.equal(namedInviteWithoutEmail.cleanedText, 'meeting with Beth this week')
+assert.deepEqual(namedInviteWithoutEmail.names, ['Beth'])
 
 const inviteFollowUp = resolveInviteeFollowUp('Stacey stacey@example.com', ['Stacey'])
 assert.deepEqual(inviteFollowUp.resolved, [{ displayName: 'Stacey', email: 'stacey@example.com' }])
@@ -390,6 +397,12 @@ assert.deepEqual(yesInviteFollowUp.resolved, [
   { displayName: 'Justin', email: 'justin@metongamedia.com' },
 ])
 assert.deepEqual(yesInviteFollowUp.unresolvedNames, [])
+assert.equal(isInviteeResolutionBookWithoutInvites('book without', ['Justin']), true)
+assert.equal(isInviteeResolutionBookWithoutInvites('book without invite', ['Justin']), true)
+assert.equal(isInviteeResolutionBookWithoutInvites('no thanks', ['Justin']), true)
+assert.equal(isInviteeResolutionAbort('cancel'), true)
+assert.equal(isInviteeResolutionAbort('never mind'), true)
+assert.equal(isInviteeResolutionAbort('no thanks'), false)
 assert.equal(isInviteeEmailFollowUp('yes, justin@metongamedia.com', ['Justin']), true)
 assert.equal(isInviteeEmailFollowUp('justin@metongamedia.com', ['Justin']), true)
 assert.equal(isInviteeEmailFollowUp('no, justin@metongamedia.com', ['Justin']), false)
@@ -595,6 +608,14 @@ assert.deepEqual(
   lunchDemoState.pendingAction.options.map((option) => option.timeLabel),
   ['11:00 AM', '12:00 PM', '1:00 PM'],
 )
+
+let inviteNamedDemoState = createDemoState()
+inviteNamedDemoState = applyDemoText(inviteNamedDemoState, 'Need a meeting with Beth this week')
+assert.equal(inviteNamedDemoState.pendingAction?.kind, 'schedule')
+assert.ok(inviteNamedDemoState.pendingAction.options.every((option) => option.title === 'Meeting With Beth'))
+inviteNamedDemoState = applyDemoText(inviteNamedDemoState, '1')
+assert.match(inviteNamedDemoState.messages.at(-1).lines.join('\n'), /Booked Meeting With Beth/)
+assert.doesNotMatch(inviteNamedDemoState.messages.at(-1).lines.join('\n'), /Booked Need A Meeting/i)
 
 let correctionState = createDemoState()
 correctionState = applyDemoText(correctionState, 'schedule meeting tomorrow')

@@ -52,7 +52,7 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
         <p className="setup-lede">
           {calendarConnected
             ? 'Your calendar is connected. Manoa can now check your availability, book events after you confirm, read event images, and send agenda and reminder texts.'
-            : 'After you subscribe, connect Google, Outlook, or Apple Calendar so Manoa can schedule by text, read event images, and keep reminders in sync.'}
+            : 'After you subscribe, connect Google, Apple, or Outlook (beta) so Manoa can schedule by text, read event images, and keep reminders in sync.'}
         </p>
 
         <div className="status-row" aria-label="Setup status">
@@ -99,7 +99,7 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
             <span className="step-number">2</span>
             <h2>Calendar connection</h2>
             <p>
-              Connect Google, Outlook, or Apple so Manoa can find open times, book events, answer
+              Connect Google, Apple, or Outlook (beta) so Manoa can find open times, book events, answer
               schedule questions, send daily agendas, and keep reminders accurate. Apple Calendar
               still uses the longer manual iCloud path.
             </p>
@@ -109,7 +109,7 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
                   {calendarConnected ? 'Connect or reconnect Google' : 'Connect Google Calendar'}
                 </a>
                 <a className="button setup-action secondary-button" href="/api/calendar/outlook/start">
-                  Connect Outlook Calendar
+                  Connect Outlook Calendar (beta)
                 </a>
                 <a className="button setup-action secondary-button" href={appleConnectHref}>
                   Connect Apple Calendar

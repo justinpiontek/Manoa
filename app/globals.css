@@ -4345,6 +4345,13 @@ footer {
   font-weight: 850;
 }
 
+.landing-plan-trial {
+  margin: 14px 0 0;
+  color: #122033;
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+
 .landing-plan-price {
   display: flex;
   align-items: flex-end;

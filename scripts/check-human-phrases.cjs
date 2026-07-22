@@ -77,6 +77,10 @@ function assertReschedule(phrase, queryPattern) {
   if (queryPattern) assert.match(parsed.query, queryPattern, phrase)
 }
 
+assert.equal(intent('Need a meeting with Beth this week').type, 'schedule')
+assert.equal(intent('Need a meeting with Beth this week').title, 'meeting with beth')
+assert.equal(intent('Need a call with Beth this week').title, 'call with beth')
+
 const schedulePhrases = [
   'schedule lunch tomorrow',
   'book lunch tomorow',

@@ -70,7 +70,7 @@ const homepageFaqs = [
   },
   {
     question: 'What calendars work with Manoa?',
-    answer: 'Manoa connects to Google Calendar, Outlook, and Apple Calendar.',
+    answer: 'Manoa works with Google Calendar, Apple Calendar, and Outlook (beta).',
   },
   {
     question: 'Will Manoa change things without me knowing?',
@@ -90,7 +90,7 @@ const homepageFaqs = [
   {
     question: 'What does setup look like?',
     answer:
-      'Enter your email and phone, finish checkout, connect your calendar, and send your first text. The whole flow is designed to stay short.',
+      'Enter your email and phone, finish checkout, connect Google, Apple, or Outlook (beta), and send your first text. The whole flow is designed to stay short.',
   },
 ]
 
@@ -165,7 +165,7 @@ const pricingBullets = [
   'Schedule and reschedule by text',
   'Agenda and reminder texts',
   'Add events from screenshots & flyers',
-  'Works with Google, Outlook, and Apple',
+  'Works with Google, Apple, and Outlook (beta)',
 ]
 
 const reviewPeople = ['JS', 'AM', 'RB', 'KT']
@@ -406,6 +406,7 @@ export default function ManoaSignupPage() {
   const [demoState, setDemoState] = useState(() => createDemoState())
   const [demoInput, setDemoInput] = useState(DEMO_STARTER_INPUT)
   const [demoPending, setDemoPending] = useState(false)
+  const [signupPhone, setSignupPhone] = useState('')
   const [statusNotice, setStatusNotice] = useState<{
     tone: 'success' | 'warning'
     text: string
@@ -688,19 +689,14 @@ export default function ManoaSignupPage() {
 
         <aside id="signup" className="panel landing-pricing-card" aria-label="Start Manoa">
           <p className="landing-plan-label">Manoa Premium</p>
+          <p className="landing-plan-trial">Start with 14 days free</p>
           <div className="landing-plan-price">
             <strong>$19.99</strong>
-            <span>/month</span>
+            <span>/month after trial</span>
           </div>
           <p className="landing-plan-copy">
-            Everything you need to manage your calendar - over text.
+            Text your calendar instead of opening it.
           </p>
-
-          <ul className="landing-pricing-card-list">
-            {pricingBullets.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
 
           <form action="/api/start-checkout" method="post" className="landing-signup-form">
             <input type="hidden" name="plan" value="personal_monthly_1999" />
@@ -717,9 +713,7 @@ export default function ManoaSignupPage() {
                 />
               </div>
               <div className="field">
-                <label htmlFor="phone">
-                  Phone <span className="field-label-note">(optional - for texting features)</span>
-                </label>
+                <label htmlFor="phone">Phone</label>
                 <input
                   id="phone"
                   name="phone"
@@ -727,33 +721,33 @@ export default function ManoaSignupPage() {
                   inputMode="tel"
                   autoComplete="tel"
                   placeholder="+1 555 555 5555"
+                  value={signupPhone}
+                  onChange={(event) => setSignupPhone(event.target.value)}
                 />
               </div>
             </div>
 
             <button className="button landing-pricing-button" type="submit">
-              Start setup
+              Start free trial
               <ArrowIcon />
             </button>
 
             <p className="landing-card-meta">Secure checkout. Cancel anytime.</p>
+            <p className="pricing-optional-note">Connect Google, Apple, or Outlook (beta) after checkout.</p>
 
-            <label className="consent-check pricing-consent" htmlFor="sms-consent">
-              <input id="sms-consent" name="sms_consent" type="checkbox" value="yes" />
-              <span>
-                I agree to receive recurring service-related SMS messages from Manoa, including
-                scheduling, reminders, and account notifications. Message frequency varies. Msg
-                &amp; data rates may apply. Reply STOP to opt out and HELP for help. See{' '}
-                <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms</a>.
-              </span>
-            </label>
+            {signupPhone.trim() ? (
+              <label className="consent-check pricing-consent" htmlFor="sms-consent">
+                <input id="sms-consent" name="sms_consent" type="checkbox" value="yes" />
+                <span>
+                  I agree to receive recurring service-related SMS messages from Manoa, including
+                  scheduling, reminders, and account notifications. Message frequency varies. Msg
+                  &amp; data rates may apply. Reply STOP to opt out and HELP for help. See{' '}
+                  <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms</a>.
+                </span>
+              </label>
+            ) : null}
 
-            <p className="pricing-trial-note">
-              Start with 14 days free. Cancel before billing if it is not for you.
-            </p>
-            <p className="pricing-optional-note">
-              You can use Manoa without texting. Add a phone and turn texts on later if you want.
-            </p>
+            <p className="pricing-optional-note">You can add a phone later if you want texting.</p>
           </form>
         </aside>
       </section>

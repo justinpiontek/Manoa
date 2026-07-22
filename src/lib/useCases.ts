@@ -89,7 +89,7 @@ export const useCases: UseCase[] = [
     faqs: [
       {
         question: 'Does Manoa support Google Calendar and Outlook?',
-        answer: 'Yes. The setup flow connects Google Calendar or Outlook after checkout.',
+        answer: 'Yes. Connect Google, Apple, or Outlook (beta) after checkout.',
       },
       {
         question: 'Do I need to learn commands?',
@@ -148,7 +148,7 @@ export const useCases: UseCase[] = [
     steps: [
       {
         title: '1. Connect your calendar',
-        body: 'After signup, connect Google Calendar or Outlook so Manoa can read the schedule.',
+        body: 'Connect Google, Apple, or Outlook (beta) after checkout so Manoa can read the schedule.',
       },
       {
         title: '2. Ask for today or tomorrow',
@@ -247,7 +247,7 @@ export const useCases: UseCase[] = [
       },
       {
         question: 'Does this work with my regular calendar?',
-        answer: 'Yes. Manoa adds the event to your connected Google Calendar, Outlook, or Apple Calendar.',
+        answer: 'Yes. Manoa adds the event to your connected Google Calendar, Apple Calendar, or Outlook (beta).',
       },
     ],
     relatedSlugs: [
@@ -585,7 +585,7 @@ export const useCases: UseCase[] = [
     steps: [
       {
         title: '1. Connect your calendar',
-        body: 'Connect Google Calendar, Outlook, or Apple Calendar once during setup.',
+        body: 'Connect Google, Apple, or Outlook (beta) after checkout.',
       },
       {
         title: '2. Text what you need',
@@ -602,8 +602,8 @@ export const useCases: UseCase[] = [
         answer: 'Yes. Manoa is built around texting your calendar instead of opening a traditional calendar app for every small change.',
       },
       {
-        question: 'Can it work with Google Calendar, Outlook, and Apple Calendar?',
-        answer: 'Yes. Manoa supports Google Calendar, Outlook, and Apple Calendar connections.',
+        question: 'Can it work with Google Calendar, Apple Calendar, and Outlook (beta)?',
+        answer: 'Yes. Manoa supports Google Calendar, Apple Calendar, and Outlook (beta).',
       },
       {
         question: 'Can it add events from screenshots too?',
@@ -729,7 +729,7 @@ export const useCases: UseCase[] = [
     steps: [
       {
         title: '1. Connect Outlook',
-        body: 'After signup, connect Outlook Calendar in the setup flow.',
+        body: 'Connect Google, Apple, or Outlook (beta) after checkout.',
       },
       {
         title: '2. Text Manoa',
@@ -743,7 +743,7 @@ export const useCases: UseCase[] = [
     faqs: [
       {
         question: 'Can I use Manoa if Outlook is my main calendar?',
-        answer: 'Yes. Outlook Calendar is supported directly in the setup flow.',
+        answer: 'Yes. Outlook Calendar is available in beta during setup.',
       },
       {
         question: 'Does Manoa replace Outlook?',

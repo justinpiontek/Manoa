@@ -979,6 +979,7 @@ function stripSchedulingNoise(text: string) {
     .replace(/\b(today|tomorrow|tmrw|tmmrw|tomorow|tommorow|tommorrow|next)\b/g, ' ')
     .replace(/\btomororws?\b/g, ' ')
     .replace(/\b(?:already scheduled|already booked|they scheduled|they booked)\b/g, ' ')
+    .replace(/\b(?:i need|need)\s+(?:a\s+|an\s+)?/g, ' ')
     .replace(
       /\b(i need to|need to|schedule|scheudle|chedule|book|add|set up|fit in|find time|find me time|find me a time|make time|squeeze in|hold|block off|pencil in|put|throw|save|plan|meet|reschedule|rescheduled|move|moved|change|changed|push|pushed|cancel|canceled|cancelled|delete|deleted|remove|removed|drop|dropped|take|took|off|from|on|at|to|my|work|personal|family|home|email|calendar|this|every|each|weekly|biweekly|monthly|week|weeks|month|months|other|recurring)\b/g,
       ' ',
@@ -988,6 +989,7 @@ function stripSchedulingNoise(text: string) {
     .replace(/\bsometime\b/g, ' ')
     .replace(/\s+/g, ' ')
     .replace(/^[\s,;:-]+|[\s,;:-]+$/g, '')
+    .replace(/^(?:a|an)\s+/g, '')
     .replace(/\b(?:in|the|a|an|to|for|of|and|or)\b(?:\s+\b(?:in|the|a|an|to|for|of|and|or)\b)*$/g, '')
     .replace(/\bdropoff\b/g, 'drop off')
     .replace(/\bpickup\b/g, 'pick up')

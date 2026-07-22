@@ -16,6 +16,10 @@ export type ExistingEventInviteRequest = {
 }
 
 const emailPattern = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi
+const inviteeResolutionAbortPattern =
+  /^(?:cancel|never mind|nevermind|forget it|leave it|stop|dont book it|don't book it)[.!]*$/i
+const inviteeResolutionBookWithoutPattern =
+  /\b(?:skip|skip invites?|skip the invites?|just book it|book it anyway|book without(?: invites?| them)?|without invites?|no invites?|dont invite|don't invite|dont send invites?|don't send invites?|no thanks|no thank you)\b/i
 const monthStop =
   '(?:jan\\.?|january|feb\\.?|february|mar\\.?|march|apr\\.?|april|may|jun\\.?|june|jul\\.?|july|aug\\.?|august|sep\\.?|sept\\.?|september|oct\\.?|october|nov\\.?|november|dec\\.?|december)'
 const weekdayStop =
@@ -70,8 +74,8 @@ export function parseInviteesFromText(text: string): InviteeParse {
     const match = text.match(pattern)
     if (!match) continue
 
-    cleanedText = cleanedText.replace(match[0], ' ')
     const chunk = match[1]
+    const keyword = match[0].trim().split(/\s+/)[0]?.toLowerCase()
 
     const namedEmails = extractNamedEmails(chunk)
     for (const invitee of namedEmails) {
@@ -79,6 +83,11 @@ export function parseInviteesFromText(text: string): InviteeParse {
     }
 
     const withoutEmails = chunk.replace(emailPattern, ' ')
+    const cleanedChunkWithoutEmails = withoutEmails.replace(/\s+/g, ' ').trim()
+    cleanedText = cleanedText.replace(
+      match[0],
+      keyword === 'with' && cleanedChunkWithoutEmails ? ` with ${cleanedChunkWithoutEmails} ` : ' ',
+    )
     const namedEmailNames = namedEmails
       .map((invitee) => invitee.displayName?.trim().toLowerCase())
       .filter(Boolean)
@@ -171,11 +180,23 @@ export function resolveInviteeFollowUp(text: string, unresolvedNames: string[]) 
   }
 }
 
+export function isInviteeResolutionAbort(text: string) {
+  return inviteeResolutionAbortPattern.test(text.trim())
+}
+
+export function isInviteeResolutionBookWithoutInvites(text: string) {
+  return inviteeResolutionBookWithoutPattern.test(text.trim())
+}
+
 export function isInviteeEmailFollowUp(text: string, unresolvedNames: string[]) {
   if (!unresolvedNames.length) return false
 
   const lower = text.trim().toLowerCase()
-  if (/^(?:no|nope|nah|n|cancel|leave it|do not|don't|dont|not now|never mind|nevermind)\b/.test(lower)) {
+  if (
+    /^(?:no|nope|nah|n|leave it|do not|don't|dont|not now)\b/.test(lower) ||
+    isInviteeResolutionAbort(lower) ||
+    isInviteeResolutionBookWithoutInvites(lower)
+  ) {
     return false
   }
 

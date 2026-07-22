@@ -59,6 +59,8 @@ import { supabaseAdmin } from '../supabaseAdmin'
 import {
   inviteeLabel,
   isInviteeEmailFollowUp,
+  isInviteeResolutionAbort,
+  isInviteeResolutionBookWithoutInvites,
   parseExistingEventInviteRequest,
   parseInviteesFromText,
   resolveInviteeFollowUp,
@@ -2600,24 +2602,12 @@ function reminderForPending(pending: PendingAction) {
         '3. Keep it',
       ])
     case 'resolve_invitees':
-      return 'Reply with the missing email, like "Priya priya@company.com", or say "book it without invites."'
+      return 'Reply with the email, or say "book without invite."'
     case 'save_business_contact_phone':
       return "Reply with the office number, or say SKIP if you don't want to save it yet."
     default:
       return 'Tell me what you want to do next.'
   }
-}
-
-function isInviteeResolutionAbort(text: string) {
-  return /^(?:skip|cancel|never mind|nevermind|no invite|no invites|no thanks|no thank you)[.!]*$/i.test(
-    text.trim(),
-  )
-}
-
-function isInviteeResolutionBookWithoutInvites(text: string) {
-  return /\b(skip|just book it|book it anyway|without invites|without invite|no invites|dont invite|don't invite|no thanks|no thank you)\b/i.test(
-    text.trim(),
-  )
 }
 
 function resolveInviteesPendingHasContext(pending: PendingAction) {
@@ -3434,6 +3424,27 @@ function unresolvedInviteeSummary(names: string[]) {
   return names.join(', ')
 }
 
+function inviteeEmailFollowUpReply({
+  unresolvedInvitees,
+  allowBookWithoutInvites,
+}: {
+  unresolvedInvitees: string[]
+  allowBookWithoutInvites: boolean
+}) {
+  const plural = unresolvedInvitees.length > 1
+  const emailLabel = `email${plural ? 's' : ''}`
+
+  if (allowBookWithoutInvites) {
+    return `I still need ${emailLabel} for ${unresolvedInviteeSummary(
+      unresolvedInvitees,
+    )}.\n\nReply with the ${emailLabel}, or say "book without invite${plural ? 's' : ''}."`
+  }
+
+  return `I still need ${emailLabel} for ${unresolvedInviteeSummary(
+    unresolvedInvitees,
+  )}.\n\nReply with the ${emailLabel}, or say "skip."`
+}
+
 async function resolveScheduleInvitees(profileId: string, body: string) {
   const parsed = parseInviteesFromText(body)
   const resolvedInvitees = [...parsed.directInvitees]
@@ -3525,9 +3536,10 @@ async function inviteExistingEventTarget({
   }
 
   if (unresolvedInvitees.length) {
-    return `I can invite ${attendees.length ? `${inviteeSummary(attendees)}, but I still` : 'them, but I'} need email${
-      unresolvedInvitees.length > 1 ? 's' : ''
-    } for ${unresolvedInviteeSummary(unresolvedInvitees)}.\nReply like "Sam sam@company.com" or say "skip."`
+    return `I can invite ${attendees.length ? inviteeSummary(attendees) : 'them'}.\n\n${inviteeEmailFollowUpReply({
+      unresolvedInvitees,
+      allowBookWithoutInvites: false,
+    })}`
   }
 
   if (!attendees.length) {
@@ -3928,10 +3940,10 @@ async function calendarSetupReply(profile: SmsProfile, lowerBody: string) {
       providerHint === 'google'
         ? 'tap Connect Google'
         : providerHint === 'outlook'
-          ? 'tap Connect Outlook'
+          ? 'tap Connect Outlook (beta)'
           : providerHint === 'apple'
             ? 'tap Connect Apple'
-            : 'tap Connect Google, Outlook, or Apple'
+            : 'tap Connect Google, Apple, or Outlook (beta)'
 
     return `To finish setup, open ${loginLink}. After you log in, ${providerStep} on your setup page. Then text me again.`
   }
@@ -5062,7 +5074,21 @@ async function handleResolveInviteesReply({
   const unresolvedNames = pending.payload.unresolvedInvitees || []
   const eventChoice = parseSmsIntent(body, profile.timezone)
 
+  if (!option && isInviteeResolutionAbort(lower)) {
+    await clearPendingAction(pending.id)
+    if (pending.payload.target) {
+      return `Okay. I did not add anyone to ${pending.payload.target.title}.`
+    }
+
+    return 'Okay. I did not add anyone.'
+  }
+
   if (pending.payload.events?.length && !pending.payload.target) {
+    if (isInviteeResolutionBookWithoutInvites(lower)) {
+      await clearPendingAction(pending.id)
+      return 'Okay. I did not add anyone.'
+    }
+
     const target = eventChoice.type === 'choice'
       ? choose(pending.payload.events, eventChoice.choice)
       : null
@@ -5089,9 +5115,10 @@ async function handleResolveInviteesReply({
         },
       })
 
-      return `I can add them to ${target.title}, but I still need email${
-        unresolvedNames.length > 1 ? 's' : ''
-      } for ${unresolvedInviteeSummary(unresolvedNames)}.\nReply like "Sam sam@company.com" or say "skip."`
+      return `I can add them to ${target.title}.\n\n${inviteeEmailFollowUpReply({
+        unresolvedInvitees: unresolvedNames,
+        allowBookWithoutInvites: false,
+      })}`
     }
 
     return inviteExistingEventTarget({
@@ -5105,16 +5132,17 @@ async function handleResolveInviteesReply({
   if (pending.payload.target && !option) {
     const target = pending.payload.target
 
-    if (isInviteeResolutionAbort(lower)) {
+    if (isInviteeResolutionBookWithoutInvites(lower)) {
       await clearPendingAction(pending.id)
       return `Okay. I did not add anyone to ${target.title}.`
     }
 
     const resolution = resolveInviteeFollowUp(body, unresolvedNames)
     if (!resolution.resolved.length) {
-      return `I still need email${unresolvedNames.length > 1 ? 's' : ''} for ${unresolvedInviteeSummary(
-        unresolvedNames,
-      )}.\nReply like "Sam sam@company.com" or say "skip."`
+      return inviteeEmailFollowUpReply({
+        unresolvedInvitees: unresolvedNames,
+        allowBookWithoutInvites: false,
+      })
     }
 
     await saveInviteeContacts(profile.id, resolution.resolved)
@@ -5139,9 +5167,10 @@ async function handleResolveInviteesReply({
         },
       })
 
-      return `Got ${inviteeSummary(resolution.resolved)}.\nI still need email${
-        resolution.unresolvedNames.length > 1 ? 's' : ''
-      } for ${unresolvedInviteeSummary(resolution.unresolvedNames)}.`
+      return `Got ${inviteeSummary(resolution.resolved)}.\n\n${inviteeEmailFollowUpReply({
+        unresolvedInvitees: resolution.unresolvedNames,
+        allowBookWithoutInvites: false,
+      })}`
     }
 
     await clearPendingAction(pending.id)
@@ -5155,6 +5184,11 @@ async function handleResolveInviteesReply({
 
   if (!option) {
     return 'Send the scheduling request again and I will set it up.'
+  }
+
+  if (isInviteeResolutionAbort(lower)) {
+    await clearPendingAction(pending.id)
+    return 'Okay. I left it off your calendar.'
   }
 
   if (isInviteeResolutionBookWithoutInvites(lower)) {
@@ -5188,9 +5222,10 @@ async function handleResolveInviteesReply({
 
   const resolution = resolveInviteeFollowUp(body, unresolvedNames)
   if (!resolution.resolved.length) {
-    return `I still need email${unresolvedNames.length > 1 ? 's' : ''} for ${unresolvedInviteeSummary(
-      unresolvedNames,
-    )}.\nReply like "Sam sam@company.com, Priya priya@company.com" or say "book it without invites."`
+    return inviteeEmailFollowUpReply({
+      unresolvedInvitees: unresolvedNames,
+      allowBookWithoutInvites: true,
+    })
   }
 
   for (const invitee of resolution.resolved) {
@@ -5219,14 +5254,15 @@ async function handleResolveInviteesReply({
       payload: {
         selectedOption: option,
         attendees: mergedInvitees,
-        unresolvedInvitees: resolution.unresolvedNames,
-      },
-    })
+          unresolvedInvitees: resolution.unresolvedNames,
+        },
+      })
 
-    return `Got ${inviteeSummary(resolution.resolved)}.\nI still need email${
-      resolution.unresolvedNames.length > 1 ? 's' : ''
-    } for ${unresolvedInviteeSummary(resolution.unresolvedNames)}.`
-  }
+      return `Got ${inviteeSummary(resolution.resolved)}.\n\n${inviteeEmailFollowUpReply({
+        unresolvedInvitees: resolution.unresolvedNames,
+        allowBookWithoutInvites: true,
+      })}`
+    }
 
   const eventAttendees = attendeesForCalendarEvent(option, mergedInvitees)
   const created = await createCalendarEvent(profile.id, {
@@ -5521,9 +5557,10 @@ async function handleChoice({
         },
       })
 
-      return `I can send the invite, but I still need email${
-        unresolvedInvitees.length > 1 ? 's' : ''
-      } for ${unresolvedInviteeSummary(unresolvedInvitees)}.\n\nReply like "Sam sam@company.com" or say "book it without invites."`
+      return `I can send the invite.\n\n${inviteeEmailFollowUpReply({
+        unresolvedInvitees,
+        allowBookWithoutInvites: true,
+      })}`
     }
 
     return finalizeScheduledBooking({
@@ -6960,11 +6997,10 @@ export async function handleIncomingSms({
           },
         })
 
-        const reply = `I can add them to ${contextualTarget.title}, but I still need email${
-          inviteeContext.unresolvedNames.length > 1 ? 's' : ''
-        } for ${unresolvedInviteeSummary(
-          inviteeContext.unresolvedNames,
-        )}.\nReply like "Sam sam@company.com" or say "skip."`
+        const reply = `I can add them to ${contextualTarget.title}.\n\n${inviteeEmailFollowUpReply({
+          unresolvedInvitees: inviteeContext.unresolvedNames,
+          allowBookWithoutInvites: false,
+        })}`
         await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
         return reply
       }
@@ -7021,9 +7057,10 @@ export async function handleIncomingSms({
         const reply = `I found ${target.title} on ${eventDateLabel(
           target,
           profile.timezone,
-        )}, but I still need email${inviteeContext.unresolvedNames.length > 1 ? 's' : ''} for ${unresolvedInviteeSummary(
-          inviteeContext.unresolvedNames,
-        )}.\nReply like "Sam sam@company.com" or say "skip."`
+        )}.\n\n${inviteeEmailFollowUpReply({
+          unresolvedInvitees: inviteeContext.unresolvedNames,
+          allowBookWithoutInvites: false,
+        })}`
         await logSms({ profileId: profile.id, from, body: reply, direction: 'outbound' })
         return reply
       }

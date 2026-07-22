@@ -48,7 +48,7 @@ function statusLine({
   smsEnabled: boolean
 }) {
   if (!calendarConnected) {
-    return 'Calendar not connected • Connect Google, Outlook, or Apple'
+    return 'Calendar not connected • Connect Google, Apple, or Outlook (beta)'
   }
 
   if (!smsEnabled) {
@@ -186,7 +186,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const needsBookingCalendar = totalConnectedAccounts > 0 && totalBookingCalendars === 0
   const readyToText = Boolean(manoaNumber && profile.calendarConnected && smsReady)
   const connectedAccountLabel = `${totalConnectedAccounts} connected account${totalConnectedAccounts === 1 ? '' : 's'}`
-  let dashboardLede = 'Connect Google, Outlook, or Apple to start using Manoa.'
+  let dashboardLede = 'Connect Google, Apple, or Outlook (beta) to start using Manoa.'
   if (profile.calendarConnected) {
     dashboardLede = smsReady
       ? 'Everything is set up. Use the console below while SMS approval finishes, or connect another calendar.'
@@ -407,7 +407,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
               {googleAccounts.length ? (canAddGoogleAccount ? 'Add Google account' : 'Reconnect Google') : 'Connect Google'}
             </a>
             <a className="button dashboard-button secondary-button" href="/api/calendar/outlook/start">
-              {outlookAccounts.length ? (canAddOutlookAccount ? 'Add Outlook account' : 'Reconnect Outlook') : 'Connect Outlook'}
+              {outlookAccounts.length
+                ? canAddOutlookAccount
+                  ? 'Add Outlook account (beta)'
+                  : 'Reconnect Outlook (beta)'
+                : 'Connect Outlook (beta)'}
             </a>
             <a className="button dashboard-button secondary-button" href={appleConnectHref}>
               {appleAccounts.length ? 'Reconnect Apple' : 'Connect Apple'}
@@ -543,7 +547,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           ) : (
             <div className="dashboard-empty-state">
               <strong>Connect a calendar first.</strong>
-              <p>Choose Google, Outlook, or Apple above to unlock the console.</p>
+              <p>Choose Google, Apple, or Outlook (beta) above to unlock the console.</p>
             </div>
           )}
 
