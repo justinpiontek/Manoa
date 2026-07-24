@@ -101,6 +101,12 @@ export type ScheduleOption = {
   recurrence?: RecurrenceSpec | null
 }
 
+export type ScheduleSearchContext = {
+  resolvedTimeZone: string
+  connections: CalendarConnection[]
+  targetConnection: CalendarConnection | null
+}
+
 function allDayDateInTimeZone(value: Date | string, timeZone?: string) {
   const parts = dateTimePartsInTimeZone(value, timeZone)
   return `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`
@@ -3045,6 +3051,42 @@ function chooseTargetConnection({
   )
 }
 
+export async function prepareScheduleSearchContext({
+  profileId,
+  calendarId,
+  calendarHint,
+  timeZone,
+}: {
+  profileId: string
+  calendarId?: string
+  calendarHint?: string
+  timeZone?: string
+}): Promise<ScheduleSearchContext> {
+  const resolvedTimeZone = timeZone || (await getProfileTimeZone(profileId))
+  const connections = visibleConfiguredCalendars(await getCalendarConnections(profileId))
+  if (!connections.length) {
+    return {
+      resolvedTimeZone,
+      connections: [],
+      targetConnection: null,
+    }
+  }
+
+  const bookingConnections = connections.filter((connection) => {
+    return connection.allow_new_events && canWriteToCalendar(connection.access_role)
+  })
+
+  return {
+    resolvedTimeZone,
+    connections,
+    targetConnection: chooseTargetConnection({
+      connections: bookingConnections,
+      calendarId,
+      calendarHint,
+    }),
+  }
+}
+
 export async function findScheduleOptions({
   profileId,
   title,
@@ -3056,6 +3098,7 @@ export async function findScheduleOptions({
   recurrence = null,
   location = null,
   timeZone,
+  searchContext,
 }: {
   profileId: string
   title: string
@@ -3067,22 +3110,22 @@ export async function findScheduleOptions({
   recurrence?: RecurrenceSpec | null
   location?: string | null
   timeZone?: string
+  searchContext?: ScheduleSearchContext | null
 }) {
-  const resolvedTimeZone = timeZone || (await getProfileTimeZone(profileId))
+  const context =
+    searchContext ||
+    (await prepareScheduleSearchContext({
+      profileId,
+      calendarId,
+      calendarHint,
+      timeZone,
+    }))
+  const resolvedTimeZone = context.resolvedTimeZone
   const safeDurationMinutes =
     Number.isFinite(durationMinutes) && durationMinutes > 0 ? durationMinutes : 30
-  const connections = visibleConfiguredCalendars(await getCalendarConnections(profileId))
+  const connections = context.connections
   if (!connections.length) return []
-
-  const bookingConnections = connections.filter((connection) => {
-    return connection.allow_new_events && canWriteToCalendar(connection.access_role)
-  })
-
-  const targetConnection = chooseTargetConnection({
-    connections: bookingConnections,
-    calendarId,
-    calendarHint,
-  })
+  const targetConnection = context.targetConnection
   if (!targetConnection) return []
 
   const preferredCandidateStarts = exactTime

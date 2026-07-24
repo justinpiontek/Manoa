@@ -8,6 +8,7 @@ import {
   listAgenda,
   resolveCalendarPlacement,
   listUpcomingEvents,
+  prepareScheduleSearchContext,
   updateCalendarEvent,
   type CalendarPlacementResolution,
   type CalendarPlacementOption,
@@ -2986,6 +2987,14 @@ async function findScheduleOptionsAcrossWindow({
   const collected: ScheduleOption[] = []
   const searchStart = windowSearchStart(baseDate, dateWindow)
   const totalDays = daysToSearch(searchStart, dateWindow, timeZone)
+  const searchContext = await prepareScheduleSearchContext({
+    profileId,
+    calendarId,
+    calendarHint,
+    timeZone,
+  })
+
+  if (!searchContext.targetConnection) return []
 
   for (let offset = 0; offset < totalDays && collected.length < 3; offset += 1) {
     const candidateBaseDate = addDays(searchStart, offset, timeZone)
@@ -3006,6 +3015,7 @@ async function findScheduleOptionsAcrossWindow({
       recurrence,
       location,
       timeZone,
+      searchContext,
     })
 
     for (const option of sortScheduleOptions(dayOptions)) {
@@ -3044,6 +3054,14 @@ async function findExternalCallPrepOptions({
   const collected: ScheduleOption[] = []
   const searchStart = windowSearchStart(baseDate, dateWindow)
   const totalDays = dateWindow ? daysToSearch(searchStart, dateWindow, timeZone) : 14
+  const searchContext = await prepareScheduleSearchContext({
+    profileId,
+    calendarId,
+    calendarHint,
+    timeZone,
+  })
+
+  if (!searchContext.targetConnection) return []
 
   for (let offset = 0; offset < totalDays && collected.length < 3; offset += 1) {
     const candidateBaseDate = addDays(searchStart, offset, timeZone)
@@ -3061,6 +3079,7 @@ async function findExternalCallPrepOptions({
       calendarHint,
       durationMinutes: 20,
       timeZone,
+      searchContext,
     })
 
     const allowedOptions = sortScheduleOptions(dayOptions).filter(
@@ -7087,7 +7106,9 @@ export async function handleIncomingSms({
       (!activePending &&
         (parserIntent.type === 'schedule' ||
           parserIntent.type === 'agenda' ||
-          parserIntent.type === 'lookup'))
+          parserIntent.type === 'lookup' ||
+          parserIntent.type === 'reschedule' ||
+          parserIntent.type === 'cancel'))
     ) {
       intentOverride = parserIntent
     }
