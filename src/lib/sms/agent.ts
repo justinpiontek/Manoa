@@ -835,11 +835,11 @@ function inviteOutcomeLine(option: ScheduleOption, attendees: Invitee[]) {
 function exactAvailabilityReply({
   option,
   attendees,
-  unresolvedInvitees,
+  unresolvedInvitees: _unresolvedInvitees,
 }: {
   option: ScheduleOption
   attendees: Invitee[]
-  unresolvedInvitees: string[]
+  unresolvedInvitees?: string[]
 }) {
   const lines = [
     `🕒 I confirmed ${optionTimingText(option)} is available on ${option.calendarName}.`,
@@ -856,12 +856,6 @@ function exactAvailabilityReply({
 
   if (attendees.length) {
     lines.push(`✉️ Ready to invite: ${inviteeSummary(attendees)}.`)
-  }
-
-  if (unresolvedInvitees.length) {
-    lines.push(`✉️ I still need email${unresolvedInvitees.length > 1 ? 's' : ''} for ${unresolvedInviteeSummary(
-      unresolvedInvitees,
-    )}.`)
   }
 
   return sectionedListReply({
@@ -1113,7 +1107,7 @@ function blockedDayNoOpeningReply({
   pendingInvite,
   options,
   attendees,
-  unresolvedInvitees,
+  unresolvedInvitees: _unresolvedInvitees,
   calendarLabel,
   dateLabel,
 }: {
@@ -1121,7 +1115,7 @@ function blockedDayNoOpeningReply({
   pendingInvite?: boolean
   options: ScheduleOption[]
   attendees: Invitee[]
-  unresolvedInvitees: string[]
+  unresolvedInvitees?: string[]
   calendarLabel?: string | null
   dateLabel?: string | null
 }) {
@@ -1143,13 +1137,6 @@ function blockedDayNoOpeningReply({
   if (attendees.length) {
     footerLines.push(`✉️ Ready to invite: ${inviteeSummary(attendees)}.`)
   }
-  if (unresolvedInvitees.length) {
-    footerLines.push(
-      `✉️ I still need email${unresolvedInvitees.length > 1 ? 's' : ''} for ${unresolvedInviteeSummary(
-        unresolvedInvitees,
-      )}.`,
-    )
-  }
 
   return sectionedListReply({
     intro,
@@ -1169,7 +1156,7 @@ function blockedWindowNoOpeningReply({
   options,
   dateLabel,
   attendees,
-  unresolvedInvitees,
+  unresolvedInvitees: _unresolvedInvitees,
   sameConflictAcrossOptions,
 }: {
   conflict: EventSummary
@@ -1177,7 +1164,7 @@ function blockedWindowNoOpeningReply({
   options: ScheduleOption[]
   dateLabel?: string | null
   attendees: Invitee[]
-  unresolvedInvitees: string[]
+  unresolvedInvitees?: string[]
   sameConflictAcrossOptions: boolean
 }) {
   const intro = sameConflictAcrossOptions
@@ -1199,13 +1186,6 @@ function blockedWindowNoOpeningReply({
 
   if (attendees.length) {
     footerLines.push(`✉️ Ready to invite: ${inviteeSummary(attendees)}.`)
-  }
-  if (unresolvedInvitees.length) {
-    footerLines.push(
-      `✉️ I still need email${unresolvedInvitees.length > 1 ? 's' : ''} for ${unresolvedInviteeSummary(
-        unresolvedInvitees,
-      )}.`,
-    )
   }
 
   return sectionedListReply({
@@ -2603,7 +2583,13 @@ function reminderForPending(pending: PendingAction) {
         '3. Keep it',
       ])
     case 'resolve_invitees':
-      return 'Reply with the email, or say "book without invite."'
+      if (pending.payload.selectedOption) {
+        const plural = (pending.payload.unresolvedInvitees || []).length > 1
+        return `Reply YES to book it now, send the email${
+          plural ? 's' : ''
+        }, or say "book without invite${plural ? 's' : ''}."`
+      }
+      return 'Reply with the email, or say "skip."'
     case 'save_business_contact_phone':
       return "Reply with the office number, or say SKIP if you don't want to save it yet."
     default:
@@ -2627,6 +2613,8 @@ function shouldClearResolveInviteesPendingForNewRequest(
   if (!resolveInviteesPendingHasContext(pending)) return true
   if (isInviteeResolutionAbort(text)) return false
   if (isInviteeResolutionBookWithoutInvites(text)) return false
+  if (pending.payload.selectedOption && isSingleScheduleConfirmation(text)) return false
+  if (pending.payload.selectedOption && isSingleScheduleDecline(text)) return false
 
   const intent = parseSmsIntent(text, timeZone)
   if (intent.type === 'choice' && pending.payload.events?.length) return false
@@ -3462,6 +3450,35 @@ function inviteeEmailFollowUpReply({
   return `I still need ${emailLabel} for ${unresolvedInviteeSummary(
     unresolvedInvitees,
   )}.\n\nReply with the ${emailLabel}, or say "skip."`
+}
+
+function scheduleInviteDecisionReply({
+  attendees,
+  unresolvedInvitees,
+}: {
+  attendees: Invitee[]
+  unresolvedInvitees: string[]
+}) {
+  const plural = unresolvedInvitees.length > 1
+  const emailLabel = `email${plural ? 's' : ''}`
+  const lines: string[] = []
+
+  if (attendees.length) {
+    lines.push(`✉️ Ready to invite: ${inviteeSummary(attendees)}.`)
+  }
+
+  lines.push(
+    `I can book it now, or include ${unresolvedInviteeSummary(
+      unresolvedInvitees,
+    )} on the invite if you send the ${emailLabel}.`,
+  )
+  lines.push(
+    `Reply YES to book it now, send the ${emailLabel}, or say "book without invite${
+      plural ? 's' : ''
+    }."`,
+  )
+
+  return lines.join('\n\n')
 }
 
 async function resolveScheduleInvitees(profileId: string, body: string) {
@@ -5211,40 +5228,54 @@ async function handleResolveInviteesReply({
     return 'Okay. I left it off your calendar.'
   }
 
-  if (isInviteeResolutionBookWithoutInvites(lower)) {
-    const eventAttendees = attendeesForCalendarEvent(option, existingInvitees)
-    const created = await createCalendarEvent(profile.id, {
-      ...option,
-      attendees: eventAttendees,
-    })
-    await maybeQueueReminderForOption({
-      profile,
-      option,
-      calendarEventId: created.id || null,
-      calendarId: option.calendarId,
-      title: option.title,
-    })
+  if (isSingleScheduleDecline(lower)) {
     await clearPendingAction(pending.id)
-    await storeRecentCreatedEvent({
-      profileId: profile.id,
+    return 'Okay. I left it off your calendar.'
+  }
+
+  if (isSingleScheduleConfirmation(lower)) {
+    const bookedReply = await finalizeScheduledBooking({
+      profile,
       smsFrom: from,
-      option: { ...option, attendees: eventAttendees },
-      eventId: created.id || null,
+      pendingId: pending.id,
+      option,
+      attendees: existingInvitees,
       organizerEmail: profile.email,
     })
 
     if (existingInvitees.length) {
-      return `${bookingText(option)}\n${inviteOutcomeLine(option, existingInvitees)}\nI did not invite ${unresolvedInviteeSummary(unresolvedNames)} yet.`
+      return `${bookedReply}\nI did not invite ${unresolvedInviteeSummary(unresolvedNames)} yet.`
     }
 
-    return `${bookingText(option)}\nI did not invite ${unresolvedInviteeSummary(unresolvedNames)} because I still need their email.`
+    return `${bookedReply}\nI did not invite ${unresolvedInviteeSummary(
+      unresolvedNames,
+    )} because I still need their email.`
+  }
+
+  if (isInviteeResolutionBookWithoutInvites(lower)) {
+    const bookedReply = await finalizeScheduledBooking({
+      profile,
+      smsFrom: from,
+      pendingId: pending.id,
+      option,
+      attendees: existingInvitees,
+      organizerEmail: profile.email,
+    })
+
+    if (existingInvitees.length) {
+      return `${bookedReply}\nI did not invite ${unresolvedInviteeSummary(unresolvedNames)} yet.`
+    }
+
+    return `${bookedReply}\nI did not invite ${unresolvedInviteeSummary(
+      unresolvedNames,
+    )} because I still need their email.`
   }
 
   const resolution = resolveInviteeFollowUp(body, unresolvedNames)
   if (!resolution.resolved.length) {
-    return inviteeEmailFollowUpReply({
+    return scheduleInviteDecisionReply({
+      attendees: existingInvitees,
       unresolvedInvitees: unresolvedNames,
-      allowBookWithoutInvites: true,
     })
   }
 
@@ -5274,15 +5305,15 @@ async function handleResolveInviteesReply({
       payload: {
         selectedOption: option,
         attendees: mergedInvitees,
-          unresolvedInvitees: resolution.unresolvedNames,
-        },
-      })
-
-      return `Got ${inviteeSummary(resolution.resolved)}.\n\n${inviteeEmailFollowUpReply({
         unresolvedInvitees: resolution.unresolvedNames,
-        allowBookWithoutInvites: true,
-      })}`
-    }
+      },
+    })
+
+    return `Got ${inviteeSummary(resolution.resolved)}.\n\n${scheduleInviteDecisionReply({
+      attendees: mergedInvitees,
+      unresolvedInvitees: resolution.unresolvedNames,
+    })}`
+  }
 
   const eventAttendees = attendeesForCalendarEvent(option, mergedInvitees)
   const created = await createCalendarEvent(profile.id, {
@@ -5340,12 +5371,12 @@ function scheduleOptionsReply({
   options,
   recurrence,
   attendees,
-  unresolvedInvitees,
+  unresolvedInvitees: _unresolvedInvitees,
 }: {
   options: ScheduleOption[]
   recurrence: RecurrenceSpec | null
   attendees: Invitee[]
-  unresolvedInvitees: string[]
+  unresolvedInvitees?: string[]
 }) {
   const replyLine =
     options.length >= 3 ? 'Reply 1, 2, or 3.' : options.length === 2 ? 'Reply 1 or 2.' : 'Reply 1.'
@@ -5356,11 +5387,6 @@ function scheduleOptionsReply({
   }
   if (attendees.length) {
     reply += `\nReady to invite: ${inviteeSummary(attendees)}.`
-  }
-  if (unresolvedInvitees.length) {
-    reply += `\nI still need email${unresolvedInvitees.length > 1 ? 's' : ''} for ${unresolvedInviteeSummary(
-      unresolvedInvitees,
-    )}.`
   }
 
   return reply
@@ -5551,9 +5577,10 @@ async function handleChoice({
             },
           })
 
-          return `Got ${inviteeSummary(resolution.resolved)}.\nI still need email${
-            resolution.unresolvedNames.length > 1 ? 's' : ''
-          } for ${unresolvedInviteeSummary(resolution.unresolvedNames)}.`
+          return `Got ${inviteeSummary(resolution.resolved)}.\n\n${scheduleInviteDecisionReply({
+            attendees: mergedInvitees,
+            unresolvedInvitees: resolution.unresolvedNames,
+          })}`
         }
 
         return finalizeScheduledBooking({
@@ -5577,10 +5604,10 @@ async function handleChoice({
         },
       })
 
-      return `I can send the invite.\n\n${inviteeEmailFollowUpReply({
+      return scheduleInviteDecisionReply({
+        attendees,
         unresolvedInvitees,
-        allowBookWithoutInvites: true,
-      })}`
+      })
     }
 
     return finalizeScheduledBooking({
