@@ -70,7 +70,7 @@ import {
 import { parseSmsIntentWithAI, type AiConversationTurn } from './aiIntent'
 import { listSmsAiIntentContext } from './thread'
 import { looksLikeFreshRequestText, resolvePendingChoice } from './pendingChoice'
-import { parseSmsIntent, parseSmsTime, type DateWindow, type ParsedSmsIntent } from './parser'
+import { formatEventTitle, parseSmsIntent, parseSmsTime, type DateWindow, type ParsedSmsIntent } from './parser'
 
 type SmsProfile = {
   id: string
@@ -4217,7 +4217,7 @@ function scheduleRequestFromCalendarImageEvent({
   const endDate = event.endDateYmd ? dateFromYmdInTimeZone(event.endDateYmd, timeZone) : null
 
   return {
-    title: event.title,
+    title: formatEventTitle(event.title),
     baseDate: baseDate.toISOString(),
     endDate: endDate?.toISOString() || null,
     dateWindow: null,
@@ -4254,12 +4254,13 @@ function normalizeImageClarifiedTitle(text: string) {
     return null
   }
   if (isSingleScheduleConfirmation(stripped) || isSingleScheduleDecline(stripped)) return null
-  return stripped
+  return formatEventTitle(stripped)
 }
 
 function normalizeRetitleCommand(text: string) {
   if (!isExplicitRetitleCommand(text)) return null
-  return extractRetitleCommandText(text)
+  const title = extractRetitleCommandText(text)
+  return title ? formatEventTitle(title) : null
 }
 
 function isWeakClarifiedImageTitle(text: string) {

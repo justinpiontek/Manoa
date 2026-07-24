@@ -12,9 +12,20 @@ type ActiveProfile = {
   reminder_lead_minutes: number
 }
 
+type ExistingReminder = {
+  id: string
+  status: string
+  due_at: string
+  body: string
+  calendar_id: string | null
+  phone_e164: string
+}
+
 const MORNING_AGENDA_HOUR = 6
 const MORNING_AGENDA_MINUTE = 30
 const MORNING_AGENDA_WINDOW_MINUTES = 15
+const REMINDER_LOOKAHEAD_MINUTES = 24 * 60
+const MAX_UPCOMING_REMINDER_EVENTS = 100
 
 function sortAgendaEvents(events: Awaited<ReturnType<typeof listAgenda>>) {
   return [...events].sort((left, right) => {
@@ -177,7 +188,7 @@ export async function sendMorningAgendas() {
   return results
 }
 
-async function reminderExistsForOccurrence({
+async function existingReminderForOccurrence({
   profileId,
   calendarEventId,
   startsAt,
@@ -188,16 +199,15 @@ async function reminderExistsForOccurrence({
 }) {
   const { data, error } = await supabaseAdmin
     .from('reminders')
-    .select('id')
+    .select('id,status,due_at,body,calendar_id,phone_e164')
     .eq('profile_id', profileId)
     .eq('calendar_event_id', calendarEventId)
     .eq('event_starts_at', startsAt)
-    .neq('status', 'canceled')
     .limit(1)
-    .maybeSingle<{ id: string }>()
+    .maybeSingle<ExistingReminder>()
 
   if (error) throw error
-  return Boolean(data)
+  return data || null
 }
 
 async function ensureUpcomingReminders() {
@@ -207,9 +217,10 @@ async function ensureUpcomingReminders() {
     if (!profile.reminder_texts_enabled) continue
     const events = await listUpcomingEvents({
       profileId: profile.id,
-      windowMinutes: 90,
+      windowMinutes: REMINDER_LOOKAHEAD_MINUTES,
       startAt: new Date(),
-      maxResults: 20,
+      maxResults: MAX_UPCOMING_REMINDER_EVENTS,
+      includeAllVisibleCalendars: true,
     })
 
     for (const event of events) {
@@ -218,21 +229,45 @@ async function ensureUpcomingReminders() {
       const startsAt = normalizeIso(event.start)
       if (!startsAt) continue
 
-      if (
-        await reminderExistsForOccurrence({
-          profileId: profile.id,
-          calendarEventId: event.id,
-          startsAt,
-        })
-      ) {
-        continue
-      }
-
       const dueDate = new Date(
         new Date(startsAt).getTime() - profile.reminder_lead_minutes * 60_000,
       )
       const dueAt =
         dueDate.getTime() <= Date.now() ? new Date().toISOString() : dueDate.toISOString()
+      const body = `⏰ Reminder: ${event.title} starts at ${event.timeLabel}.`
+      const existingReminder = await existingReminderForOccurrence({
+        profileId: profile.id,
+        calendarEventId: event.id,
+        startsAt,
+      })
+
+      if (existingReminder?.status === 'sent') {
+        continue
+      }
+
+      if (existingReminder?.status === 'pending') {
+        const needsUpdate =
+          normalizeIso(existingReminder.due_at) !== normalizeIso(dueAt) ||
+          existingReminder.body !== body ||
+          (existingReminder.calendar_id || null) !== (event.calendarId || null) ||
+          existingReminder.phone_e164 !== profile.phone_e164
+
+        if (needsUpdate) {
+          const { error } = await supabaseAdmin
+            .from('reminders')
+            .update({
+              phone_e164: profile.phone_e164,
+              calendar_id: event.calendarId || null,
+              due_at: dueAt,
+              body,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', existingReminder.id)
+
+          if (error) throw error
+        }
+        continue
+      }
 
       const { error } = await supabaseAdmin.from('reminders').insert({
         profile_id: profile.id,
@@ -241,7 +276,7 @@ async function ensureUpcomingReminders() {
         calendar_id: event.calendarId || null,
         event_starts_at: startsAt,
         due_at: dueAt,
-        body: `⏰ Reminder: ${event.title} starts at ${event.timeLabel}.`,
+        body,
         status: 'pending',
       })
 

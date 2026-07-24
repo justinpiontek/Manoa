@@ -954,48 +954,88 @@ function parseCalendarHint(text: string) {
   return 'Calendar'
 }
 
-function stripSchedulingNoise(text: string) {
-  const cleaned = text
-    .toLowerCase()
-    .replace(/\bdrop off\b/g, 'dropoff')
-    .replace(/\bpick up\b/g, 'pickup')
-    .replace(/^(?:can|could|would|will)\s+you\b/g, ' ')
-    .replace(/\bremind\s+me\b/g, ' ')
-    .replace(/\bevery day\b/g, ' ')
+function titleCaseToken(token: string) {
+  if (!token) return token
+  if (/^[A-Z0-9&]+$/.test(token)) return token
+  return token.charAt(0).toUpperCase() + token.slice(1).toLowerCase()
+}
+
+export function formatEventTitle(value: string) {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) =>
+      word
+        .split(/([/-])/)
+        .map((part) => (/^[/-]$/.test(part) ? part : titleCaseToken(part)))
+        .join(''),
+    )
+    .join(' ')
+    .trim()
+}
+
+function stripIntentNoise(text: string) {
+  let cleaned = text
+    .replace(/\bdrop off\b/gi, 'dropoff')
+    .replace(/\bpick up\b/gi, 'pickup')
+    .replace(/\bevery day\b/gi, ' ')
     .replace(monthNameDatePattern, ' ')
     .replace(dateMonthNamePattern, ' ')
     .replace(numericDatePattern, ' ')
-    .replace(/\b(?:early|mid|middle of|late|end of(?: the)?)\s+next\s+week\b/g, ' ')
-    .replace(new RegExp(`\\b(?:early|mid|middle of|late|end of(?: the)?)\\s+(?:${monthNameSource})\\b`, 'g'), ' ')
-    .replace(/\bend of (?:the )?(?:current )?month\b|\bend of month\b/g, ' ')
-    .replace(/\b(?:this|next)\s+(?:week(?:'s|s)?|weekend|month)\b/g, ' ')
-    .replace(new RegExp(`\\b(?:${weekdayNameSource})'?s?\\b`, 'g'), ' ')
-    .replace(/\b(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)\b/g, ' ')
-    .replace(/\bat\s+(1[0-2]|0?[1-9])(?::[0-5]\d)?\b/g, ' ')
-    .replace(/\b(?:to|for|around|by)\s+(1[0-2]|0?[1-9])(?::[0-5]\d)?\b/g, ' ')
-    .replace(/\b(1[0-2]|0?[1-9]):([0-5]\d)\b/g, ' ')
-    .replace(/\ball day\b/g, ' ')
-    .replace(/\b(noon|midnight|morning|afternoon|evening|tonight|lunchtime)\b/g, ' ')
-    .replace(/\b(today|tomorrow|tmrw|tmmrw|tomorow|tommorow|tommorrow|next)\b/g, ' ')
-    .replace(/\btomororws?\b/g, ' ')
-    .replace(/\b(?:already scheduled|already booked|they scheduled|they booked)\b/g, ' ')
-    .replace(/\b(?:i need|need)\s+(?:a\s+|an\s+)?/g, ' ')
-    .replace(
-      /\b(i need to|need to|schedule|scheudle|chedule|book|add|set up|fit in|find time|find me time|find me a time|make time|squeeze in|hold|block off|pencil in|put|throw|save|plan|meet|reschedule|rescheduled|move|moved|change|changed|push|pushed|cancel|canceled|cancelled|delete|deleted|remove|removed|drop|dropped|take|took|off|from|on|at|to|my|work|personal|family|home|email|calendar|this|every|each|weekly|biweekly|monthly|week|weeks|month|months|other|recurring)\b/g,
-      ' ',
-    )
-    .replace(/\b\d+\s*(minute|min|hour|hr)\b/g, ' ')
-    .replace(/\b(?:through|thru)\b/g, ' ')
-    .replace(/\bsometime\b/g, ' ')
+    .replace(/\b(?:early|mid|middle of|late|end of(?: the)?)\s+next\s+week\b/gi, ' ')
+    .replace(new RegExp(`\\b(?:early|mid|middle of|late|end of(?: the)?)\\s+(?:${monthNameSource})\\b`, 'gi'), ' ')
+    .replace(/\bend of (?:the )?(?:current )?month\b|\bend of month\b/gi, ' ')
+    .replace(/\b(?:this|next)\s+(?:week(?:'s|s)?|weekend|month)\b/gi, ' ')
+    .replace(new RegExp(`\\b(?:${weekdayNameSource})'?s?\\b`, 'gi'), ' ')
+    .replace(/\b(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(a\.?m\.?|p\.?m\.?)\b/gi, ' ')
+    .replace(/\bat\s+(1[0-2]|0?[1-9])(?::[0-5]\d)?\b/gi, ' ')
+    .replace(/\b(?:to|for|around|by)\s+(1[0-2]|0?[1-9])(?::[0-5]\d)?\b/gi, ' ')
+    .replace(/\b(1[0-2]|0?[1-9]):([0-5]\d)\b/gi, ' ')
+    .replace(/\ball day\b/gi, ' ')
+    .replace(/\b(noon|midnight|morning|afternoon|evening|tonight|lunchtime)\b/gi, ' ')
+    .replace(/\b(today|tomorrow|tmrw|tmmrw|tomorow|tommorow|tommorrow|next)\b/gi, ' ')
+    .replace(/\btomororws?\b/gi, ' ')
+    .replace(/\b(?:already scheduled|already booked|they scheduled|they booked)\b/gi, ' ')
+
+  let previous = ''
+  while (cleaned && cleaned !== previous) {
+    previous = cleaned
+    cleaned = cleaned
+      .replace(/^(?:can|could|would|will)\s+you\b[:\s-]*/i, ' ')
+      .replace(/^(?:(?:actually|just|please)\s+)+/i, ' ')
+      .replace(/^(?:remind\s+me(?:\s+to)?|i\s+need\s+to|need\s+to|i\s+need|need)\b[:\s-]*/i, ' ')
+      .replace(
+        /^(?:schedule|scheudle|chedule|book|add|set up|fit in|find time|find me time|find me a time|make time|squeeze in|hold|block off|pencil in|put|throw|save|plan|meet|reschedule|rescheduled|move|moved|change|changed|push|pushed|cancel|canceled|cancelled|delete|deleted|remove|removed|drop|dropped|take)\b[:\s-]*/i,
+        ' ',
+      )
+      .trim()
+  }
+
+  cleaned = cleaned
+    .replace(/\b(?:on|into|for)\s+(?:work|personal|family|home)\s+calendar\b/gi, ' ')
+    .replace(/\b(?:on|into|for)\s+(?:work|personal|family|home)\b/gi, ' ')
+    .replace(/\b(?:my|email|calendar|this|every|each|weekly|biweekly|monthly|week|weeks|month|months|other|recurring)\b/gi, ' ')
+    .replace(/\b\d+\s*(minute|min|hour|hr)\b/gi, ' ')
+    .replace(/\b(?:through|thru)\b/gi, ' ')
+    .replace(/\bsometime\b/gi, ' ')
     .replace(/\s+/g, ' ')
     .replace(/^[\s,;:-]+|[\s,;:-]+$/g, '')
-    .replace(/^(?:a|an)\s+/g, '')
-    .replace(/\b(?:in|the|a|an|to|for|of|and|or)\b(?:\s+\b(?:in|the|a|an|to|for|of|and|or)\b)*$/g, '')
-    .replace(/\bdropoff\b/g, 'drop off')
-    .replace(/\bpickup\b/g, 'pick up')
+    .replace(/^(?:a|an)\s+/i, '')
+    .replace(/\b(?:in|the|a|an|to|for|of|and|or|on|at)\b(?:\s+\b(?:in|the|a|an|to|for|of|and|or|on|at)\b)*$/gi, '')
+    .replace(/\bdropoff\b/gi, 'drop off')
+    .replace(/\bpickup\b/gi, 'pick up')
     .trim()
 
-  return cleaned || 'meeting'
+  return cleaned
+}
+
+function stripSchedulingNoise(text: string) {
+  return formatEventTitle(stripIntentNoise(text) || 'meeting')
+}
+
+function stripReferenceNoise(text: string) {
+  const cleaned = stripIntentNoise(text).toLowerCase()
+  return cleaned || 'that'
 }
 
 function parseLookupQuery(text: string) {
@@ -1140,7 +1180,6 @@ export function parseSmsIntent(body: string, timeZone?: string): ParsedSmsIntent
   const isBroadAgenda =
     !startsWithScheduleCommand &&
     (((lower.includes('agenda') ||
-      /\bschedule\b/.test(lower) ||
       lower.includes("what's on") ||
       lower.includes('what is on') ||
       lower.includes('what do i have') ||
@@ -1166,13 +1205,13 @@ export function parseSmsIntent(body: string, timeZone?: string): ParsedSmsIntent
   }
 
   if (cancelPattern.test(lower)) {
-    return { type: 'cancel', query: stripSchedulingNoise(text) }
+    return { type: 'cancel', query: stripReferenceNoise(text) }
   }
 
   if (!startsWithScheduleCommand && reschedulePattern.test(lower)) {
     return {
       type: 'reschedule',
-      query: stripSchedulingNoise(text),
+      query: stripReferenceNoise(text),
       baseDate: parseBaseDate(text, timeZone),
       dateWindow,
       exactTime: parseSmsTime(text) || parseLooseTimeHint(text),

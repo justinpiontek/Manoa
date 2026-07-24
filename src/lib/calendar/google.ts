@@ -2656,6 +2656,15 @@ function groupedAvailabilityConnections(connections: CalendarConnection[]) {
   )
 }
 
+function groupedVisibleConnections(connections: CalendarConnection[]) {
+  return normalizeGoogleAccountConnections(connections).reduce<Record<string, CalendarConnection[]>>((groups, connection) => {
+    const key = `${connection.provider}:${canonicalAccountId(connection)}`
+    groups[key] ||= []
+    groups[key].push(connection)
+    return groups
+  }, {})
+}
+
 async function listOutlookEventsForConnection({
   connection,
   timeMin,
@@ -2709,18 +2718,22 @@ async function listEventsBetween({
   timeMax,
   maxResults = 20,
   timeZone,
+  includeAllVisibleCalendars = false,
 }: {
   profileId: string
   timeMin: Date
   timeMax: Date
   maxResults?: number
   timeZone?: string
+  includeAllVisibleCalendars?: boolean
 }) {
   const resolvedTimeZone = timeZone || (await getProfileTimeZone(profileId))
   const connections = visibleConfiguredCalendars(await getCalendarConnections(profileId))
   if (!connections.length) return []
 
-  const grouped = groupedAvailabilityConnections(connections)
+  const grouped = includeAllVisibleCalendars
+    ? groupedVisibleConnections(connections)
+    : groupedAvailabilityConnections(connections)
   const eventLists = await Promise.all(
     Object.values(grouped).map(async (accountConnections) => {
       if (accountConnections[0].provider === 'outlook') {
@@ -2823,12 +2836,14 @@ export async function listUpcomingEvents({
   startAt = new Date(),
   maxResults = 20,
   timeZone,
+  includeAllVisibleCalendars = false,
 }: {
   profileId: string
   windowMinutes: number
   startAt?: Date
   maxResults?: number
   timeZone?: string
+  includeAllVisibleCalendars?: boolean
 }) {
   return listEventsBetween({
     profileId,
@@ -2836,6 +2851,7 @@ export async function listUpcomingEvents({
     timeMax: addMinutes(startAt, windowMinutes),
     maxResults,
     timeZone,
+    includeAllVisibleCalendars,
   })
 }
 

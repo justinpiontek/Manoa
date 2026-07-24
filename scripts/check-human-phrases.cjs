@@ -78,8 +78,8 @@ function assertReschedule(phrase, queryPattern) {
 }
 
 assert.equal(intent('Need a meeting with Beth this week').type, 'schedule')
-assert.equal(intent('Need a meeting with Beth this week').title, 'meeting with beth')
-assert.equal(intent('Need a call with Beth this week').title, 'call with beth')
+assert.equal(intent('Need a meeting with Beth this week').title, 'Meeting With Beth')
+assert.equal(intent('Need a call with Beth this week').title, 'Call With Beth')
 
 const schedulePhrases = [
   'schedule lunch tomorrow',
@@ -146,13 +146,13 @@ const schedulePhrases = [
 assertTypes(schedulePhrases, 'schedule')
 
 assertSchedule('book lunch tomorow', { windowLabel: 'tomorrow' })
-assertSchedule('schedule lunch tomorrow', { title: 'lunch', windowLabel: 'tomorrow' })
-assertSchedule('schedule breakfast tomorrow', { title: 'breakfast' })
-assertSchedule('schedule supper next week', { title: 'supper', windowLabel: 'next week' })
-assertSchedule('quick 15 min call tomorrow', { title: 'quick call', durationMinutes: 15 })
-assertSchedule('schedule 1 hour meeting Friday', { title: 'meeting', durationMinutes: 60 })
+assertSchedule('schedule lunch tomorrow', { title: 'Lunch', windowLabel: 'tomorrow' })
+assertSchedule('schedule breakfast tomorrow', { title: 'Breakfast' })
+assertSchedule('schedule supper next week', { title: 'Supper', windowLabel: 'next week' })
+assertSchedule('quick 15 min call tomorrow', { title: 'Quick Call', durationMinutes: 15 })
+assertSchedule('schedule 1 hour meeting Friday', { title: 'Meeting', durationMinutes: 60 })
 assertSchedule('call Thursday at noon', { hour: 12, minute: 0, weekday: 4 })
-assertSchedule('dinner at Rhinelander Friday at 6', { title: 'dinner', location: 'Rhinelander' })
+assertSchedule('dinner at Rhinelander Friday at 6', { title: 'Dinner', location: 'Rhinelander' })
 assertSchedule('schedule meeting at 6', { hour: 18, minute: 0 })
 assertSchedule('schedule meeting at 7', { hour: 19, minute: 0 })
 assertSchedule('schedule meeting at 8', { hour: 20, minute: 0 })
@@ -172,6 +172,9 @@ assertSchedule('book design review into Metonga Media', { calendarHint: 'Metonga
 assertSchedule('schedule dentist mid May', { windowLabel: 'mid May' })
 assertSchedule('schedule call end of month', { windowLabel: 'end of the month' })
 assertSchedule('schedule meeting next week Thursday', { weekday: 4 })
+assertSchedule('Schedule: set the schedule for digital signage on Sunday at 8 AM', {
+  title: 'Set The Schedule For Digital Signage',
+})
 
 assert.deepEqual(scheduleCandidateTimesForTitle('breakfast').slice(0, 3), [
   { hour: 8, minute: 0 },

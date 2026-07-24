@@ -76,18 +76,18 @@ assert.equal(parts(thisWeek.dateWindow.start).day, parts(startOfDay(0, timeZone)
 
 const nextWeek = assertScheduleWindow('schedule meeting early next week', 'next week')
 assert.equal(parts(nextWeek.dateWindow.start).weekday, 1)
-assert.equal(nextWeek.title, 'meeting')
+assert.equal(nextWeek.title, 'Meeting')
 
 const may = assertScheduleWindow('I need a dentist appointment in May sometime', 'May')
 assert.equal(parts(may.dateWindow.start).month, 5)
 assert.equal(parts(may.dateWindow.end).month, 5)
 
 const midMay = assertScheduleWindow('schedule dentist mid May', 'mid May')
-assert.equal(midMay.title, 'dentist')
+assert.equal(midMay.title, 'Dentist')
 assert.equal(parts(midMay.dateWindow.start).month, 5)
 
 const endOfMonth = assertScheduleWindow('schedule call end of month', 'end of the month')
-assert.equal(endOfMonth.title, 'call')
+assert.equal(endOfMonth.title, 'Call')
 
 const nextWeekThursday = parseSmsIntent('need a dentist appointment next week Thur', timeZone)
 assert.equal(nextWeekThursday.type, 'schedule')
@@ -99,28 +99,28 @@ assert.deepEqual(tomorrowAfternoon.exactTime, { hour: 14, minute: 0 })
 const tonight = assertScheduleWindow('meeting tonight', 'today')
 assert.deepEqual(tonight.exactTime, { hour: 18, minute: 0 })
 
-const bareAfternoonHour = assertScheduleTitle('meeting tomorrow at 2', 'meeting')
+const bareAfternoonHour = assertScheduleTitle('meeting tomorrow at 2', 'Meeting')
 assert.deepEqual(bareAfternoonHour.exactTime, { hour: 14, minute: 0 })
 
-const bareMorningHour = assertScheduleTitle('schedule meeting at 9', 'meeting')
+const bareMorningHour = assertScheduleTitle('schedule meeting at 9', 'Meeting')
 assert.deepEqual(bareMorningHour.exactTime, { hour: 9, minute: 0 })
 
-const bareEveningSix = assertScheduleTitle('schedule meeting at 6', 'meeting')
+const bareEveningSix = assertScheduleTitle('schedule meeting at 6', 'Meeting')
 assert.deepEqual(bareEveningSix.exactTime, { hour: 18, minute: 0 })
 
-const bareEveningSeven = assertScheduleTitle('schedule meeting at 7', 'meeting')
+const bareEveningSeven = assertScheduleTitle('schedule meeting at 7', 'Meeting')
 assert.deepEqual(bareEveningSeven.exactTime, { hour: 19, minute: 0 })
 
-const bareEveningEight = assertScheduleTitle('schedule meeting at 8', 'meeting')
+const bareEveningEight = assertScheduleTitle('schedule meeting at 8', 'Meeting')
 assert.deepEqual(bareEveningEight.exactTime, { hour: 20, minute: 0 })
 
-const bareMorningTen = assertScheduleTitle('schedule meeting at 10', 'meeting')
+const bareMorningTen = assertScheduleTitle('schedule meeting at 10', 'Meeting')
 assert.deepEqual(bareMorningTen.exactTime, { hour: 10, minute: 0 })
 
-const bareMorningEleven = assertScheduleTitle('schedule meeting at 11', 'meeting')
+const bareMorningEleven = assertScheduleTitle('schedule meeting at 11', 'Meeting')
 assert.deepEqual(bareMorningEleven.exactTime, { hour: 11, minute: 0 })
 
-const bareNoon = assertScheduleTitle('schedule meeting at 12', 'meeting')
+const bareNoon = assertScheduleTitle('schedule meeting at 12', 'Meeting')
 assert.deepEqual(bareNoon.exactTime, { hour: 12, minute: 0 })
 
 const changeThatTo515 = parseSmsIntent('change that to 5:15', timeZone)
@@ -138,14 +138,14 @@ assert.equal(rawTimeOnly.type, 'unknown')
 
 const thisWednesdayDinner = assertScheduleTitle(
   'this Wednesday, Salmon/Haddock for dinner',
-  'salmon/haddock for dinner',
+  'Salmon/Haddock For Dinner',
 )
 assert.equal(parts(thisWednesdayDinner.dateWindow.start).weekday, 3)
 
-const oneHourMeeting = assertScheduleTitle('schedule 1 hour meeting', 'meeting')
+const oneHourMeeting = assertScheduleTitle('schedule 1 hour meeting', 'Meeting')
 assert.equal(oneHourMeeting.durationMinutes, 60)
 
-const quickCall = assertScheduleTitle('schedule quick 15 min call', 'quick call')
+const quickCall = assertScheduleTitle('schedule quick 15 min call', 'Quick Call')
 assert.equal(quickCall.durationMinutes, 15)
 
 assert.deepEqual(scheduleCandidateTimesForTitle('lunch').slice(0, 3), [
@@ -154,11 +154,11 @@ assert.deepEqual(scheduleCandidateTimesForTitle('lunch').slice(0, 3), [
   { hour: 13, minute: 0 },
 ])
 
-const locationEvent = assertScheduleTitle('Schedule Mokums 3rd bday may 17 10am at Mary’s house', 'mokums 3rd bday')
+const locationEvent = assertScheduleTitle('Schedule Mokums 3rd bday may 17 10am at Mary’s house', 'Mokums 3rd Bday')
 assert.equal(locationEvent.location, 'Mary’s house')
 assert.deepEqual(locationEvent.exactTime, { hour: 10, minute: 0 })
 
-assertScheduleTitle('already scheduled dentist May 17 at 10:30', 'dentist')
+assertScheduleTitle('already scheduled dentist May 17 at 10:30', 'Dentist')
 
 assert.equal(
   calendarImagePayloadToSmsText({
@@ -237,7 +237,7 @@ const staceyInvite = assertInviteParse('meeting with Stacey tomorrow at 2', 'mee
 assert.equal(staceyInvite.directInvitees.length, 0)
 const staceyInviteSchedule = parseSmsIntent(staceyInvite.cleanedText, timeZone)
 assert.equal(staceyInviteSchedule.type, 'schedule')
-assert.equal(staceyInviteSchedule.title, 'meeting with stacey')
+assert.equal(staceyInviteSchedule.title, 'Meeting With Stacey')
 assert.deepEqual(staceyInviteSchedule.exactTime, { hour: 14, minute: 0 })
 
 const recurringDropOff = parseSmsIntent(
@@ -264,7 +264,7 @@ assert.deepEqual(recurringTwoDaysLong.recurrence, {
   interval: 1,
   weekdays: [1, 2],
 })
-assert.equal(recurringTwoDaysLong.title, 'pick up the kids')
+assert.equal(recurringTwoDaysLong.title, 'Pick Up The Kids')
 
 const recurringTwoDaysMixed = parseSmsIntent(
   'Remind me to pick up the kids every mon and Tuesday at 3:45',
@@ -276,7 +276,7 @@ assert.deepEqual(recurringTwoDaysMixed.recurrence, {
   interval: 1,
   weekdays: [1, 2],
 })
-assert.equal(recurringTwoDaysMixed.title, 'pick up the kids')
+assert.equal(recurringTwoDaysMixed.title, 'Pick Up The Kids')
 
 const recurringRange = parseSmsIntent(
   'Remind me to pick up the kids every mon-thur at 3:45',
@@ -288,7 +288,21 @@ assert.deepEqual(recurringRange.recurrence, {
   interval: 1,
   weekdays: [1, 2, 3, 4],
 })
-assert.equal(recurringRange.title, 'pick up the kids')
+assert.equal(recurringRange.title, 'Pick Up The Kids')
+
+const signageReminder = parseSmsIntent(
+  'Remind me to set the schedule for digital signage on Sunday at 8 AM',
+  timeZone,
+)
+assert.equal(signageReminder.type, 'schedule')
+assert.equal(signageReminder.title, 'Set The Schedule For Digital Signage')
+assert.deepEqual(signageReminder.exactTime, { hour: 8, minute: 0 })
+assert.equal(signageReminder.dateWindow?.label, 'Sun, Jul 26')
+
+assertScheduleTitle(
+  'Schedule: set the schedule for digital signage on Sunday at 8 AM',
+  'Set The Schedule For Digital Signage',
+)
 
 const recurringShortWeekdays = parseSmsIntent(
   'Remind me every wed and thur at 3:45',
