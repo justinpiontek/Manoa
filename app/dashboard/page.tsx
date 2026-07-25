@@ -1,3 +1,4 @@
+import { getAuthenticatedUserEmail, isAdminEmail } from '@/src/lib/admin'
 import { stripe } from '@/src/lib/stripeClient'
 import { appUrl } from '@/src/lib/env'
 import { onboardingExampleTexts } from '@/src/lib/onboarding'
@@ -111,6 +112,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     }
   }
 
+  const viewerEmail = await getAuthenticatedUserEmail()
   const profile = await getAuthenticatedDashboardProfile()
   const manoaNumber = process.env.TWILIO_FROM_NUMBER?.trim() || ''
   const displayNumber = manoaNumber ? formatPhoneForDisplay(manoaNumber) : ''
@@ -123,6 +125,26 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const billingReturned = params.billing === 'returned'
 
   if (!profile) {
+    if (isAdminEmail(viewerEmail)) {
+      return (
+        <main className="dashboard-shell">
+          <div className="dashboard-card">
+            <ManoaWordmark className="legal-back compact" href="/" />
+            <p className="legal-eyebrow">Dashboard</p>
+            <h1 className="dashboard-title">Admin access is set up.</h1>
+            <p className="dashboard-lede">
+              This email is for the internal support view, not a regular Manoa customer dashboard.
+            </p>
+            <div className="dashboard-footer">
+              <a className="button dashboard-button" href="/dashboard/support">
+                Open support view
+              </a>
+            </div>
+          </div>
+        </main>
+      )
+    }
+
     return (
       <main className="dashboard-shell">
         <div className="dashboard-card">

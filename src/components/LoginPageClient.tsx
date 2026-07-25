@@ -132,7 +132,7 @@ export default function LoginPageClient({
 
       setLocalMessage({
         tone: 'success',
-        text: `If ${normalizedEmail} is ready for Manoa, we sent a login link there.`,
+        text: `If ${normalizedEmail} can open Manoa, we sent a login link there.`,
       })
       setEmail('')
     } catch (error) {

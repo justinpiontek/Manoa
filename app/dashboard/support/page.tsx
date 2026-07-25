@@ -1,8 +1,7 @@
+import { getAuthenticatedAdminEmail } from '@/src/lib/admin'
 import { formatPhoneForDisplay, normalizePhone } from '@/src/lib/phone'
 import { listConfiguredCalendarAccounts, type CalendarProvider } from '@/src/lib/calendar/google'
-import { getAuthenticatedDashboardProfile } from '@/src/lib/dashboardAuth'
 import { getDashboardProfile, type DashboardProfile } from '@/src/lib/profiles'
-import { siteSupportEmail } from '@/src/lib/siteMetadata'
 import { supabaseAdmin } from '@/src/lib/supabaseAdmin'
 import ManoaWordmark from '@/src/components/ManoaWordmark'
 import type { Metadata } from 'next'
@@ -68,10 +67,6 @@ function providerLabel(provider: CalendarProvider) {
   if (provider === 'outlook') return 'Outlook'
   if (provider === 'apple') return 'Apple'
   return 'Google'
-}
-
-function isSupportViewer(email: string | null | undefined) {
-  return Boolean(email && email.trim().toLowerCase() === siteSupportEmail.toLowerCase())
 }
 
 function formatDateTime(value: string | null | undefined, timeZone: string) {
@@ -176,12 +171,12 @@ async function findSupportProfile(email: string, phone: string) {
 
 export default async function DashboardSupportPage({ searchParams }: SupportPageProps) {
   const params = await searchParams
-  const viewer = await getAuthenticatedDashboardProfile()
+  const viewerEmail = await getAuthenticatedAdminEmail()
   const emailQuery = params.email?.trim().toLowerCase() || ''
   const rawPhoneQuery = params.phone?.trim() || ''
   const normalizedPhoneQuery = rawPhoneQuery ? normalizePhone(rawPhoneQuery) : ''
 
-  if (!viewer) {
+  if (!viewerEmail) {
     return (
       <main className="dashboard-shell">
         <div className="dashboard-card">
@@ -194,29 +189,6 @@ export default async function DashboardSupportPage({ searchParams }: SupportPage
               Go to login
             </a>
           </div>
-        </div>
-      </main>
-    )
-  }
-
-  if (!isSupportViewer(viewer.email)) {
-    return (
-      <main className="dashboard-shell">
-        <div className="dashboard-card">
-          <div className="dashboard-topbar">
-            <ManoaWordmark className="legal-back compact" href="/" />
-            <div className="dashboard-topbar-actions">
-              <a className="nav-link" href="/dashboard">
-                Back to dashboard
-              </a>
-            </div>
-          </div>
-          <p className="legal-eyebrow">Support</p>
-          <h1 className="dashboard-title">This page is owner-only.</h1>
-          <p className="dashboard-lede">
-            Your account can use the normal dashboard, but it cannot open the internal support
-            view.
-          </p>
         </div>
       </main>
     )
@@ -400,7 +372,7 @@ export default async function DashboardSupportPage({ searchParams }: SupportPage
           </form>
 
           <p className="dashboard-stage-footnote">
-            Support login: <strong>{viewer.email}</strong>
+            Support login: <strong>{viewerEmail}</strong>
           </p>
         </section>
 

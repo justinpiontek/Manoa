@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { isAdminEmail } from '@/src/lib/admin'
 import { appUrl, requiredEnv } from '@/src/lib/env'
 import { ensureAuthUserForEmail, getDashboardProfileByEmail } from '@/src/lib/profiles'
 import { checkRateLimit, clientIp } from '@/src/lib/rateLimit'
@@ -62,7 +63,9 @@ export async function POST(request: NextRequest) {
     }
 
     const profile = await getDashboardProfileByEmail(email)
-    if (profile) {
+    const adminLogin = isAdminEmail(email)
+
+    if (profile || adminLogin) {
       await ensureAuthUserForEmail(email)
 
       const supabase = createClient(
@@ -80,7 +83,9 @@ export async function POST(request: NextRequest) {
         email,
         options: {
           shouldCreateUser: false,
-          emailRedirectTo: `${appUrl()}/auth/callback?next=/dashboard`,
+          emailRedirectTo: `${appUrl()}/auth/callback?next=${encodeURIComponent(
+            adminLogin ? '/dashboard/support' : '/dashboard',
+          )}`,
         },
       })
 
