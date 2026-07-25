@@ -4978,15 +4978,128 @@ footer {
   }
 
   .landing-phone-frame {
-    width: min(100%, 340px);
+    width: min(100%, 308px);
+    aspect-ratio: 390 / 720;
   }
 
   .landing-phone-screen {
     height: 100%;
+    padding: 11px 11px 12px;
   }
 
   .landing-phone-bubble {
-    max-width: 88%;
+    max-width: 90%;
+    gap: 6px;
+  }
+
+  .landing-phone-status {
+    padding: 2px 2px 6px;
+    font-size: 0.76rem;
+  }
+
+  .landing-phone-header {
+    gap: 10px;
+    padding: 4px 2px 8px;
+  }
+
+  .landing-mini-brand {
+    gap: 7px;
+  }
+
+  .landing-mini-brand-mark {
+    width: 22px;
+    height: 22px;
+    font-size: 0.82rem;
+  }
+
+  .landing-mini-brand strong {
+    font-size: 0.84rem;
+  }
+
+  .landing-phone-menu {
+    width: 34px;
+    height: 34px;
+  }
+
+  .landing-phone-thread {
+    gap: 7px;
+    padding: 2px 1px 10px;
+  }
+
+  .landing-phone-bubble.user {
+    padding: 10px 12px;
+  }
+
+  .landing-phone-bubble.user.compact {
+    min-width: 46px;
+    padding: 8px 14px;
+  }
+
+  .landing-phone-bubble.card,
+  .landing-phone-bubble.confirm,
+  .landing-phone-bubble.neutral {
+    padding: 10px 12px;
+  }
+
+  .landing-phone-bubble.card strong,
+  .landing-phone-bubble.confirm strong,
+  .landing-phone-bubble.neutral strong {
+    font-size: 0.88rem;
+    line-height: 1.16;
+  }
+
+  .landing-phone-bubble.card p,
+  .landing-phone-bubble.confirm p,
+  .landing-phone-bubble.neutral p,
+  .landing-phone-bubble.confirm span,
+  .landing-phone-bubble.neutral span,
+  .landing-phone-card-text,
+  .landing-phone-card-footer {
+    font-size: 0.82rem;
+    line-height: 1.22;
+  }
+
+  .landing-phone-options {
+    gap: 4px;
+  }
+
+  .landing-phone-option {
+    gap: 7px;
+  }
+
+  .landing-phone-option-number {
+    width: 24px;
+    height: 24px;
+    font-size: 0.8rem;
+    border-radius: 6px;
+  }
+
+  .landing-phone-option-text {
+    font-size: 0.8rem;
+    line-height: 1.14;
+  }
+
+  .landing-phone-confirm-icon {
+    font-size: 1.24rem;
+  }
+
+  .landing-phone-composer {
+    gap: 7px;
+    padding: 5px 6px 5px 5px;
+  }
+
+  .landing-composer-icon,
+  .landing-composer-send {
+    width: 29px;
+    height: 29px;
+  }
+
+  .landing-composer-icon {
+    font-size: 1.2rem;
+  }
+
+  .landing-composer-input {
+    font-size: 0.8rem;
   }
 
   .landing-control-section {
