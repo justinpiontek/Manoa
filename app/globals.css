@@ -2793,6 +2793,96 @@ footer {
   line-height: 1.55;
 }
 
+.dashboard-support-search {
+  display: grid;
+  gap: 14px;
+}
+
+.dashboard-search-inputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.dashboard-support-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.dashboard-support-list li + li {
+  margin-top: 8px;
+}
+
+.dashboard-support-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.dashboard-support-details {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px 14px;
+}
+
+.dashboard-support-details summary {
+  cursor: pointer;
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.dashboard-support-details-body {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.dashboard-support-details-body p {
+  margin: 0;
+}
+
+.dashboard-support-code {
+  margin: 0;
+  overflow-x: auto;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #dbeafe;
+  padding: 12px;
+  font-size: 0.85rem;
+  line-height: 1.55;
+}
+
+.dashboard-support-log-item {
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px 14px;
+}
+
+.dashboard-support-log-item strong {
+  color: var(--ink);
+}
+
+.dashboard-support-log-item span,
+.dashboard-support-log-item p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.dashboard-support-log-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .calendar-account-actions {
   display: flex;
   flex-wrap: wrap;
@@ -3264,6 +3354,7 @@ footer {
   .setup-grid,
   .dashboard-live-grid,
   .dashboard-support-grid,
+  .dashboard-search-inputs,
   .lab-grid,
   .signup form,
   .auth-form {

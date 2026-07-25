@@ -6,6 +6,7 @@ import { listConfiguredCalendarAccounts, type CalendarProvider } from '@/src/lib
 import { getAuthenticatedDashboardProfile } from '@/src/lib/dashboardAuth'
 import { listSmsThreadEntries, toSmsThreadMessages } from '@/src/lib/sms/thread'
 import { supabaseAdmin } from '@/src/lib/supabaseAdmin'
+import { siteSupportEmail, supportMailtoHref } from '@/src/lib/siteMetadata'
 import ManoaWordmark from '@/src/components/ManoaWordmark'
 import CalendarSettingsForm from '@/src/components/CalendarSettingsForm'
 import DisconnectCalendarAccountForm from '@/src/components/DisconnectCalendarAccountForm'
@@ -216,6 +217,12 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       ]
     : onboardingExampleTexts
   const initialThreadMessages = toSmsThreadMessages(await listSmsThreadEntries(profile.id))
+  const supportHref = supportMailtoHref(
+    'Manoa support',
+    `Hi Justin,\n\nI need help with Manoa.\n\nAccount email: ${profile.email}\nPhone: ${
+      profile.phone_e164 || 'not added'
+    }\n\nWhat happened:\n`,
+  )
 
   return (
     <main className="dashboard-shell">
@@ -223,6 +230,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         <div className="dashboard-topbar">
           <ManoaWordmark className="legal-back compact" href="/" />
           <div className="dashboard-topbar-actions">
+            {profile.email.trim().toLowerCase() === siteSupportEmail.toLowerCase() ? (
+              <a className="nav-link" href="/dashboard/support">
+                Support view
+              </a>
+            ) : null}
             <a className="nav-link" href={`${appUrl()}/dashboard`}>
               Refresh
             </a>
@@ -562,6 +574,9 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                 Download contact card
               </a>
             ) : null}
+            <a className="button dashboard-button secondary-button" href={supportHref}>
+              Need help?
+            </a>
             <a className="button dashboard-button secondary-button" href="/api/billing-portal">
               Manage billing
             </a>
@@ -584,6 +599,34 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </div>
 
           <div className="dashboard-support-grid">
+            <article className="dashboard-support-card">
+              <p className="dashboard-label">Support</p>
+              <h3>Get unstuck fast</h3>
+              <p>
+                If something is off, email support or text HELP from your Manoa number. Manoa will
+                also understand “start over” or “nevermind” if you want to drop the current request.
+              </p>
+              <div className="dashboard-sms-meta">
+                <p>
+                  <strong>Support email</strong>
+                  <span>
+                    <a href={`mailto:${siteSupportEmail}`}>{siteSupportEmail}</a>
+                  </span>
+                </p>
+                <p>
+                  <strong>By text</strong>
+                  <span>Reply HELP any time.</span>
+                </p>
+                <p>
+                  <strong>Reset a stuck thread</strong>
+                  <span>Say “start over” or “nevermind.”</span>
+                </p>
+              </div>
+              <a className="button dashboard-button secondary-button" href={supportHref}>
+                Email support
+              </a>
+            </article>
+
             <article className="dashboard-support-card">
               <p className="dashboard-label">Texting</p>
               <h3>{smsReady ? 'Texting is on' : 'Texting is optional'}</h3>

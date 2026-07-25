@@ -1,6 +1,7 @@
 import { stripe } from '@/src/lib/stripeClient'
 import { onboardingExampleTexts } from '@/src/lib/onboarding'
 import { formatPhoneForDisplay } from '@/src/lib/phone'
+import { siteSupportEmail, supportMailtoHref } from '@/src/lib/siteMetadata'
 import { getAuthenticatedDashboardProfile } from '@/src/lib/dashboardAuth'
 import ManoaWordmark from '@/src/components/ManoaWordmark'
 import type { Metadata } from 'next'
@@ -40,6 +41,12 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
     : ''
   const authenticatedForThisSetup = Boolean(authenticatedProfile)
   const appleConnectHref = '/setup/apple-calendar'
+  const supportHref = supportMailtoHref(
+    'Manoa setup support',
+    `Hi Justin,\n\nI need help finishing Manoa setup.\n\nAccount email: ${
+      authenticatedProfile?.email || ''
+    }\nPhone: ${authenticatedProfile?.phone_e164 || ''}\n\nWhat happened:\n`,
+  )
 
   return (
     <main className="setup-shell">
@@ -153,7 +160,16 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
               Save Manoa in your contacts from the dashboard so this feels like texting a real
               assistant, not opening software.
             </p>
+            <p className="setup-note">
+              If setup gets stuck, text HELP, say “start over,” or email{' '}
+              <a href={`mailto:${siteSupportEmail}`}>{siteSupportEmail}</a>.
+            </p>
           </article>
+        </div>
+
+        <div className="notice" role="status" aria-live="polite">
+          Need help? Email <a href={`mailto:${siteSupportEmail}`}>{siteSupportEmail}</a>, or text
+          HELP once your phone is connected.
         </div>
 
         <div className="setup-footer">
@@ -162,6 +178,9 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
               Save Manoa contact
             </a>
           ) : null}
+          <a className="button dashboard-link-button secondary-button" href={supportHref}>
+            Contact support
+          </a>
           {authenticatedForThisSetup ? (
             <a className="button dashboard-link-button" href="/dashboard">
               Open dashboard

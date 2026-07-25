@@ -49,6 +49,7 @@ import {
   onboardingExampleTexts,
   readyToTextExamplesReply,
 } from '../onboarding'
+import { siteSupportEmail } from '../siteMetadata'
 import { profileIdFromDashboardSender } from './sender'
 import { DEFAULT_REMINDER_LEAD_MINUTES } from '../reminders'
 import {
@@ -3994,20 +3995,20 @@ async function calendarSetupReply(profile: SmsProfile, lowerBody: string) {
 
 async function helpReply(profile: SmsProfile | null, isDashboardConsole: boolean) {
   if (!profile) {
-    return `You're not set up with Manoa yet. Start here: ${appUrl()}. After signup, text START from this phone to turn texting on.`
+    return `You're not set up with Manoa yet. Start here: ${appUrl()}. After signup, text START from this phone to turn texting on.\nNeed help? Email ${siteSupportEmail}.`
   }
 
   if (!activeSubscriptionStatuses.has(profile.subscriptionStatus)) {
-    return 'Your Manoa subscription is not active yet. Finish checkout, then text me again.'
+    return `Your Manoa subscription is not active yet. Finish checkout, then text me again.\nNeed help? Email ${siteSupportEmail}.`
   }
 
   if (!(await hasConnectedCalendar(profile.id))) {
-    return `${await calendarSetupReply(profile, 'add calendar')}\n\nIf you get stuck, say "start over" or "nevermind."`
+    return `${await calendarSetupReply(profile, 'add calendar')}\n\nIf you get stuck, say "start over" or "nevermind."\nNeed help? Email ${siteSupportEmail}.`
   }
 
   const placement = await resolveCalendarPlacement(profile.id, 'Calendar')
   if (!placement.bookingCalendars.length) {
-    return `${noBookingCalendarReply(loginLinkForProfile(profile))}\n\nIf you get stuck, say "start over" or "nevermind."`
+    return `${noBookingCalendarReply(loginLinkForProfile(profile))}\n\nIf you get stuck, say "start over" or "nevermind."\nNeed help? Email ${siteSupportEmail}.`
   }
 
   const lines = [
@@ -4018,6 +4019,8 @@ async function helpReply(profile: SmsProfile | null, isDashboardConsole: boolean
     '4. Cancel soccer practice.',
     '5. Add calendar.',
     'You can also send a photo or screenshot.',
+    `Open ${loginLinkForProfile(profile)} if you want to review your settings.`,
+    `Need help? Email ${siteSupportEmail}.`,
     'If you get stuck, say "start over" or "nevermind."',
   ]
 
