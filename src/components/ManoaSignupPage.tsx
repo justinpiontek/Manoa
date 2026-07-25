@@ -362,11 +362,15 @@ function PhoneMockup({ variant }: { variant: 'schedule' | 'reschedule' }) {
 
                     <div className="landing-phone-options">
                       <div className="landing-phone-option">
-                        <span className="landing-phone-option-number">1</span>
+                        <span className="landing-phone-option-number">
+                          <span className="landing-phone-option-number-value">1</span>
+                        </span>
                         <span className="landing-phone-option-text">Home</span>
                       </div>
                       <div className="landing-phone-option">
-                        <span className="landing-phone-option-number">2</span>
+                        <span className="landing-phone-option-number">
+                          <span className="landing-phone-option-number-value">2</span>
+                        </span>
                         <span className="landing-phone-option-text">Family</span>
                       </div>
                     </div>
@@ -383,15 +387,21 @@ function PhoneMockup({ variant }: { variant: 'schedule' | 'reschedule' }) {
 
                     <div className="landing-phone-options">
                       <div className="landing-phone-option">
-                        <span className="landing-phone-option-number">1</span>
+                        <span className="landing-phone-option-number">
+                          <span className="landing-phone-option-number-value">1</span>
+                        </span>
                         <span className="landing-phone-option-text">Mon, Jul 27 at 10:00 AM on Home</span>
                       </div>
                       <div className="landing-phone-option">
-                        <span className="landing-phone-option-number">2</span>
+                        <span className="landing-phone-option-number">
+                          <span className="landing-phone-option-number-value">2</span>
+                        </span>
                         <span className="landing-phone-option-text">Mon, Jul 27 at 11:00 AM on Home</span>
                       </div>
                       <div className="landing-phone-option">
-                        <span className="landing-phone-option-number">3</span>
+                        <span className="landing-phone-option-number">
+                          <span className="landing-phone-option-number-value">3</span>
+                        </span>
                         <span className="landing-phone-option-text">Mon, Jul 27 at 1:00 PM on Home</span>
                       </div>
                     </div>
@@ -424,15 +434,21 @@ function PhoneMockup({ variant }: { variant: 'schedule' | 'reschedule' }) {
 
                     <div className="landing-phone-options">
                       <div className="landing-phone-option">
-                        <span className="landing-phone-option-number">1</span>
+                        <span className="landing-phone-option-number">
+                          <span className="landing-phone-option-number-value">1</span>
+                        </span>
                         <span className="landing-phone-option-text">Tue, Jul 28 at 9:00 AM on Home</span>
                       </div>
                       <div className="landing-phone-option">
-                        <span className="landing-phone-option-number">2</span>
+                        <span className="landing-phone-option-number">
+                          <span className="landing-phone-option-number-value">2</span>
+                        </span>
                         <span className="landing-phone-option-text">Tue, Jul 28 at 10:00 AM on Home</span>
                       </div>
                       <div className="landing-phone-option">
-                        <span className="landing-phone-option-number">3</span>
+                        <span className="landing-phone-option-number">
+                          <span className="landing-phone-option-number-value">3</span>
+                        </span>
                         <span className="landing-phone-option-text">Tue, Jul 28 at 11:00 AM on Home</span>
                       </div>
                     </div>

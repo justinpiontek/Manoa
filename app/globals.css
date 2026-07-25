@@ -4208,21 +4208,25 @@ footer {
 }
 
 .landing-phone-option-number {
-  display: flex;
+  display: grid;
   width: 26px;
   height: 26px;
-  align-items: center;
-  justify-content: center;
+  place-items: center;
   border-radius: 7px;
   background: linear-gradient(180deg, #7fa4d8 0%, #5f82b5 100%);
   color: #ffffff;
+  box-sizing: border-box;
+}
+
+.landing-phone-option-number-value {
+  display: block;
   font-size: 0.86rem;
   font-weight: 850;
   line-height: 1;
   text-align: center;
   font-variant-numeric: tabular-nums;
-  padding: 1px 0 0;
-  box-sizing: border-box;
+  position: relative;
+  top: 1px;
 }
 
 .landing-phone-option-text {
@@ -5081,8 +5085,11 @@ footer {
   .landing-phone-option-number {
     width: 24px;
     height: 24px;
-    font-size: 0.8rem;
     border-radius: 6px;
+  }
+
+  .landing-phone-option-number-value {
+    font-size: 0.8rem;
   }
 
   .landing-phone-option-text {
