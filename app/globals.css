@@ -4103,14 +4103,14 @@ footer {
   flex: 1;
   min-height: 0;
   align-content: start;
-  gap: 10px;
-  padding: 4px 4px 14px;
+  gap: 8px;
+  padding: 2px 2px 12px;
 }
 
 .landing-phone-bubble {
   display: grid;
   gap: 8px;
-  max-width: 88%;
+  max-width: 92%;
   border-radius: 18px;
   box-shadow: 0 14px 26px rgba(15, 23, 42, 0.06);
 }
@@ -4127,7 +4127,7 @@ footer {
   border-radius: 18px 18px 6px 18px;
   background: linear-gradient(180deg, #43d96f 0%, #2fc95e 100%);
   color: #ffffff;
-  padding: 12px 14px;
+  padding: 11px 13px;
 }
 
 .landing-phone-bubble.user.compact {
@@ -4143,15 +4143,15 @@ footer {
   border: 1px solid #e6e9ef;
   background: #f2f4f7;
   color: #122033;
-  padding: 12px 14px;
+  padding: 11px 13px;
 }
 
 .landing-phone-bubble.card strong,
 .landing-phone-bubble.confirm strong,
 .landing-phone-bubble.neutral strong {
-  font-size: 1rem;
+  font-size: 0.96rem;
   font-weight: 500;
-  line-height: 1.24;
+  line-height: 1.2;
 }
 
 .landing-phone-bubble.card p,
@@ -4160,8 +4160,8 @@ footer {
 .landing-phone-bubble.confirm span,
 .landing-phone-bubble.neutral span {
   margin: 0;
-  font-size: 0.94rem;
-  line-height: 1.36;
+  font-size: 0.9rem;
+  line-height: 1.28;
 }
 
 .landing-phone-bubble.confirm {
@@ -4185,13 +4185,13 @@ footer {
 
 .landing-phone-card-text {
   margin: -2px 0 0;
-  font-size: 0.94rem;
-  line-height: 1.34;
+  font-size: 0.9rem;
+  line-height: 1.28;
 }
 
 .landing-phone-options {
   display: grid;
-  gap: 6px;
+  gap: 5px;
 }
 
 .landing-phone-option {
@@ -4215,8 +4215,8 @@ footer {
 
 .landing-phone-option-text {
   margin: 0;
-  font-size: 0.93rem;
-  line-height: 1.28;
+  font-size: 0.88rem;
+  line-height: 1.2;
 }
 
 .landing-phone-option-text.accent {
@@ -4228,8 +4228,8 @@ footer {
 
 .landing-phone-card-footer {
   margin: 2px 0 0;
-  font-size: 0.94rem;
-  line-height: 1.34;
+  font-size: 0.9rem;
+  line-height: 1.28;
 }
 
 .landing-phone-confirm-icon {
@@ -4242,20 +4242,20 @@ footer {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   margin-top: auto;
   border: 1px solid #dde6f3;
   border-radius: 999px;
   background: #ffffff;
   box-shadow: 0 14px 24px rgba(15, 23, 42, 0.05);
-  padding: 7px 8px 7px 7px;
+  padding: 6px 7px 6px 6px;
 }
 
 .landing-composer-icon,
 .landing-composer-send {
   display: inline-grid;
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   place-items: center;
   border: 0;
   border-radius: 999px;
@@ -4271,7 +4271,7 @@ footer {
 
 .landing-composer-input {
   color: #8b97aa;
-  font-size: 0.92rem;
+  font-size: 0.88rem;
 }
 
 .landing-composer-send {
