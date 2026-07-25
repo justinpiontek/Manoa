@@ -4012,14 +4012,18 @@ footer {
 .landing-phone-screen {
   box-sizing: border-box;
   height: 100%;
-  display: flex;
-  flex-direction: column;
   border-radius: 34px;
   background:
     radial-gradient(circle at top right, rgba(75, 121, 255, 0.16), transparent 30%),
     linear-gradient(180deg, #ffffff 0%, #f6f9ff 100%);
   padding: 14px 14px 16px;
   overflow: hidden;
+}
+
+.landing-phone-screen-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .landing-phone-status {
@@ -4985,6 +4989,13 @@ footer {
   .landing-phone-screen {
     height: 100%;
     padding: 11px 11px 12px;
+  }
+
+  .landing-phone-screen-inner {
+    width: calc(100% / 0.88);
+    height: calc(100% / 0.88);
+    transform: scale(0.88);
+    transform-origin: top left;
   }
 
   .landing-phone-bubble {

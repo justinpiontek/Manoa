@@ -326,138 +326,140 @@ function PhoneMockup({ variant }: { variant: 'schedule' | 'reschedule' }) {
       <div className="landing-phone-shell">
         <div className="landing-phone-notch" aria-hidden="true" />
         <div className="landing-phone-screen">
-          <div className="landing-phone-status">
-            <span>8:41</span>
-            <div className="landing-phone-status-icons" aria-hidden="true">
-              <span />
-              <span />
-              <span />
+          <div className="landing-phone-screen-inner">
+            <div className="landing-phone-status">
+              <span>8:41</span>
+              <div className="landing-phone-status-icons" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+              </div>
             </div>
-          </div>
-          <div className="landing-phone-header">
-            <MiniBrand />
-            <button className="landing-phone-menu" type="button" aria-label="Open menu">
-              <span />
-              <span />
-              <span />
-            </button>
-          </div>
+            <div className="landing-phone-header">
+              <MiniBrand />
+              <button className="landing-phone-menu" type="button" aria-label="Open menu">
+                <span />
+                <span />
+                <span />
+              </button>
+            </div>
 
-          <div className="landing-phone-thread">
-            {variant === 'schedule' ? (
-              <>
-                <div className="landing-phone-bubble user">
-                  <span>Schedule team meeting next week</span>
-                </div>
+            <div className="landing-phone-thread">
+              {variant === 'schedule' ? (
+                <>
+                  <div className="landing-phone-bubble user">
+                    <span>Schedule team meeting next week</span>
+                  </div>
 
-                <div className="landing-phone-bubble card">
-                  <div className="landing-phone-card-head">
-                    <span className="landing-phone-message-icon" aria-hidden="true">
-                      🗓️
+                  <div className="landing-phone-bubble card">
+                    <div className="landing-phone-card-head">
+                      <span className="landing-phone-message-icon" aria-hidden="true">
+                        🗓️
+                      </span>
+                      <strong>Which calendar should I put &quot;Team Meeting&quot; on?</strong>
+                    </div>
+                    <p className="landing-phone-card-text">Current request: next week.</p>
+
+                    <div className="landing-phone-options">
+                      <div className="landing-phone-option">
+                        <span className="landing-phone-option-number">1</span>
+                        <span className="landing-phone-option-text">Home</span>
+                      </div>
+                      <div className="landing-phone-option">
+                        <span className="landing-phone-option-number">2</span>
+                        <span className="landing-phone-option-text">Family</span>
+                      </div>
+                    </div>
+
+                    <p className="landing-phone-card-footer">Reply with a number or calendar name.</p>
+                  </div>
+
+                  <div className="landing-phone-bubble user compact">
+                    <span>1</span>
+                  </div>
+
+                  <div className="landing-phone-bubble card">
+                    <strong>I found these times:</strong>
+
+                    <div className="landing-phone-options">
+                      <div className="landing-phone-option">
+                        <span className="landing-phone-option-number">1</span>
+                        <span className="landing-phone-option-text">Mon, Jul 27 at 10:00 AM on Home</span>
+                      </div>
+                      <div className="landing-phone-option">
+                        <span className="landing-phone-option-number">2</span>
+                        <span className="landing-phone-option-text">Mon, Jul 27 at 11:00 AM on Home</span>
+                      </div>
+                      <div className="landing-phone-option">
+                        <span className="landing-phone-option-number">3</span>
+                        <span className="landing-phone-option-text">Mon, Jul 27 at 1:00 PM on Home</span>
+                      </div>
+                    </div>
+
+                    <p className="landing-phone-card-footer">Reply 1, 2, or 3.</p>
+                  </div>
+
+                  <div className="landing-phone-bubble user compact">
+                    <span>1</span>
+                  </div>
+
+                  <div className="landing-phone-bubble confirm">
+                    <span className="landing-phone-confirm-icon" aria-hidden="true">
+                      ✅
                     </span>
-                    <strong>Which calendar should I put &quot;Team Meeting&quot; on?</strong>
-                  </div>
-                  <p className="landing-phone-card-text">Current request: next week.</p>
-
-                  <div className="landing-phone-options">
-                    <div className="landing-phone-option">
-                      <span className="landing-phone-option-number">1</span>
-                      <span className="landing-phone-option-text">Home</span>
-                    </div>
-                    <div className="landing-phone-option">
-                      <span className="landing-phone-option-number">2</span>
-                      <span className="landing-phone-option-text">Family</span>
+                    <div>
+                      <strong>Booked Team Meeting for Mon, Jul 27 at 10:00 AM.</strong>
+                      <span>I&apos;ll remind you before it starts.</span>
                     </div>
                   </div>
-
-                  <p className="landing-phone-card-footer">Reply with a number or calendar name.</p>
-                </div>
-
-                <div className="landing-phone-bubble user compact">
-                  <span>1</span>
-                </div>
-
-                <div className="landing-phone-bubble card">
-                  <strong>I found these times:</strong>
-
-                  <div className="landing-phone-options">
-                    <div className="landing-phone-option">
-                      <span className="landing-phone-option-number">1</span>
-                      <span className="landing-phone-option-text">Mon, Jul 27 at 10:00 AM on Home</span>
-                    </div>
-                    <div className="landing-phone-option">
-                      <span className="landing-phone-option-number">2</span>
-                      <span className="landing-phone-option-text">Mon, Jul 27 at 11:00 AM on Home</span>
-                    </div>
-                    <div className="landing-phone-option">
-                      <span className="landing-phone-option-number">3</span>
-                      <span className="landing-phone-option-text">Mon, Jul 27 at 1:00 PM on Home</span>
-                    </div>
+                </>
+              ) : (
+                <>
+                  <div className="landing-phone-bubble user">
+                    <span>Change team meeting to Tuesday at 9am</span>
                   </div>
 
-                  <p className="landing-phone-card-footer">Reply 1, 2, or 3.</p>
-                </div>
+                  <div className="landing-phone-bubble card">
+                    <strong>I can move Team Meeting to:</strong>
 
-                <div className="landing-phone-bubble user compact">
-                  <span>1</span>
-                </div>
-
-                <div className="landing-phone-bubble confirm">
-                  <span className="landing-phone-confirm-icon" aria-hidden="true">
-                    ✅
-                  </span>
-                  <div>
-                    <strong>Booked Team Meeting for Mon, Jul 27 at 10:00 AM.</strong>
-                    <span>I&apos;ll remind you before it starts.</span>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="landing-phone-bubble user">
-                  <span>Change team meeting to Tuesday at 9am</span>
-                </div>
-
-                <div className="landing-phone-bubble card">
-                  <strong>I can move Team Meeting to:</strong>
-
-                  <div className="landing-phone-options">
-                    <div className="landing-phone-option">
-                      <span className="landing-phone-option-number">1</span>
-                      <span className="landing-phone-option-text">Tue, Jul 28 at 9:00 AM on Home</span>
+                    <div className="landing-phone-options">
+                      <div className="landing-phone-option">
+                        <span className="landing-phone-option-number">1</span>
+                        <span className="landing-phone-option-text">Tue, Jul 28 at 9:00 AM on Home</span>
+                      </div>
+                      <div className="landing-phone-option">
+                        <span className="landing-phone-option-number">2</span>
+                        <span className="landing-phone-option-text">Tue, Jul 28 at 10:00 AM on Home</span>
+                      </div>
+                      <div className="landing-phone-option">
+                        <span className="landing-phone-option-number">3</span>
+                        <span className="landing-phone-option-text">Tue, Jul 28 at 11:00 AM on Home</span>
+                      </div>
                     </div>
-                    <div className="landing-phone-option">
-                      <span className="landing-phone-option-number">2</span>
-                      <span className="landing-phone-option-text">Tue, Jul 28 at 10:00 AM on Home</span>
-                    </div>
-                    <div className="landing-phone-option">
-                      <span className="landing-phone-option-number">3</span>
-                      <span className="landing-phone-option-text">Tue, Jul 28 at 11:00 AM on Home</span>
-                    </div>
+
+                    <p className="landing-phone-card-footer">Reply 1, 2, or 3.</p>
                   </div>
 
-                  <p className="landing-phone-card-footer">Reply 1, 2, or 3.</p>
-                </div>
+                  <div className="landing-phone-bubble user compact">
+                    <span>1</span>
+                  </div>
 
-                <div className="landing-phone-bubble user compact">
-                  <span>1</span>
-                </div>
+                  <div className="landing-phone-bubble neutral">
+                    <strong>Moved Team Meeting to Tue, Jul 28 at 9:00 AM.</strong>
+                  </div>
+                </>
+              )}
+            </div>
 
-                <div className="landing-phone-bubble neutral">
-                  <strong>Moved Team Meeting to Tue, Jul 28 at 9:00 AM.</strong>
-                </div>
-              </>
-            )}
-          </div>
-
-          <div className="landing-phone-composer">
-            <button type="button" className="landing-composer-icon" aria-label="Add">
-              +
-            </button>
-            <div className="landing-composer-input">Text Manoa anything...</div>
-            <button type="button" className="landing-composer-send" aria-label="Send">
-              <ArrowIcon />
-            </button>
+            <div className="landing-phone-composer">
+              <button type="button" className="landing-composer-icon" aria-label="Add">
+                +
+              </button>
+              <div className="landing-composer-input">Text Manoa anything...</div>
+              <button type="button" className="landing-composer-send" aria-label="Send">
+                <ArrowIcon />
+              </button>
+            </div>
           </div>
         </div>
       </div>
