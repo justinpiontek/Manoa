@@ -4992,9 +4992,9 @@ footer {
   }
 
   .landing-phone-screen-inner {
-    width: calc(100% / 0.88);
-    height: calc(100% / 0.88);
-    transform: scale(0.88);
+    width: calc(100% / 0.84);
+    height: calc(100% / 0.84);
+    transform: scale(0.84);
     transform-origin: top left;
   }
 
