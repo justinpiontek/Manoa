@@ -362,14 +362,10 @@ function PhoneMockup({ variant }: { variant: 'schedule' | 'reschedule' }) {
                   <div className="landing-phone-options">
                     <div className="landing-phone-option">
                       <span className="landing-phone-option-number">1</span>
-                      <span className="landing-phone-option-text accent">justin@textmanoa.com</span>
-                    </div>
-                    <div className="landing-phone-option">
-                      <span className="landing-phone-option-number">2</span>
                       <span className="landing-phone-option-text">Home</span>
                     </div>
                     <div className="landing-phone-option">
-                      <span className="landing-phone-option-number">3</span>
+                      <span className="landing-phone-option-number">2</span>
                       <span className="landing-phone-option-text">Family</span>
                     </div>
                   </div>
@@ -378,7 +374,7 @@ function PhoneMockup({ variant }: { variant: 'schedule' | 'reschedule' }) {
                 </div>
 
                 <div className="landing-phone-bubble user compact">
-                  <span>2</span>
+                  <span>1</span>
                 </div>
 
                 <div className="landing-phone-bubble card">
