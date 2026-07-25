@@ -3981,10 +3981,12 @@ footer {
 
 .landing-phone-frame {
   width: min(100%, 390px);
+  aspect-ratio: 390 / 800;
 }
 
 .landing-phone-shell {
   position: relative;
+  height: 100%;
   border: 4px solid #111827;
   border-radius: 42px;
   background: linear-gradient(180deg, #151f31 0%, #05070d 100%);
@@ -4007,7 +4009,9 @@ footer {
 }
 
 .landing-phone-screen {
-  min-height: 710px;
+  height: 710px;
+  display: flex;
+  flex-direction: column;
   border-radius: 34px;
   background:
     radial-gradient(circle at top right, rgba(75, 121, 255, 0.16), transparent 30%),
@@ -4044,7 +4048,7 @@ footer {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 6px 4px 12px;
+  padding: 6px 4px 10px;
 }
 
 .landing-mini-brand {
@@ -4096,13 +4100,16 @@ footer {
 
 .landing-phone-thread {
   display: grid;
-  gap: 12px;
-  padding: 6px 4px 18px;
+  flex: 1;
+  min-height: 0;
+  align-content: start;
+  gap: 10px;
+  padding: 4px 4px 14px;
 }
 
 .landing-phone-bubble {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   max-width: 88%;
   border-radius: 18px;
   box-shadow: 0 14px 26px rgba(15, 23, 42, 0.06);
@@ -4120,14 +4127,14 @@ footer {
   border-radius: 18px 18px 6px 18px;
   background: linear-gradient(180deg, #43d96f 0%, #2fc95e 100%);
   color: #ffffff;
-  padding: 14px 16px;
+  padding: 12px 14px;
 }
 
 .landing-phone-bubble.user.compact {
   max-width: none;
   min-width: 52px;
   justify-items: center;
-  padding: 12px 18px;
+  padding: 10px 16px;
 }
 
 .landing-phone-bubble.card,
@@ -4136,15 +4143,15 @@ footer {
   border: 1px solid #e6e9ef;
   background: #f2f4f7;
   color: #122033;
-  padding: 14px 16px;
+  padding: 12px 14px;
 }
 
 .landing-phone-bubble.card strong,
 .landing-phone-bubble.confirm strong,
 .landing-phone-bubble.neutral strong {
-  font-size: 1.06rem;
+  font-size: 1rem;
   font-weight: 500;
-  line-height: 1.28;
+  line-height: 1.24;
 }
 
 .landing-phone-bubble.card p,
@@ -4153,8 +4160,8 @@ footer {
 .landing-phone-bubble.confirm span,
 .landing-phone-bubble.neutral span {
   margin: 0;
-  font-size: 1rem;
-  line-height: 1.42;
+  font-size: 0.94rem;
+  line-height: 1.36;
 }
 
 .landing-phone-bubble.confirm {
@@ -4167,49 +4174,49 @@ footer {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: start;
-  gap: 10px;
+  gap: 8px;
 }
 
 .landing-phone-message-icon {
   margin-top: 1px;
-  font-size: 1.15rem;
+  font-size: 1.05rem;
   line-height: 1;
 }
 
 .landing-phone-card-text {
   margin: -2px 0 0;
-  font-size: 1rem;
-  line-height: 1.4;
+  font-size: 0.94rem;
+  line-height: 1.34;
 }
 
 .landing-phone-options {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .landing-phone-option {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: start;
-  gap: 10px;
+  gap: 8px;
 }
 
 .landing-phone-option-number {
   display: inline-grid;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   place-items: center;
   border-radius: 7px;
   background: linear-gradient(180deg, #7fa4d8 0%, #5f82b5 100%);
   color: #ffffff;
-  font-size: 0.92rem;
+  font-size: 0.86rem;
   font-weight: 850;
 }
 
 .landing-phone-option-text {
   margin: 0;
-  font-size: 0.98rem;
-  line-height: 1.35;
+  font-size: 0.93rem;
+  line-height: 1.28;
 }
 
 .landing-phone-option-text.accent {
@@ -4221,13 +4228,13 @@ footer {
 
 .landing-phone-card-footer {
   margin: 2px 0 0;
-  font-size: 1rem;
-  line-height: 1.4;
+  font-size: 0.94rem;
+  line-height: 1.34;
 }
 
 .landing-phone-confirm-icon {
   margin-top: 1px;
-  font-size: 1.6rem;
+  font-size: 1.45rem;
   line-height: 1;
 }
 
@@ -4911,7 +4918,7 @@ footer {
   }
 
   .landing-phone-screen {
-    min-height: 650px;
+    height: 650px;
   }
 
   .landing-feature-grid,
@@ -4967,7 +4974,7 @@ footer {
   }
 
   .landing-phone-screen {
-    min-height: 590px;
+    height: 590px;
   }
 
   .landing-phone-bubble {
