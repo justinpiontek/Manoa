@@ -3981,7 +3981,7 @@ footer {
 
 .landing-phone-frame {
   width: min(100%, 390px);
-  aspect-ratio: 390 / 800;
+  aspect-ratio: 390 / 770;
 }
 
 .landing-phone-shell {
@@ -4204,7 +4204,7 @@ footer {
 }
 
 .landing-phone-option-number {
-  display: inline-flex;
+  display: flex;
   width: 26px;
   height: 26px;
   align-items: center;
@@ -4217,6 +4217,8 @@ footer {
   line-height: 1;
   text-align: center;
   font-variant-numeric: tabular-nums;
+  padding: 0;
+  box-sizing: border-box;
 }
 
 .landing-phone-option-text {
