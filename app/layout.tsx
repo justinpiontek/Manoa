@@ -7,6 +7,8 @@ import './globals.css'
 const baseUrl = appUrl()
 const googleAnalyticsId = 'G-T8WDT7SRYQ'
 const analyticsEnabled = process.env.NODE_ENV === 'production'
+const crispWebsiteId = '39c80b8d-1821-4495-8989-cb3429f29d2f'
+const crispEnabled = process.env.NODE_ENV === 'production'
 
 export const metadata: Metadata = {
   metadataBase: new URL(baseUrl),
@@ -61,6 +63,21 @@ export default function RootLayout({
               `}
             </Script>
           </>
+        ) : null}
+        {crispEnabled ? (
+          <Script id="crisp-chat" strategy="afterInteractive">
+            {`
+              window.$crisp = [];
+              window.CRISP_WEBSITE_ID = '${crispWebsiteId}';
+              (function() {
+                var d = document;
+                var s = d.createElement('script');
+                s.src = 'https://client.crisp.chat/l.js';
+                s.async = 1;
+                d.getElementsByTagName('head')[0].appendChild(s);
+              })();
+            `}
+          </Script>
         ) : null}
         {children}
       </body>
