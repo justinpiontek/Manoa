@@ -4221,7 +4221,7 @@ footer {
   line-height: 1;
   text-align: center;
   font-variant-numeric: tabular-nums;
-  padding: 0;
+  padding: 1px 0 0;
   box-sizing: border-box;
 }
 
