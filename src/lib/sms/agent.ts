@@ -70,6 +70,7 @@ import {
   type Invitee,
 } from './invitees'
 import { parseSmsIntentWithAI, type AiConversationTurn } from './aiIntent'
+import { interpretPendingCalendarReplyWithAI } from './pendingReplyAI'
 import { listSmsAiIntentContext } from './thread'
 import { looksLikeFreshRequestText, resolvePendingChoice } from './pendingChoice'
 import { formatEventTitle, parseSmsIntent, parseSmsTime, type DateWindow, type ParsedSmsIntent } from './parser'
@@ -387,7 +388,7 @@ function scheduleRequestSummaryText(
 }
 
 function explicitRetitleCommandPattern() {
-  return /^(?:(?:actually|just|please)\s+)*(?:rename(?:\s+(?:it|that|this|event))?(?:\s+to)?|change\s+(?:the\s+)?title(?:\s+to)?|set\s+(?:the\s+)?title(?:\s+to)?|call it|name it|the title is|title is)\b/i
+  return /^(?:(?:actually|just|please)\s+)*(?:rename(?:\s+(?:it|that|this|event))?(?:\s+to)?|change\s+(?:the\s+)?(?:title|name)(?:\s+to)?|set\s+(?:the\s+)?title(?:\s+to)?|call it|name it|the title is|title is)\b/i
 }
 
 function isExplicitRetitleCommand(text: string) {
@@ -4302,6 +4303,30 @@ function normalizeRetitleCommand(text: string) {
   return title ? formatEventTitle(title) : null
 }
 
+function normalizeEmbeddedRetitleCommand(text: string) {
+  const match = text.match(
+    /\b(?:rename(?:\s+(?:it|that|this|event))?(?:\s+to)?|change\s+(?:the\s+)?(?:title|name)(?:\s+to)?|set\s+(?:the\s+)?title(?:\s+to)?|call it|name it|the title is|title is)\b/i,
+  )
+  if (!match || match.index == null) return null
+
+  const candidate = text.slice(match.index)
+  const title = extractRetitleCommandText(candidate)
+  return title ? formatEventTitle(title) : null
+}
+
+function shouldTryPendingCalendarReplyAi(text: string) {
+  const trimmed = text.trim()
+  if (!trimmed) return false
+  if (trimmed.length > 220) return false
+
+  return (
+    /["']/.test(trimmed) ||
+    /\b(?:rename|call it|name it|title is|change\s+(?:the\s+)?(?:title|name))\b/i.test(
+      trimmed,
+    )
+  )
+}
+
 function isWeakClarifiedImageTitle(text: string) {
   const normalized = text.trim().toLowerCase()
   if (!normalized) return true
@@ -6683,7 +6708,7 @@ export async function handleIncomingSms({
   }
 
   if (activePending?.kind === 'choose_calendar') {
-    const pickedCalendar = resolveCalendarChoiceFromText(
+    let pickedCalendar = resolveCalendarChoiceFromText(
       body,
       activePending.payload.calendarChoices,
       activePending.payload.visibleCalendarChoiceCount,
@@ -6866,17 +6891,53 @@ export async function handleIncomingSms({
       }
     }
 
-    if (!pickedCalendar && activePending.payload.scheduleRequest) {
-      const correctedTitle = normalizeRetitleCommand(body)
-      if (correctedTitle && correctedTitle !== activePending.payload.scheduleRequest.title) {
+    let scheduleRequest = activePending.payload.scheduleRequest || null
+
+    if (scheduleRequest) {
+      let correctedTitle =
+        normalizeRetitleCommand(body) ||
+        (pickedCalendar ? normalizeEmbeddedRetitleCommand(body) : null)
+
+      if (shouldTryPendingCalendarReplyAi(body)) {
+        const aiReply = await interpretPendingCalendarReplyWithAI({
+          body,
+          currentTitle: scheduleRequest.title,
+          calendarChoices: activePending.payload.calendarChoices || [],
+          visibleCalendarChoiceCount: activePending.payload.visibleCalendarChoiceCount,
+          timeZone: profile.timezone,
+        })
+
+        if (!pickedCalendar && aiReply?.calendarChoice) {
+          const visibleChoiceCount =
+            activePending.payload.visibleCalendarChoiceCount ||
+            activePending.payload.calendarChoices?.length ||
+            0
+          pickedCalendar =
+            aiReply.calendarChoice <= visibleChoiceCount
+              ? choose(activePending.payload.calendarChoices || [], aiReply.calendarChoice)
+              : null
+        }
+
+        if (!correctedTitle && aiReply?.titleOverride) {
+          correctedTitle = formatEventTitle(aiReply.titleOverride)
+        }
+      }
+
+      if (correctedTitle && correctedTitle !== scheduleRequest.title) {
+        scheduleRequest = {
+          ...scheduleRequest,
+          title: correctedTitle,
+        }
+      }
+    }
+
+    if (!pickedCalendar && scheduleRequest) {
+      if (scheduleRequest.title !== activePending.payload.scheduleRequest?.title) {
         const reply = await restartChooseCalendarWithUpdatedScheduleRequest({
           profileId: profile.id,
           smsFrom: from,
           payload: activePending.payload,
-          scheduleRequest: {
-            ...activePending.payload.scheduleRequest,
-            title: correctedTitle,
-          },
+          scheduleRequest,
           timeZone: profile.timezone,
           clearClarification: activePending.payload.clarification?.type === 'image_event',
         })
@@ -6885,8 +6946,7 @@ export async function handleIncomingSms({
       }
     }
 
-    if (pickedCalendar && activePending.payload.scheduleRequest) {
-      const scheduleRequest = activePending.payload.scheduleRequest
+    if (pickedCalendar && scheduleRequest) {
       const attendees = activePending.payload.attendees || []
       const unresolvedInvitees = activePending.payload.unresolvedInvitees || []
 
