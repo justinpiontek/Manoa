@@ -836,16 +836,22 @@ function inviteOutcomeLine(option: ScheduleOption, attendees: Invitee[]) {
 
 function exactAvailabilityReply({
   option,
+  renamedToTitle,
   attendees,
   unresolvedInvitees: _unresolvedInvitees,
 }: {
   option: ScheduleOption
+  renamedToTitle?: string | null
   attendees: Invitee[]
   unresolvedInvitees?: string[]
 }) {
-  const lines = [
-    `🕒 I confirmed ${optionTimingText(option)} is available on ${option.calendarName}.`,
-  ]
+  const lines = []
+
+  if (renamedToTitle?.trim()) {
+    lines.push(`📝 Updated the name to "${renamedToTitle.trim()}".`)
+  }
+
+  lines.push(`🕒 I confirmed ${optionTimingText(option)} is available on ${option.calendarName}.`)
 
   if (option.location?.trim()) {
     lines.push(`📍 Location: ${option.location.trim()}.`)
@@ -1733,6 +1739,7 @@ async function maybeConfirmAllDaySchedule({
   profile,
   smsFrom,
   title,
+  renamedToTitle,
   startDate,
   endDate,
   chosenCalendar,
@@ -1743,6 +1750,7 @@ async function maybeConfirmAllDaySchedule({
   profile: SmsProfile
   smsFrom: string
   title: string
+  renamedToTitle?: string | null
   startDate: Date
   endDate: Date
   chosenCalendar: CalendarPlacementOption
@@ -1810,6 +1818,7 @@ async function maybeConfirmAllDaySchedule({
 
   return exactAvailabilityReply({
     option: requestedOption,
+    renamedToTitle,
     attendees,
     unresolvedInvitees,
   })
@@ -1819,6 +1828,7 @@ async function maybeConfirmExactScheduleTime({
   profile,
   smsFrom,
   title,
+  renamedToTitle,
   baseDate,
   exactTime,
   durationMinutes,
@@ -1832,6 +1842,7 @@ async function maybeConfirmExactScheduleTime({
   profile: SmsProfile
   smsFrom: string
   title: string
+  renamedToTitle?: string | null
   baseDate: Date
   exactTime: { hour: number; minute: number } | null
   durationMinutes: number
@@ -1966,6 +1977,7 @@ async function maybeConfirmExactScheduleTime({
 
   return exactAvailabilityReply({
     option: requestedOption,
+    renamedToTitle,
     attendees,
     unresolvedInvitees,
   })
@@ -6954,6 +6966,11 @@ export async function handleIncomingSms({
     }
 
     if (pickedCalendar && scheduleRequest) {
+      const renamedToTitle =
+        activePending.payload.scheduleRequest &&
+        scheduleRequest.title !== activePending.payload.scheduleRequest.title
+          ? scheduleRequest.title
+          : null
       const attendees = activePending.payload.attendees || []
       const unresolvedInvitees = activePending.payload.unresolvedInvitees || []
 
@@ -6962,6 +6979,7 @@ export async function handleIncomingSms({
           profile,
           smsFrom: from,
           title: scheduleRequest.title,
+          renamedToTitle,
           startDate: new Date(scheduleRequest.baseDate),
           endDate: scheduleRequest.endDate ? new Date(scheduleRequest.endDate) : new Date(scheduleRequest.baseDate),
           chosenCalendar: pickedCalendar,
@@ -6992,6 +7010,7 @@ export async function handleIncomingSms({
         profile,
         smsFrom: from,
         title: scheduleRequest.title,
+        renamedToTitle,
         baseDate: new Date(scheduleRequest.baseDate),
         exactTime: scheduleRequest.exactTime,
         durationMinutes: scheduleRequest.durationMinutes,
