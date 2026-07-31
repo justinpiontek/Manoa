@@ -2231,6 +2231,13 @@ function resolveCalendarChoiceFromText(
     if (picked) return picked
   }
 
+  const leadingNumber = lower.match(/^(?:option\s*)?(\d+)(?=$|\s|[.,!?])/)
+  if (leadingNumber) {
+    if (visibleCount && Number(leadingNumber[1]) > visibleCount) return null
+    const picked = calendars[Number(leadingNumber[1]) - 1]
+    if (picked) return picked
+  }
+
   const normalized = tokenizeText(lower).join(' ')
   if (!normalized) return null
 
