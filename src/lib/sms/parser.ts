@@ -1005,7 +1005,7 @@ function stripIntentNoise(text: string) {
       .replace(/^(?:(?:actually|just|please)\s+)+/i, ' ')
       .replace(/^(?:remind\s+me(?:\s+to)?|i\s+need\s+to|need\s+to|i\s+need|need)\b[:\s-]*/i, ' ')
       .replace(
-        /^(?:schedule|scheudle|chedule|book|add|set up|fit in|find time|find me time|find me a time|make time|squeeze in|hold|block off|pencil in|put|throw|save|plan|meet|reschedule|rescheduled|move|moved|change|changed|push|pushed|cancel|canceled|cancelled|delete|deleted|remove|removed|drop|dropped|take)\b[:\s-]*/i,
+        /^(?:schedule|scheudle|chedule|book|add|set up|fit in|find me(?: a)?|find time|find me time|find me a time|make time|squeeze in|hold|block off|pencil in|put|throw|save|plan|meet|reschedule|rescheduled|move|moved|change|changed|push|pushed|cancel|canceled|cancelled|delete|deleted|remove|removed|drop|dropped|take)\b[:\s-]*/i,
         ' ',
       )
       .trim()
@@ -1029,8 +1029,20 @@ function stripIntentNoise(text: string) {
   return cleaned
 }
 
-function stripSchedulingNoise(text: string) {
-  return formatEventTitle(stripIntentNoise(text) || 'meeting')
+export function deriveScheduleTitle(text: string) {
+  const compact = text.replace(/\s+/g, ' ').trim().replace(/[?!.]+$/g, '')
+
+  if (/\b(?:find me(?: a)?|find time|make time|fit in|squeeze in)\b/i.test(compact)) {
+    const findTimeTitleMatch = compact.match(
+      /\bfor\s+(?:a|an)\s+(((?:team\s+)?meeting|call|lunch|coffee|dinner|breakfast|brunch|appointment)(?:\s+with\s+[A-Za-z][A-Za-z .'-]{0,80})?)(?=\b(?:on|at|next|this|tomorrow|today|every|each|in)\b|$)/i,
+    )
+    if (findTimeTitleMatch?.[1]) {
+      return formatEventTitle(findTimeTitleMatch[1])
+    }
+  }
+
+  const cleaned = stripIntentNoise(text).replace(/^(?:for\s+)?(?:a|an)\s+/i, ' ').trim()
+  return formatEventTitle(cleaned || 'meeting')
 }
 
 function stripReferenceNoise(text: string) {
@@ -1240,7 +1252,7 @@ export function parseSmsIntent(body: string, timeZone?: string): ParsedSmsIntent
 
     return {
       type: 'schedule',
-      title: stripSchedulingNoise(locationContext.textWithoutLocation),
+      title: deriveScheduleTitle(locationContext.textWithoutLocation),
       baseDate: allDaySpan?.start || parseBaseDate(text, timeZone),
       endDate: allDaySpan?.end || null,
       dateWindow: effectiveDateWindow,

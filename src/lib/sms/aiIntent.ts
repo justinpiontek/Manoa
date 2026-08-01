@@ -3,6 +3,8 @@ import { defaultTimezone } from '../env'
 import { dateFromTimeZoneParts, nextDateForWeekday, startOfDay } from '../calendar/dates'
 import type { ParsedSmsIntent } from './parser'
 import {
+  deriveScheduleTitle,
+  formatEventTitle,
   parseAllDayDateSpan,
   parseDateWindow,
   parseExplicitDate,
@@ -132,6 +134,27 @@ function parseAiRecurrence(payload: AiIntentPayload): RecurrenceSpec | null {
   return null
 }
 
+function normalizeAiScheduleTitle(rawTitle: string | null, originalText: string) {
+  const normalizedRaw = rawTitle?.replace(/[?!.]+$/g, '').trim() || ''
+  const derivedTitle = deriveScheduleTitle(originalText)
+  const looksLikeFullRequest =
+    /^(?:can|could|would|will)\s+you\b|^(?:find me(?: a)?|find time|make time|fit in|squeeze in|schedule|scheudle|chedule|book|add|set up|put|throw|save|plan|remind me|i need|need)\b/i.test(
+      normalizedRaw,
+    )
+  const originalHasNamedMeeting =
+    /\b(?:call|meeting|lunch|coffee|dinner|breakfast|brunch|appointment)\s+with\s+[A-Za-z]/i.test(originalText)
+  const rawDropsNamedMeeting =
+    originalHasNamedMeeting &&
+    /\bwith\s+[A-Za-z]/i.test(derivedTitle) &&
+    !/\bwith\s+[A-Za-z]/i.test(normalizedRaw)
+
+  if (!normalizedRaw || looksLikeFullRequest || rawDropsNamedMeeting) {
+    return derivedTitle
+  }
+
+  return formatEventTitle(normalizedRaw)
+}
+
 function parseTopLevelOutputText(response: unknown) {
   if (!response || typeof response !== 'object') return null
 
@@ -206,7 +229,7 @@ function toParsedSmsIntent(payload: AiIntentPayload, timeZone: string, originalT
       const recurrence = parseTextRecurrence(originalText) || parseAiRecurrence(payload)
       return {
         type: 'schedule',
-        title: payload.title?.trim() || 'meeting',
+        title: normalizeAiScheduleTitle(payload.title, locationContext.textWithoutLocation),
         baseDate: allDaySpan?.start || parseBaseDate(payload.date_ymd, payload.day, payload.weekday, timeZone, originalText),
         endDate: allDaySpan?.end || null,
         dateWindow: parseDateWindow(originalText, timeZone),
@@ -326,7 +349,7 @@ export async function parseSmsIntentWithAIResult(
               `- Keep event titles short. Strip date, time, calendar, and location details from title/query when possible.\n` +
               `- Put obvious location phrases into location, like "at Mary's house", "at Starbucks", "near Union Square", or "in conference room B". Do not put times like "at 10am" in location.\n` +
               `- Preserve the user's calendar label when they name one, like "Personal", "Metonga Media", or "Part-time job". Use "Calendar" only if they did not name one.\n` +
-              `- Strip invitee names/emails from the title/query if possible.\n` +
+              `- Keep person names in titles like "Meeting With Sarah" or "Call With Beth" when the user phrases it that way. Strip raw email addresses from the title/query unless the user clearly wants them there.\n` +
               `- Use the recent conversation turns as context for follow-ups like "actually make it an hour", "change it to Thursday instead", "cancel that", or "book the second one".\n` +
               `- For settings: use settings_target morning_agenda for daily/morning agenda texts, reminders for reminder texts on/off, and reminder_timing for "30 minutes before" type requests.\n` +
               `- Treat the final user turn as the message to parse right now. Earlier turns are only context.`,
