@@ -1,4 +1,5 @@
 import { defaultTimezone } from './env'
+import { hasConnectedCalendar, hasConnectedProviderCalendar } from './calendar/google'
 import { supabaseAdmin } from './supabaseAdmin'
 import { syncStripeSubscriptionForProfile } from './subscriptions'
 
@@ -138,19 +139,14 @@ async function resolveDashboardSubscriptionStatus(profile: Profile) {
 }
 
 async function resolveDashboardCalendarFlags(profileId: string) {
-  const { data: calendarConnections, error: calendarError } = await supabaseAdmin
-    .from('calendar_connections')
-    .select('provider')
-    .eq('profile_id', profileId)
-    .eq('status', 'active')
-    .returns<Array<{ provider: string }>>()
+  const [calendarConnected, googleCalendarConnected] = await Promise.all([
+    hasConnectedCalendar(profileId),
+    hasConnectedProviderCalendar(profileId, 'google'),
+  ])
 
-  if (calendarError) throw calendarError
-
-  const connections = calendarConnections || []
   return {
-    calendarConnected: connections.length > 0,
-    googleCalendarConnected: connections.some((connection) => connection.provider === 'google'),
+    calendarConnected,
+    googleCalendarConnected,
   }
 }
 

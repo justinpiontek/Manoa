@@ -97,6 +97,10 @@ function calendarErrorMessage(code: string | undefined) {
       return 'The database save rules for calendars are still out of sync with the app.'
     case 'migration_missing':
       return 'The database is still missing part of the newer multi-calendar schema.'
+    case 'verify_failed':
+      return 'That calendar account came back from Google, but Manoa could not verify the saved connection yet. Reconnect once more. If it still happens, contact support.'
+    case 'disconnect_failed':
+      return "That calendar account could not be disconnected cleanly. Try reconnecting it once, or contact support if it keeps happening."
     default:
       return "We couldn't finish that calendar connection yet. The callback is returning a real error, but it still needs one more fix."
   }
@@ -206,6 +210,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     (count, account) => count + account.calendars.filter((calendar) => calendar.allowNewEvents).length,
     0,
   )
+  const needsCalendarReconnect = totalConnectedAccounts > 0 && !profile.calendarConnected
   const needsBookingCalendar = totalConnectedAccounts > 0 && totalBookingCalendars === 0
   const readyToText = Boolean(manoaNumber && profile.calendarConnected && smsReady)
   const connectedAccountLabel = `${totalConnectedAccounts} connected account${totalConnectedAccounts === 1 ? '' : 's'}`
@@ -280,6 +285,13 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             {profile.phone_e164
               ? 'SMS is off for this account. You can still use the live console below, or turn texting on in Settings.'
               : 'Texting is not set up for this account yet. You can keep using the live console below, or add a phone in Settings if you want SMS later.'}
+          </div>
+        ) : null}
+
+        {needsCalendarReconnect ? (
+          <div className="notice warning" role="status" aria-live="polite">
+            A saved calendar account still needs to be reconnected before Manoa can use it by text.
+            Use the reconnect link below on that account, then test again.
           </div>
         ) : null}
 

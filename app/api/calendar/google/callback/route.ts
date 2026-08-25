@@ -10,6 +10,7 @@ function calendarErrorCode(error: unknown) {
   if (message.includes('supports up to 2 google accounts')) return 'account_limit'
   if (message.includes('did not return any calendars')) return 'no_calendars'
   if (message.includes('insufficient authentication scopes')) return 'insufficient_scopes'
+  if (message.includes('could not be verified after save')) return 'verify_failed'
   if (message.includes('duplicate key')) return 'duplicate'
   if (message.includes('there is no unique or exclusion constraint')) return 'db_constraint'
   if (message.includes('does not exist')) return 'migration_missing'

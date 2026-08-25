@@ -5,6 +5,7 @@ import {
   findScheduleOptions,
   getCalendarEvent,
   hasConnectedCalendar,
+  hasStoredCalendarConnection,
   listAgenda,
   resolveCalendarPlacement,
   listUpcomingEvents,
@@ -3993,6 +3994,19 @@ async function calendarSetupReply(profile: SmsProfile, lowerBody: string) {
   const providerHint = calendarSetupProviderHint(lowerBody)
 
   if (!(await hasConnectedCalendar(profile.id))) {
+    if (await hasStoredCalendarConnection(profile.id)) {
+      const providerStep =
+        providerHint === 'google'
+          ? 'tap Reconnect Google'
+          : providerHint === 'outlook'
+            ? 'tap Reconnect Outlook (beta)'
+            : providerHint === 'apple'
+              ? 'tap Reconnect Apple'
+              : 'tap Reconnect on the calendar account that is already listed'
+
+      return `I can see a saved calendar connection, but Manoa still needs it refreshed. Open ${loginLink}. After you log in, ${providerStep} on your setup page. Then text me again.`
+    }
+
     const providerStep =
       providerHint === 'google'
         ? 'tap Connect Google'

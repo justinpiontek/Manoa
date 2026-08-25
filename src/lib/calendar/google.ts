@@ -2132,8 +2132,22 @@ export async function hasConnectedCalendar(profileId: string) {
   return Boolean((await getCalendarConnections(profileId))[0])
 }
 
+export async function hasConnectedProviderCalendar(
+  profileId: string,
+  provider: CalendarProvider,
+) {
+  return Boolean((await getCalendarConnections(profileId, provider))[0])
+}
+
+export async function hasStoredCalendarConnection(
+  profileId: string,
+  provider?: CalendarProvider,
+) {
+  return Boolean((await getCalendarConnections(profileId, provider, { decryptTokens: false }))[0])
+}
+
 export async function hasGoogleCalendar(profileId: string) {
-  return hasConnectedCalendar(profileId)
+  return hasConnectedProviderCalendar(profileId, 'google')
 }
 
 export async function storeGoogleConnection(
@@ -2200,6 +2214,15 @@ export async function storeGoogleConnection(
   })
 
   if (error) throw error
+
+  const verifiedConnections = await getCalendarConnections(profileId, 'google')
+  const verifiedAccount = verifiedConnections.some(
+    (connection) => canonicalAccountId(connection) === accountId,
+  )
+
+  if (!verifiedAccount) {
+    throw new Error('Google calendar connection could not be verified after save.')
+  }
 
   return {
     accountId,
@@ -2548,12 +2571,18 @@ export async function disconnectCalendarAccount({
   accountId: string
 }) {
   if (provider === 'google') {
-    const existingConnections = await getGoogleConnections(profileId)
-    const existing = existingConnections.find((connection) => canonicalAccountId(connection) === accountId)
+    const { data: existing, error: existingError } = await supabaseAdmin
+      .from('calendar_connections')
+      .select('id')
+      .eq('profile_id', profileId)
+      .eq('provider', 'google')
+      .eq('account_id', accountId)
+      .eq('status', 'active')
+      .limit(1)
+      .maybeSingle<{ id: string }>()
 
-    if (!existing) {
-      throw new Error('Calendar account not found.')
-    }
+    if (existingError) throw existingError
+    if (!existing) throw new Error('Calendar account not found.')
 
     await deactivateGoogleAccountRows(profileId, accountId)
     return

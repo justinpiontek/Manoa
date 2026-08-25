@@ -11,29 +11,43 @@ function isProvider(value: string): value is CalendarProvider {
 }
 
 export async function POST(request: NextRequest) {
-  const formData = await request.formData()
-  const profileId = String(formData.get('profile_id') || '').trim()
-  const accountId = String(formData.get('account_id') || '').trim()
-  const provider = String(formData.get('provider') || '').trim()
-  const profile = await getAuthenticatedDashboardProfileForRoute()
+  try {
+    const formData = await request.formData()
+    const profileId = String(formData.get('profile_id') || '').trim()
+    const accountId = String(formData.get('account_id') || '').trim()
+    const provider = String(formData.get('provider') || '').trim()
+    const profile = await getAuthenticatedDashboardProfileForRoute()
 
-  if (!profile) {
-    return Response.redirect(`${appUrl()}/login`, 303)
+    if (!profile) {
+      return Response.redirect(`${appUrl()}/login`, 303)
+    }
+
+    if (!accountId || !isProvider(provider)) {
+      return Response.redirect(
+        `${appUrl()}/dashboard?calendar=error&calendar_error=disconnect_failed`,
+        303,
+      )
+    }
+
+    if (!assertMatchingDashboardProfile(profileId, profile)) {
+      return Response.redirect(
+        `${appUrl()}/dashboard?calendar=error&calendar_error=disconnect_failed`,
+        303,
+      )
+    }
+
+    await disconnectCalendarAccount({
+      profileId: profile.id,
+      provider,
+      accountId,
+    })
+
+    return Response.redirect(`${appUrl()}/dashboard?calendar=disconnected`, 303)
+  } catch (error) {
+    console.error('Calendar disconnect failed', error)
+    return Response.redirect(
+      `${appUrl()}/dashboard?calendar=error&calendar_error=disconnect_failed`,
+      303,
+    )
   }
-
-  if (!accountId || !isProvider(provider)) {
-    return new Response('Missing calendar account details.', { status: 400 })
-  }
-
-  if (!assertMatchingDashboardProfile(profileId, profile)) {
-    return new Response('Profile mismatch.', { status: 403 })
-  }
-
-  await disconnectCalendarAccount({
-    profileId: profile.id,
-    provider,
-    accountId,
-  })
-
-  return Response.redirect(`${appUrl()}/dashboard?calendar=disconnected`, 303)
 }
