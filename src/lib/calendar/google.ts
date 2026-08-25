@@ -2044,15 +2044,42 @@ async function getCalendarConnections(
   const normalizedConnections: CalendarConnection[] = []
 
   for (const connection of (data || []) as CalendarConnection[]) {
+    let accessToken = connection.access_token
+    let refreshToken = connection.refresh_token
+
+    if (decryptTokens) {
+      try {
+        accessToken = decryptCalendarToken(connection.access_token) || ''
+      } catch (error) {
+        console.error('Skipping calendar connection with unreadable access token.', {
+          profileId,
+          provider: connection.provider,
+          accountId: connection.account_id,
+          calendarId: connection.calendar_id,
+          error: error instanceof Error ? error.message : error,
+        })
+        continue
+      }
+
+      try {
+        refreshToken = decryptCalendarToken(connection.refresh_token)
+      } catch (error) {
+        console.error('Calendar connection refresh token is unreadable. Continuing without it.', {
+          profileId,
+          provider: connection.provider,
+          accountId: connection.account_id,
+          calendarId: connection.calendar_id,
+          error: error instanceof Error ? error.message : error,
+        })
+        refreshToken = null
+      }
+    }
+
     try {
       normalizedConnections.push({
         ...connection,
-        access_token: decryptTokens
-          ? decryptCalendarToken(connection.access_token) || ''
-          : connection.access_token,
-        refresh_token: decryptTokens
-          ? decryptCalendarToken(connection.refresh_token)
-          : connection.refresh_token,
+        access_token: accessToken,
+        refresh_token: refreshToken,
       })
     } catch (error) {
       console.error('Skipping unreadable calendar connection token.', {
