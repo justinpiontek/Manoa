@@ -36,7 +36,9 @@ export function decryptCalendarToken(value: string | null | undefined) {
 
   const key = tokenKey()
 
-  const [, ivPart, tagPart, dataPart] = value.split(':')
+  const encodedPayload = value.slice(`${tokenPrefix}:`.length)
+  const [ivPart, tagPart, ...dataParts] = encodedPayload.split(':')
+  const dataPart = dataParts.join(':')
   if (!ivPart || !tagPart || !dataPart) {
     throw new Error('Stored calendar token is malformed.')
   }
@@ -45,6 +47,7 @@ export function decryptCalendarToken(value: string | null | undefined) {
     'aes-256-gcm',
     key,
     Buffer.from(ivPart, 'base64url'),
+    { authTagLength: 16 },
   )
   decipher.setAuthTag(Buffer.from(tagPart, 'base64url'))
 
